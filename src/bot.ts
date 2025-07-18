@@ -1,4 +1,4 @@
-import { Client, Collection, GatewayIntentBits, Events } from 'discord.js';
+import { Client, Collection, GatewayIntentBits, Events, ActivityType } from 'discord.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -7,6 +7,7 @@ import type { Command } from './types/Command.ts';
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 client.commands = new Collection();
+client.cooldowns = new Collection();
 
 // Get __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -46,6 +47,10 @@ for (const file of commandFiles) {
 
 client.once(Events.ClientReady, (c) => {
   console.log(`✅ Ready! Logged in as ${c.user.tag}`);
+  c.user.setActivity({
+    name: 'clans',
+    type: ActivityType.Watching,
+  });
 });
 
 // Register events
@@ -62,6 +67,10 @@ for (const file of eventFiles) {
     client.on(event.name, (...args) => event.execute(...args));
   }
 }
+
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled promise rejection:', error);
+});
 
 import 'dotenv-flow/config';
 console.log(`🌱 Environment: ${process.env.NODE_ENV || 'development (default)'}`);

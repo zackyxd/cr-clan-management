@@ -8,10 +8,10 @@
     "outDir": "dist",
     "noEmitOnError": true,
     "strict": true,
-    "types": ["node"],
+    "types": ["node", "discord.js"],
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "src/types"],
   "exclude": ["nodes_modules"]
 }
