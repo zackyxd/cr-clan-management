@@ -1,0 +1,12 @@
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnPaste": true,
+  "typescript.format.semicolons": "insert",
+  "typescript.preferences.quoteStyle": "auto",
+  "javascript.preferences.quoteStyle": "auto",
+  "prettier.singleQuote": true,
+  "javascript.format.semicolons": "insert",
+  "prettier.jsxSingleQuote": false,
+  "prettier.printWidth": 120
+}
