@@ -1,9 +1,9 @@
-import { Client, Collection, GatewayIntentBits, Events, ActivityType, Guild } from 'discord.js';
+import { Client, Collection, GatewayIntentBits, Events, ActivityType } from 'discord.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Command } from './types/Command.ts';
-import format from 'pg-format';
+
 // import { isDev, isProd } from './utils/env.js';
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -47,13 +47,14 @@ for (const file of commandFiles) {
 }
 
 client.once(Events.ClientReady, async (c) => {
-  console.log(`✅ Ready! Logged in as ${c.user.tag}`);
+  logger.info(`✅ Ready! Logged in as ${c.user.tag}`);
   c.user.setActivity({
     name: 'over clans',
     type: ActivityType.Watching,
   });
 
-  await initialize_guilds(client.guilds.cache);
+  await initialize_guilds_on_start(client.guilds.cache);
+  await remove_guilds_on_start(client.guilds.cache);
 });
 
 // Register events
@@ -71,46 +72,17 @@ for (const file of eventFiles) {
   }
 }
 
-process.on('unhandledRejection', (error) => {
-  console.error('Unhandled promise rejection:', error);
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught Exception: %O', err);
+});
+process.on('unhandledRejection', (err) => {
+  logger.error('Unhandled Rejection: %O', err);
 });
 
 import 'dotenv-flow/config';
-import pool from './dbConfig.js';
+import { initialize_guilds_on_start, remove_guilds_on_start } from './utils/sql_queries/sql_guilds.js';
+import logger from './logger.js';
+
 // import pool from './dbConfig.js';
-console.log(`🌱 Environment: ${process.env.NODE_ENV || 'development (default)'}`);
+logger.info(`🌱 Environment: ${process.env.NODE_ENV || 'development (default)'}`);
 client.login(process.env.TOKEN);
-
-/**
- * Takes all the guilds and initializes them if bot was offline
- * @param guilds collection of guilds from client.guilds.cache
- */
-async function initialize_guilds(guilds: Collection<string, Guild>): Promise<void> {
-  const allGuildIds = [...guilds.keys()];
-
-  const existing = await pool.query(
-    `
-    SELECT guild_id FROM guilds WHERE guild_id = ANY($1);
-    `,
-    [allGuildIds]
-  );
-
-  const existingIds = new Set(existing.rows.map((row) => row.guild_id));
-  const newGuildIds = allGuildIds.filter((id) => !existingIds.has(id));
-
-  if (newGuildIds.length) {
-    const rows = newGuildIds.map((id) => [id]);
-    const addGuildsSql = format(
-      `
-          INSERT INTO guilds (guild_id)
-          VALUES %L
-          ON CONFLICT DO NOTHING;
-          `,
-      rows
-    );
-    await pool.query(addGuildsSql);
-    console.log(`Initialized ${newGuildIds.length} guilds to the database!`);
-  } else {
-    console.log('No guilds added on startup.');
-  }
-}

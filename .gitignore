@@ -1,7 +1,8 @@
 node_modules/
 dist/
-.env.development
-.env.production
-.env.testing
+.env.dev
+.env.prod
+.env.test
 migrate-cheatsheet.txt
 migrations/
+src/logs

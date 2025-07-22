@@ -4,14 +4,14 @@
   "main": "dist/bot.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc",
     "lint": "eslint",
-    "migrate:dev:up": "dotenv -e .env.development npx node-pg-migrate up",
-    "migrate:dev:down": "dotenv -e .env.development -- npx node-pg-migrate down 1",
-    "start:dev": "npm run clean && tsc && NODE_ENV=development node dist/bot.js",
-    "start:prod": "npm run clean && tsc && NODE_ENV=production node dist/bot.js"
+    "migrate:dev:up": "dotenv -e .env.dev npx node-pg-migrate up",
+    "migrate:dev:down": "dotenv -e .env.dev -- npx node-pg-migrate down 1",
+    "start:dev": "npm run clean && tsc && NODE_ENV=dev node dist/bot.js",
+    "start:prod": "npm run clean && tsc && NODE_ENV=prod node dist/bot.js",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest"
   },
   "keywords": [],
   "author": "",
@@ -20,11 +20,14 @@
   "devDependencies": {
     "@eslint/js": "^9.31.0",
     "@tsconfig/node20": "^20.1.6",
+    "@types/jest": "^30.0.0",
     "@types/node": "^24.0.14",
     "@typescript-eslint/eslint-plugin": "^8.37.0",
     "dotenv-cli": "^8.0.0",
     "globals": "^16.3.0",
+    "jest": "^30.0.4",
     "nsx": "^0.0.1",
+    "ts-jest": "^29.4.0",
     "tsx": "^4.20.3",
     "typescript-eslint": "^8.37.0"
   },
@@ -36,6 +39,8 @@
     "node-pg-migrate": "^8.0.3",
     "pg": "^8.16.3",
     "pg-format": "^1.0.4",
-    "pg-pool": "^3.10.1"
+    "pg-pool": "^3.10.1",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0"
   }
 }

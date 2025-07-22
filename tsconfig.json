@@ -10,8 +10,14 @@
     "strict": true,
     "types": ["node", "discord.js"],
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "strictNullChecks": true,
+    "resolveJsonModule": true,
+    "noImplicitAny": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true
   },
   "include": ["src/**/*", "src/types"],
-  "exclude": ["nodes_modules"]
+  "exclude": ["nodes_modules", "dist"]
 }
