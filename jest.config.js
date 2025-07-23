@@ -10,5 +10,6 @@ export default {
   transform: {
     '^.+\\.ts$': ['ts-jest', { useESM: true }],
   },
+  setupFiles: ['<rootDir>/jest.env-setup.ts'],
   setupFilesAfterEnv: ['./jest.setup.ts'],
 };

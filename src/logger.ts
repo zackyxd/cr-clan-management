@@ -1,6 +1,7 @@
 import { createLogger, format, transports } from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import path from 'path';
+const isTest = process.env.NODE_ENV === 'test';
 
 const { combine, timestamp, printf, errors, splat, colorize } = format;
 
@@ -43,7 +44,7 @@ const errorRotateTransport = new DailyRotateFile({
 });
 
 const logger = createLogger({
-  level: process.env.LOG_LEVEL || 'info',
+  level: isTest ? 'error' : process.env.LOG_LEVEL || 'info',
   transports: [
     new transports.Console({ format: consoleFormat }),
     dailyRotateTransport, // application logs rotate daily

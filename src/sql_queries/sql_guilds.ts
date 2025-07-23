@@ -1,7 +1,7 @@
 import { Collection, Guild } from 'discord.js';
-import pool from '../../db.js';
+import pool from '../db.js';
 import format from 'pg-format';
-import logger from '../../logger.js';
+import logger from '../logger.js';
 
 /**
  * On entering a guild, takes the guild id and initialize to database.
@@ -25,7 +25,7 @@ export async function initialize_guild(guildId: string): Promise<void> {
  * Takes all the guilds and initializes them if bot was offline
  * @param guilds collection of guilds from client.guilds.cache
  */
-export async function initialize_guilds_on_start(guilds: Collection<string, Guild>): Promise<void> {
+export async function insert_guilds_on_startup(guilds: Collection<string, Guild>): Promise<void> {
   const allGuildIds = [...guilds.keys()]; // All guilds the bot is in ['123', '456', '789']
 
   // Get all guilds added to db
@@ -78,7 +78,7 @@ export async function remove_guild(guildId: string): Promise<void> {
  * Check all guilds on startup to see if any kicked the bot while it was down.
  * @param guildId: collection of guilds from client.guilds.cache
  */
-export async function remove_guilds_on_start(guilds: Collection<string, Guild>): Promise<void> {
+export async function remove_guilds_on_startup(guilds: Collection<string, Guild>): Promise<void> {
   const currentGuildIds = [...guilds.keys()]; // All guilds bot is currently in
 
   // All guilds stored on db

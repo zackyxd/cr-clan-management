@@ -9,9 +9,12 @@
     "lint": "eslint",
     "migrate:dev:up": "dotenv -e .env.dev npx node-pg-migrate up",
     "migrate:dev:down": "dotenv -e .env.dev -- npx node-pg-migrate down 1",
+    "migrate:test:up": "dotenv -e .env.test --quiet -- npx node-pg-migrate up",
+    "migrate:test:down-all": "dotenv -e .env.test --quiet -- npx node-pg-migrate down --count 1000",
+    "migrate:test:reset": "npm run migrate:test:down-all && npm run migrate:test:up",
     "start:dev": "npm run clean && tsc && NODE_ENV=dev node dist/bot.js",
     "start:prod": "npm run clean && tsc && NODE_ENV=prod node dist/bot.js",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest"
+    "test": "node --no-warnings --experimental-vm-modules $(npx --no-install which jest) --runInBand"
   },
   "keywords": [],
   "author": "",
@@ -33,6 +36,7 @@
   },
   "dependencies": {
     "@types/pg": "^8.15.4",
+    "axios": "^1.10.0",
     "discord.js": "^14.21.0",
     "dotenv": "^17.2.0",
     "dotenv-flow": "^4.1.0",
@@ -41,6 +45,7 @@
     "pg-format": "^1.0.4",
     "pg-pool": "^3.10.1",
     "winston": "^3.17.0",
-    "winston-daily-rotate-file": "^5.0.0"
+    "winston-daily-rotate-file": "^5.0.0",
+    "zod": "^4.0.5"
   }
 }

@@ -53,8 +53,8 @@ client.once(Events.ClientReady, async (c) => {
     type: ActivityType.Watching,
   });
 
-  await initialize_guilds_on_start(client.guilds.cache);
-  await remove_guilds_on_start(client.guilds.cache);
+  await insert_guilds_on_startup(client.guilds.cache);
+  await remove_guilds_on_startup(client.guilds.cache);
 });
 
 // Register events
@@ -80,7 +80,7 @@ process.on('unhandledRejection', (err) => {
 });
 
 import 'dotenv-flow/config';
-import { initialize_guilds_on_start, remove_guilds_on_start } from './utils/sql_queries/sql_guilds.js';
+import { insert_guilds_on_startup, remove_guilds_on_startup } from './sql_queries/sql_guilds.js';
 import logger from './logger.js';
 
 // import pool from './dbConfig.js';
