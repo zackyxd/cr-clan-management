@@ -4,10 +4,15 @@ import 'dotenv-flow/config';
 import z from 'zod';
 
 function normalizeTag(rawTag: string): string {
-  console.log('raw:', rawTag);
   const tag = rawTag.trim().toUpperCase().replace(/O/gi, '0');
-  console.log('normalized:', tag);
   return tag.startsWith('#') ? tag : `#${tag}`;
+}
+
+type FetchError = { error: true; statusCode: number; reason: string };
+function isFetchError(obj: unknown): obj is FetchError {
+  return (
+    typeof obj === 'object' && obj !== null && 'error' in obj && (obj as Record<string, unknown>)['error'] === true
+  );
 }
 
 async function fetchData<T = unknown>(url: string): Promise<T | { error: true; statusCode: number; reason: string }> {
@@ -54,21 +59,13 @@ async function fetchData<T = unknown>(url: string): Promise<T | { error: true; s
   }
 }
 
-const PlayerSchema = z
-  .object({
-    tag: z.string(),
-    name: z.string(),
-  })
-  .loose();
+const PlayerSchema = z.looseObject({
+  tag: z.string(),
+  name: z.string(),
+  badges: z.array(z.object({}).loose()),
+});
 
 type Player = z.infer<typeof PlayerSchema>;
-
-type FetchError = { error: true; statusCode: number; reason: string };
-function isFetchError(obj: unknown): obj is FetchError {
-  return (
-    typeof obj === 'object' && obj !== null && 'error' in obj && (obj as Record<string, unknown>)['error'] === true
-  );
-}
 type PlayerResult = Player | FetchError;
 export async function getPlayer(playertag: string): Promise<PlayerResult> {
   playertag = normalizeTag(playertag);
@@ -80,18 +77,177 @@ export async function getPlayer(playertag: string): Promise<PlayerResult> {
 
   const parsed = PlayerSchema.safeParse(data);
   console.log(parsed);
+  console.log(parsed.success);
   if (!parsed.success) {
     return {
       error: true,
-      statusCode: 422,
+      statusCode: 400,
       reason: 'Invalid player structure',
     };
   }
   return parsed.data;
 }
 
+const BattleSchema = z.looseObject({
+  type: z.string(),
+  battleTime: z.string(),
+  gameMode: z.object({
+    name: z.string(),
+  }),
+});
+
+const BattleLogSchema = z.array(BattleSchema);
+
+type Battle = z.infer<typeof BattleSchema>;
+type BattleResult = Battle[] | FetchError;
+
+export async function getBattleLog(playertag: string): Promise<BattleResult> {
+  playertag = normalizeTag(playertag);
+  const url = `https://proxy.royaleapi.dev/v1/players/${encodeURIComponent(playertag)}/battlelog`;
+  const data = await fetchData(url);
+  console.log(data);
+  if (isFetchError(data)) {
+    return data; // Error data
+  }
+
+  const parsed = BattleLogSchema.safeParse(data);
+
+  if (!parsed.success) {
+    return {
+      error: true,
+      statusCode: 400,
+      reason: 'Invalid battlelog structure',
+    };
+  }
+
+  if (parsed.data.length === 0) {
+    return {
+      error: true,
+      statusCode: 404,
+      reason: 'No battle log found or invalid player tag',
+    };
+  }
+
+  return parsed.data;
+}
+
+const ClanSchema = z.looseObject({
+  tag: z.string(),
+  name: z.string(),
+  description: z.string(),
+  members: z.number(),
+  memberList: z.array(z.object({}).loose()),
+});
+type Clan = z.infer<typeof ClanSchema>;
+type ClanResult = Clan | FetchError;
+export async function getClan(clantag: string): Promise<ClanResult> {
+  clantag = normalizeTag(clantag);
+  const url = `https://proxy.royaleapi.dev/v1/clans/${encodeURIComponent(clantag)}`;
+  const data = await fetchData(url);
+  if (isFetchError(data)) {
+    return data; // Error data
+  }
+
+  const parsed = ClanSchema.safeParse(data);
+  if (!parsed.success) {
+    return {
+      error: true,
+      statusCode: 400,
+      reason: 'Invalid clan structure',
+    };
+  }
+  return parsed.data;
+}
+
+const ClanMemberEntrySchema = z
+  .object({
+    tag: z.string(),
+    name: z.string(),
+    role: z.string(),
+  })
+  .loose();
+
+const ClanMemberListSchema = z.object({
+  items: z.array(ClanMemberEntrySchema),
+});
+
+type ClanMember = z.infer<typeof ClanMemberEntrySchema>; // One member
+type ClanMemberResult = ClanMember[] | FetchError; // The array you want returned
+
+export async function getClanMembers(clantag: string): Promise<ClanMemberResult> {
+  clantag = normalizeTag(clantag);
+  const url = `https://proxy.royaleapi.dev/v1/clans/${encodeURIComponent(clantag)}/members`;
+  const data = await fetchData(url);
+  if (isFetchError(data)) {
+    return data; // Error data
+  }
+
+  const parsed = ClanMemberListSchema.safeParse(data);
+  if (!parsed.success) {
+    return {
+      error: true,
+      statusCode: 400,
+      reason: 'Invalid clan structure',
+    };
+  }
+  return parsed.data.items;
+}
+
+const RiverRaceParticipantSchema = z.object({
+  tag: z.string(),
+  name: z.string(),
+  fame: z.number(),
+  repairPoints: z.number(),
+  boatAttacks: z.number(),
+  decksUsed: z.number(),
+  decksUsedToday: z.number(),
+});
+
+const RiverRaceClanSchema = z.object({
+  tag: z.string(),
+  name: z.string(),
+  badgeId: z.number(),
+  fame: z.number(),
+  repairPoints: z.number(),
+  periodPoints: z.number().optional(), // Sometimes only present for clan
+  clanScore: z.number().optional(), // Sometimes only present for clan
+  participants: z.array(RiverRaceParticipantSchema),
+});
+
+const CurrentRiverRaceSchema = z.object({
+  state: z.string(),
+  clan: RiverRaceClanSchema,
+  clans: z.array(RiverRaceClanSchema),
+});
+
+type CurrentRiverRace = z.infer<typeof CurrentRiverRaceSchema>;
+type CurrentRiverRaceResult = CurrentRiverRace | FetchError;
+
+export async function getCurrentRiverRace(clantag: string): Promise<CurrentRiverRaceResult> {
+  clantag = normalizeTag(clantag);
+  const url = `https://proxy.royaleapi.dev/v1/clans/${encodeURIComponent(clantag)}/currentriverrace`;
+  const data = await fetchData(url);
+  if (isFetchError(data)) {
+    return data; // Error data
+  }
+
+  const parsed = CurrentRiverRaceSchema.safeParse(data);
+  console.log(parsed);
+  if (!parsed.success) {
+    return {
+      error: true,
+      statusCode: 400,
+      reason: 'Invalid current river race structure',
+    };
+  }
+  return parsed.data;
+}
+
 async function main() {
-  console.log(await getPlayer('    J2oY2QGoY    '));
+  // const apiTest = await getPlayer('    J2oY2QGoY    ');
+  // console.log(apiTest);
+  const apiTest = await getBattleLog('   #J20Y2QG40Y         ');
+  console.log(apiTest);
 }
 
 main();
