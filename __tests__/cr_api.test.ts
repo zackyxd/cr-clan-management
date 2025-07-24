@@ -29,12 +29,12 @@ describe('call cr_api', () => {
   });
 
   // getBattleLog
-  test('getPlayer API request error', async () => {
+  test('getBattleLog API request error', async () => {
     const res = await CR_API.getBattleLog(invalid_playertag);
     expect(res).toHaveProperty('error');
   });
 
-  test('getPlayer API request success', async () => {
+  test('getBattleLog API request success', async () => {
     const res = await CR_API.getBattleLog(valid_playertag);
     expect(res).toBeInstanceOf(Array);
   });
