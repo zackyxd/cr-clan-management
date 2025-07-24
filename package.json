@@ -14,7 +14,7 @@
     "migrate:test:reset": "npm run migrate:test:down-all && npm run migrate:test:up",
     "start:dev": "npm run clean && tsc && NODE_ENV=dev node dist/bot.js",
     "start:prod": "npm run clean && tsc && NODE_ENV=prod node dist/bot.js",
-    "test": "node --no-warnings --experimental-vm-modules $(npx --no-install which jest) --runInBand"
+    "test": "node --no-warnings --experimental-vm-modules $(npx --no-install which jest)"
   },
   "keywords": [],
   "author": "",

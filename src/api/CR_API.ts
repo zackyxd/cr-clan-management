@@ -3,8 +3,8 @@ import logger from '../logger.js';
 import 'dotenv-flow/config';
 import z from 'zod';
 
-function normalizeTag(rawTag: string): string {
-  const tag = rawTag.trim().toUpperCase().replace(/O/gi, '0');
+export function normalizeTag(rawTag: string): string {
+  const tag = rawTag.trim().toUpperCase().replace(/O/gi, '0').replace(/\s+/g, '');
   return tag.startsWith('#') ? tag : `#${tag}`;
 }
 
@@ -232,7 +232,6 @@ export async function getCurrentRiverRace(clantag: string): Promise<CurrentRiver
   }
 
   const parsed = CurrentRiverRaceSchema.safeParse(data);
-  console.log(parsed);
   if (!parsed.success) {
     return {
       error: true,
@@ -246,8 +245,18 @@ export async function getCurrentRiverRace(clantag: string): Promise<CurrentRiver
 async function main() {
   // const apiTest = await getPlayer('    J2oY2QGoY    ');
   // console.log(apiTest);
-  const apiTest = await getBattleLog('   #J20Y2QG40Y         ');
+  const apiTest = await getBattleLog('   #P9J292 JCL         ');
   console.log(apiTest);
 }
 
-main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}
+
+export const CR_API = {
+  getPlayer,
+  getClan,
+  getClanMembers,
+  getCurrentRiverRace,
+  getBattleLog,
+};
