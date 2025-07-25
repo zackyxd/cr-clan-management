@@ -9,12 +9,13 @@
     "lint": "eslint",
     "migrate:dev:up": "dotenv -e .env.dev npx node-pg-migrate up",
     "migrate:dev:down": "dotenv -e .env.dev -- npx node-pg-migrate down 1",
+    "migrate:dev:down-all": "dotenv -e .env.dev -- npx node-pg-migrate down $(ls migrations | wc -l)",
     "migrate:test:up": "dotenv -e .env.test --quiet -- npx node-pg-migrate up",
-    "migrate:test:down-all": "dotenv -e .env.test --quiet -- npx node-pg-migrate down --count 1000",
+    "migrate:test:down-all": "dotenv -e .env.test --quiet -- npx node-pg-migrate down $(ls migrations | wc -l)",
     "migrate:test:reset": "npm run migrate:test:down-all && npm run migrate:test:up",
     "start:dev": "npm run clean && tsc && NODE_ENV=dev node dist/bot.js",
     "start:prod": "npm run clean && tsc && NODE_ENV=prod node dist/bot.js",
-    "test": "node --no-warnings --experimental-vm-modules $(npx --no-install which jest)"
+    "test": "node --no-warnings --experimental-vm-modules $(npx --no-install which jest) --runInBand"
   },
   "keywords": [],
   "author": "",

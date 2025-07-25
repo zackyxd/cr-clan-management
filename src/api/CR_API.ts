@@ -76,8 +76,6 @@ export async function getPlayer(playertag: string): Promise<PlayerResult> {
   }
 
   const parsed = PlayerSchema.safeParse(data);
-  console.log(parsed);
-  console.log(parsed.success);
   if (!parsed.success) {
     return {
       error: true,
@@ -105,7 +103,6 @@ export async function getBattleLog(playertag: string): Promise<BattleResult> {
   playertag = normalizeTag(playertag);
   const url = `https://proxy.royaleapi.dev/v1/players/${encodeURIComponent(playertag)}/battlelog`;
   const data = await fetchData(url);
-  console.log(data);
   if (isFetchError(data)) {
     return data; // Error data
   }

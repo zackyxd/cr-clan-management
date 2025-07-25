@@ -10,7 +10,6 @@ import { mockGuild } from '../src/types/mockGuild.ts';
 
 describe('Init guild', () => {
   const guildId = '555';
-
   beforeEach(async () => {
     await pool.query('BEGIN');
   });
@@ -48,6 +47,8 @@ describe('Init guild', () => {
 
     await insert_guilds_on_startup(guilds);
     let result = await pool.query('SELECT COUNT(*) FROM guilds');
+    console.log('RESULT HERE!!!', result);
+    console.log(await pool.query('SELECT * FROM guilds'));
     expect(Number(result.rows[0].count)).toBe(4);
 
     result = await pool.query(`SELECT * from guilds;`);
@@ -56,11 +57,11 @@ describe('Init guild', () => {
 
     expect(typeof guild222.guild_id).toBe('string');
     expect(guild222.in_guild).toBe(true);
-    expect(guild222.leftAt).not.toBeNull();
+    expect(guild222.left_at).not.toBeNull();
 
     expect(typeof guild444.guild_id).toBe('string');
     expect(guild444.in_guild).toBe(true);
-    expect(guild444.leftAt).not.toBeNull();
+    expect(guild444.left_at).not.toBeNull();
   });
 
   test('insert 1 guild, then remove', async () => {

@@ -69,7 +69,6 @@ describe('call cr_api', () => {
 
   test('getCurrentRiverRace API request success', async () => {
     const res = await CR_API.getCurrentRiverRace(valid_clantag);
-    console.log(res);
     expect(res).toHaveProperty('state');
     expect(res).toHaveProperty('clan');
     expect(res).toHaveProperty('clans');

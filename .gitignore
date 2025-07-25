@@ -4,5 +4,4 @@ dist/
 .env.prod
 .env.test
 migrate-cheatsheet.txt
-migrations/
 src/logs
