@@ -52,9 +52,19 @@ client.once(Events.ClientReady, async (c) => {
     name: 'over clans',
     type: ActivityType.Watching,
   });
+  const dbClient = await pool.connect();
+  try {
+    await dbClient.query('BEGIN');
+    await insert_guilds_on_startup(dbClient, client.guilds.cache);
+    await remove_guilds_on_startup(dbClient, client.guilds.cache);
 
-  await insert_guilds_on_startup(client.guilds.cache);
-  await remove_guilds_on_startup(client.guilds.cache);
+    await dbClient.query('COMMIT');
+  } catch (error) {
+    await dbClient.query('ROLLBACK');
+    logger.error('Failed during guild sync on startup:', error);
+  } finally {
+    dbClient.release();
+  }
 });
 
 // Register events
@@ -82,6 +92,7 @@ process.on('unhandledRejection', (err) => {
 import 'dotenv-flow/config';
 import { insert_guilds_on_startup, remove_guilds_on_startup } from './sql_queries/sql_guilds.js';
 import logger from './logger.js';
+import pool from './db.js';
 
 // import pool from './dbConfig.js';
 logger.info(`🌱 Environment: ${process.env.NODE_ENV || 'development (default)'}`);
