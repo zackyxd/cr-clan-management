@@ -1,7 +1,13 @@
 import { Collection, Guild } from 'discord.js';
-import format from 'pg-format';
 import logger from '../logger.js';
 import { PoolClient } from 'pg';
+import {
+  buildInsertDefaultFeaturesQuery,
+  buildInsertGuildQuery,
+  buildInsertGuildsQuery,
+  buildRemoveGuildQuery,
+  buildRemoveGuildsQuery,
+} from '../sql_queries/guilds.js';
 
 const DEFAULT_FEATURES: Record<string, boolean> = {
   tickets: false,
@@ -13,16 +19,8 @@ const DEFAULT_FEATURES: Record<string, boolean> = {
  */
 export async function initialize_guild(client: PoolClient, guildId: string): Promise<void> {
   // Insert into 'guilds' table
-  const addGuildSql = format(
-    `
-    INSERT INTO guilds (guild_id, in_guild, left_at)
-    VALUES (%L, true, NULL)
-    ON CONFLICT (guild_id)
-    DO UPDATE SET in_guild = true, left_at = NULL;
-    `,
-    guildId
-  );
-  await client.query(addGuildSql);
+  const insertGuildSQL = buildInsertGuildQuery(guildId);
+  await client.query(insertGuildSQL);
 
   // Insert default features
   await insert_default_features(client, [guildId]);
@@ -49,18 +47,9 @@ export async function insert_guilds_on_startup(client: PoolClient, guilds: Colle
   const newGuildIds = allGuildIds.filter((id) => !existingIds.has(id));
 
   if (newGuildIds.length) {
-    const rows = newGuildIds.map((id) => [id, true, null]); // Convert each row to single-element array
-    const addGuildsSql = format(
-      `
-          INSERT INTO guilds (guild_id, in_guild, left_at)
-          VALUES %L
-          ON CONFLICT DO NOTHING;
-          `,
-      rows
-    );
-    await client.query(addGuildsSql);
+    const insertGuildsSQL = buildInsertGuildsQuery(newGuildIds);
+    await client.query(insertGuildsSQL);
     await insert_default_features(client, newGuildIds);
-
     logger.info(`Initialized ${newGuildIds.length} guilds to the database!`);
   } else {
     logger.info('No guilds added on startup.');
@@ -72,15 +61,7 @@ export async function insert_guilds_on_startup(client: PoolClient, guilds: Colle
  * @param guildId: guild id to set bot not in guild and time of departure.
  */
 export async function remove_guild(client: PoolClient, guildId: string): Promise<void> {
-  const removeGuildSql = format(
-    `
-    UPDATE guilds
-    SET in_guild = false,
-        left_at = NOW()
-    WHERE guild_id = (%L)
-    `,
-    guildId
-  );
+  const removeGuildSql = buildRemoveGuildQuery(guildId);
   await client.query(removeGuildSql);
   logger.info(`Guild ${guildId} has been removed.`);
 }
@@ -105,15 +86,8 @@ export async function remove_guilds_on_startup(client: PoolClient, guilds: Colle
 
   if (missingGuildIds.length > 0) {
     // 🔹 Mark those guilds as left: in_guild = false, left_at = now()
-    await client.query(
-      `
-      UPDATE guilds
-      SET in_guild = false,
-          left_at = NOW()
-      WHERE guild_id = ANY($1);
-      `,
-      [missingGuildIds]
-    );
+    const removeGuildsSQL = buildRemoveGuildsQuery(missingGuildIds);
+    await client.query(removeGuildsSQL);
 
     logger.info(`Marked ${missingGuildIds.length} guilds as left.`);
   } else {
@@ -127,18 +101,7 @@ export async function remove_guilds_on_startup(client: PoolClient, guilds: Colle
 export async function insert_default_features(client: PoolClient, guildIds: string[]) {
   if (!guildIds.length) return;
 
-  const rows = guildIds.flatMap((guildId) =>
-    Object.entries(DEFAULT_FEATURES).map(([featureName, isEnabled]) => [guildId, featureName, isEnabled])
-  );
-
-  const insertSql = format(
-    `
-    INSERT INTO guild_features (guild_id, feature_name, is_enabled)
-    VALUES %L
-    ON CONFLICT (guild_id, feature_name) DO NOTHING;
-    `,
-    rows
-  );
+  const insertSql = buildInsertDefaultFeaturesQuery(guildIds, DEFAULT_FEATURES);
 
   await client.query(insertSql);
 }

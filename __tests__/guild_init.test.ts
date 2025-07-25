@@ -4,7 +4,7 @@ import {
   insert_guilds_on_startup,
   remove_guild,
   remove_guilds_on_startup,
-} from '../src/sql_queries/sql_guilds.ts';
+} from '../src/services/guilds.ts';
 import { mockGuild } from '../src/types/mockGuild.ts';
 import { PoolClient } from 'pg';
 import pool from '../src/db.ts';

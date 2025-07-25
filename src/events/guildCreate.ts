@@ -1,5 +1,5 @@
 import { Events, Guild } from 'discord.js';
-import { initialize_guild } from '../sql_queries/sql_guilds.js';
+import { initialize_guild } from '../services/guilds.js';
 import pool from '../db.js';
 import logger from '../logger.js';
 // import { isDev } from '../utils/env.js';

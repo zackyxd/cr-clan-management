@@ -90,7 +90,7 @@ process.on('unhandledRejection', (err) => {
 });
 
 import 'dotenv-flow/config';
-import { insert_guilds_on_startup, remove_guilds_on_startup } from './sql_queries/sql_guilds.js';
+import { insert_guilds_on_startup, remove_guilds_on_startup } from './services/guilds.js';
 import logger from './logger.js';
 import pool from './db.js';
 
