@@ -1,5 +1,6 @@
 import { EmbedBuilder } from 'discord.js';
 import { Player } from './CR_API.js';
+import { EmbedColor } from '../types/EmbedUtil.js';
 type BadgeEmoji = {
   name: string;
   id: string;
@@ -171,7 +172,7 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
     .setTitle(`${playerName} ${expLevelIcon}`)
     .setThumbnail(LEAGUEIMAGE)
     .setURL(`https://royaleapi.com/player/${playertag.substring(1)}`)
-    .setColor('Blue')
+    .setColor(EmbedColor.BOTCOLOR)
     .addFields(
       { name: `__CW2 Wins__ ${EMOJIS.clanWar}`, value: `${clanWarWins}`, inline: true },
       { name: `__CC Wins__ ${EMOJIS.classic}`, value: `${classicWins}`, inline: true },

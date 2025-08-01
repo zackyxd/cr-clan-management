@@ -88,3 +88,15 @@ export function buildUpsertRelinkPlayertag(guildId: string, discordId: string, p
     playertag
   );
 }
+
+export function buildFindMember(guildId: string, playertag: string): string {
+  return format(
+    `
+    SELECT discord_id 
+    FROM user_playertags
+    WHERE guild_id = (%L) AND playertag = (%L)
+    `,
+    guildId,
+    playertag
+  );
+}
