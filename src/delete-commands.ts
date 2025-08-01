@@ -1,7 +1,8 @@
 import { REST } from '@discordjs/rest';
 import { Routes } from 'discord-api-types/v9';
 import dotenv from 'dotenv';
-dotenv.config();
+import path from 'path';
+dotenv.config({ path: path.resolve(process.cwd(), '.env.dev') });
 
 if (!process.env.TOKEN) {
   throw new Error('TOKEN environment variable is missing.');

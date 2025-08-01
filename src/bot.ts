@@ -52,6 +52,7 @@ client.once(Events.ClientReady, async (c) => {
     name: 'over clans',
     type: ActivityType.Watching,
   });
+  await loadButtons();
   const dbClient = await pool.connect();
   try {
     await dbClient.query('BEGIN');
@@ -64,6 +65,12 @@ client.once(Events.ClientReady, async (c) => {
     logger.error('Failed during guild sync on startup:', error);
   } finally {
     dbClient.release();
+  }
+});
+
+client.on('interactionCreate', async (interaction) => {
+  if (interaction.isButton()) {
+    return handleButtonInteraction(interaction);
   }
 });
 
@@ -93,6 +100,7 @@ import 'dotenv-flow/config';
 import { insert_guilds_on_startup, remove_guilds_on_startup } from './services/guilds.js';
 import logger from './logger.js';
 import pool from './db.js';
+import { handleButtonInteraction, loadButtons } from './interactions/buttonHandler.js';
 
 // import pool from './dbConfig.js';
 logger.info(`🌱 Environment: ${process.env.NODE_ENV || 'development (default)'}`);

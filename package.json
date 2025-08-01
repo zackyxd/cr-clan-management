@@ -7,6 +7,7 @@
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc",
     "lint": "eslint",
+    "deploy-commands": "NODE_ENV=dev npx tsx src/deploy-commands.ts",
     "migrate:dev:up": "dotenv -e .env.dev npx node-pg-migrate up",
     "migrate:dev:down": "dotenv -e .env.dev -- npx node-pg-migrate down 1",
     "migrate:dev:down-all": "dotenv -e .env.dev -- npx node-pg-migrate down $(ls migrations | wc -l)",

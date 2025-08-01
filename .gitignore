@@ -5,3 +5,4 @@ dist/
 .env.test
 migrate-cheatsheet.txt
 src/logs
+one-off-scripts/

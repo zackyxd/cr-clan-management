@@ -1,17 +1,25 @@
-import axios, { isAxiosError } from 'axios';
+import axios, { AxiosError, isAxiosError } from 'axios';
 import logger from '../logger.js';
 import 'dotenv-flow/config';
 import z from 'zod';
+import { EmbedBuilder } from 'discord.js';
 
 export function normalizeTag(rawTag: string): string {
   const tag = rawTag.trim().toUpperCase().replace(/O/gi, '0').replace(/\s+/g, '');
   return tag.startsWith('#') ? tag : `#${tag}`;
 }
 
-type FetchError = { error: true; statusCode: number; reason: string };
-function isFetchError(obj: unknown): obj is FetchError {
+type FetchError = { error: true; statusCode: number; reason: string; embed: EmbedBuilder };
+export function isFetchError(obj: unknown): obj is FetchError {
   return (
-    typeof obj === 'object' && obj !== null && 'error' in obj && (obj as Record<string, unknown>)['error'] === true
+    typeof obj === 'object' &&
+    obj !== null &&
+    'error' in obj &&
+    'statusCode' in obj &&
+    'reason' in obj &&
+    (obj as Record<string, unknown>).error === true &&
+    typeof (obj as Record<string, unknown>).statusCode === 'number' &&
+    typeof (obj as Record<string, unknown>).reason === 'string'
   );
 }
 
@@ -23,6 +31,23 @@ async function fetchData<T = unknown>(url: string): Promise<T | { error: true; s
         Authorization: `Bearer ${process.env.CR_KEY}`,
       },
     });
+    // throw new AxiosError(
+    //   'Simulated 503 error',
+    //   'ERR_BAD_RESPONSE',
+    //   {
+    //     url,
+    //     method: 'GET',
+    //     headers: {},
+    //   },
+    //   null,
+    //   {
+    //     status: 503,
+    //     statusText: 'Service Unavailable',
+    //     headers: {},
+    //     config: {},
+    //     data: {},
+    //   }
+    // );
     return res.data;
   } catch (error: unknown) {
     if (isAxiosError(error)) {
@@ -65,14 +90,41 @@ const PlayerSchema = z.looseObject({
   badges: z.array(z.object({}).loose()),
 });
 
-type Player = z.infer<typeof PlayerSchema>;
+export type Player = z.infer<typeof PlayerSchema>;
 type PlayerResult = Player | FetchError;
-export async function getPlayer(playertag: string): Promise<PlayerResult> {
+export async function getPlayer(playertag: string): Promise<PlayerResult | FetchError> {
   playertag = normalizeTag(playertag);
   const url = `https://proxy.royaleapi.dev/v1/players/${encodeURIComponent(playertag)}`;
   const data = await fetchData(url);
   if (isFetchError(data)) {
-    return data; // Error data
+    if (data.statusCode === 404) {
+      return {
+        error: true,
+        statusCode: 404,
+        reason: `Could not find player`,
+        embed: new EmbedBuilder()
+          .setDescription(`❌ *This playertag **${playertag}** does not exist.*`)
+          .setColor('Red'),
+      };
+    } else if (data.statusCode === 503) {
+      return {
+        error: true,
+        statusCode: 503,
+        reason: `Maintainence Break.`,
+        embed: new EmbedBuilder()
+          .setDescription(`🚧 *It is currently Maintainence Break. Please try again later.*`)
+          .setColor('Orange'),
+      };
+    } else {
+      return {
+        error: true,
+        statusCode: data.statusCode,
+        reason: `Unhandled Error`,
+        embed: new EmbedBuilder()
+          .setDescription(`Unhandled Error: ${data.statusCode} | ${data.reason} `)
+          .setColor('Red'),
+      };
+    }
   }
 
   const parsed = PlayerSchema.safeParse(data);
@@ -81,6 +133,9 @@ export async function getPlayer(playertag: string): Promise<PlayerResult> {
       error: true,
       statusCode: 400,
       reason: 'Invalid player structure',
+      embed: new EmbedBuilder()
+        .setDescription(`API data format may have changed. Requires <@272201620446511104> to fix.`)
+        .setColor('Red'),
     };
   }
   return parsed.data;
@@ -242,8 +297,8 @@ export async function getCurrentRiverRace(clantag: string): Promise<CurrentRiver
 async function main() {
   // const apiTest = await getPlayer('    J2oY2QGoY    ');
   // console.log(apiTest);
-  const apiTest = await getBattleLog('   #P9J292 JCL         ');
-  console.log(apiTest);
+  const apiTest = await getPlayer('   #P9J2d92 JCL         ');
+  // console.log(apiTest);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
