@@ -39,8 +39,9 @@ export async function linkUser(
     } else if (wasPlayertagInserted === false) {
       // Different user linked.
       // TODO Offer relink button.
+      const cooldown = 5000; // ms
       const relink = new ButtonBuilder()
-        .setCustomId(`relinkUser:${guildId}:${originalDiscordId}:${playertag}`)
+        .setCustomId(`relinkUser:${cooldown}:${guildId}:${originalDiscordId}:${playertag}`)
         .setLabel('Relink?')
         .setStyle(ButtonStyle.Secondary);
       const row = new ActionRowBuilder().addComponents(relink);

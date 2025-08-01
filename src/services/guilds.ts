@@ -11,7 +11,55 @@ import {
 
 const DEFAULT_FEATURES: Record<string, boolean> = {
   tickets: false,
+  links: true,
 };
+
+export async function sync_default_features(client: PoolClient): Promise<void> {
+  // Get all existing guild-features pairs
+  const res = await client.query(
+    `
+    SELECT guild_id, feature_name
+    FROM guild_features`
+  );
+
+  const existing = new Set(res.rows.map((row) => `${row.guild_id}:${row.feature_name}`));
+  // Get all guilds
+  const guildsRes = await client.query(`SELECT guild_id from guilds`);
+  const guildIds = guildsRes.rows.map((row) => row.guild_id);
+
+  const inserts: { guildId: string; feature_name: string; enabled: boolean }[] = [];
+  for (const guildId of guildIds) {
+    for (const [feature_name, defaultEnabled] of Object.entries(DEFAULT_FEATURES)) {
+      const key = `${guildId}:${feature_name}`;
+      if (!existing.has(key)) {
+        inserts.push({ guildId, feature_name, enabled: defaultEnabled });
+      }
+    }
+  }
+
+  if (inserts.length) {
+    const values = inserts.map((_, i) => `($${i * 3 + 1}, $${i * 3 + 2}, $${i * 3 + 3})`).join(', ');
+
+    const query = `
+      INSERT INTO guild_features (guild_id, feature_name, is_enabled)
+      VALUES ${values}
+    `;
+
+    const params = inserts.flatMap((f) => [f.guildId, f.feature_name, f.enabled]);
+    await client.query(query, params);
+    console.log(`Synced ${inserts.length} new features to existing guilds.`);
+  }
+
+  await client.query(
+    `
+  DELETE FROM guild_features
+  WHERE feature_name NOT IN (${Object.keys(DEFAULT_FEATURES)
+    .map((_, i) => `$${i + 1}`)
+    .join(', ')})
+`,
+    Object.keys(DEFAULT_FEATURES)
+  );
+}
 
 /**
  * On entering a guild, takes the guild id and initialize to database.

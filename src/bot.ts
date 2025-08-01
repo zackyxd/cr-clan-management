@@ -58,7 +58,7 @@ client.once(Events.ClientReady, async (c) => {
     await dbClient.query('BEGIN');
     await insert_guilds_on_startup(dbClient, client.guilds.cache);
     await remove_guilds_on_startup(dbClient, client.guilds.cache);
-
+    await sync_default_features(dbClient);
     await dbClient.query('COMMIT');
   } catch (error) {
     await dbClient.query('ROLLBACK');
@@ -97,7 +97,7 @@ process.on('unhandledRejection', (err) => {
 });
 
 import 'dotenv-flow/config';
-import { insert_guilds_on_startup, remove_guilds_on_startup } from './services/guilds.js';
+import { insert_guilds_on_startup, remove_guilds_on_startup, sync_default_features } from './services/guilds.js';
 import logger from './logger.js';
 import pool from './db.js';
 import { handleButtonInteraction, loadButtons } from './interactions/buttonHandler.js';

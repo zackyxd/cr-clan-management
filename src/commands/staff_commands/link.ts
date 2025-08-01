@@ -4,6 +4,7 @@ import { linkUser } from '../../services/users.js';
 import pool from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/check_has_role.js';
+import { checkFeatureEnabled } from '../../utils/checkFeatureEnabled.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -21,6 +22,19 @@ const command: Command = {
 
     if (!guild) {
       await interaction.reply({ content: '❌ This command must be used in a server.', ephemeral: true });
+      return;
+    }
+
+    const check = await checkFeatureEnabled(guild.id, 'links');
+    if (!check.enabled) {
+      if (check.embed) {
+        await interaction.reply({ embeds: [check.embed], ephemeral: true });
+      } else {
+        await interaction.reply({
+          content: 'Error showing embed for feature not enabled. Contact @Zacky',
+          ephemeral: true,
+        });
+      }
       return;
     }
 

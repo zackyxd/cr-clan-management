@@ -1,7 +1,6 @@
 import { REST, Routes } from 'discord.js';
 import 'dotenv/config'; // Or:
 import dotenv from 'dotenv';
-dotenv.config();
 dotenv.config({ path: `.env.${process.env.NODE_ENV}` }); // 👈 loads .env.dev
 
 import fs from 'node:fs';

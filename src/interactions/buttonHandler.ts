@@ -27,23 +27,24 @@ export async function loadButtons() {
 }
 
 export async function handleButtonInteraction(interaction: ButtonInteraction) {
-  const [action, ...args] = interaction.customId.split(':');
+  const [action, cooldownStr, ...args] = interaction.customId.split(':');
+  const cooldown = Number(cooldownStr);
   const handler = buttons.get(action);
 
   if (!handler) {
     return interaction.reply({ content: 'Unknown button.', ephemeral: true });
   }
-  console.log(buttonCooldown.has(interaction.user.id));
-  if (buttonCooldown.has(interaction.user.id)) {
+  if (cooldown > 0 && buttonCooldown.has(interaction.user.id)) {
     await interaction.reply({
       content: '⏳ Please wait a moment before trying again.',
       ephemeral: true,
     });
     return;
   }
-  buttonCooldown.add(interaction.user.id);
-  setTimeout(() => buttonCooldown.delete(interaction.user.id), 5000); // 5 second cooldown
-  console.log(buttonCooldown);
+  if (cooldown > 0) {
+    buttonCooldown.add(interaction.user.id);
+    setTimeout(() => buttonCooldown.delete(interaction.user.id), cooldown); // custom cooldown
+  }
   try {
     await handler.execute(interaction, args);
   } catch (error) {

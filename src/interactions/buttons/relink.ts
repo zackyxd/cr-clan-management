@@ -8,7 +8,6 @@ import { formatPlayerData } from '../../api/FORMAT_DATA.js';
 export default {
   customId: 'relinkUser',
   async execute(interaction: ButtonInteraction, args: string[]) {
-    console.log('clicked');
     await interaction.deferUpdate();
     const [guildId, originalDiscordId, playertag] = args;
     const member = (await interaction.guild?.members.fetch(interaction.user.id)) as GuildMember;
@@ -44,6 +43,10 @@ export default {
         const getUser = await interaction.guild?.members.fetch(newDiscordId);
         playerEmbed?.setFooter({ text: `Relinked | ${playertag}`, iconURL: getUser?.displayAvatarURL() });
         await interaction.editReply({ embeds: [playerEmbed], components: [] });
+        await interaction.followUp({
+          content: `The playertag \`${playertag}\` has been relinked from <@${currentDiscordId}> → <@${newDiscordId}>`,
+          ephemeral: true,
+        });
         await client.query('COMMIT');
       } else {
         await client.query('ROLLBACK');
