@@ -6,3 +6,4 @@ dist/
 migrate-cheatsheet.txt
 src/logs
 one-off-scripts/
+performance.ts

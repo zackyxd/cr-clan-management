@@ -11,7 +11,7 @@ export const shorthands = undefined;
 export const up = (pgm) => {
 
   pgm.createTable('ticket_settings', {
-    guild_id: { type: 'varchar(30)', notNull: true, references: 'guilds(guild_id)', onDelete: 'CASCADE', primaryKey: true }, // pk
+    guild_id: { type: 'varchar(30)', references: 'guilds(guild_id)', onDelete: 'CASCADE', primaryKey: true },
     opened_identifier: { type: 'varchar(30)', default: 'ticket' },
     closed_identifier: { type: 'varchar(30)', default: 'closed' },
     allow_append: { type: 'boolean', default: false },

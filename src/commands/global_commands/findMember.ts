@@ -3,7 +3,7 @@ import pool from '../../db.js';
 import { Command } from '../../types/Command.js';
 import { normalizeTag } from '../../api/CR_API.js';
 import { buildFindMember } from '../../sql_queries/users.js';
-import { EmbedColor } from '../../types/EmbedUtil.js';
+import { BOTCOLOR, EmbedColor } from '../../types/EmbedUtil.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -37,7 +37,7 @@ const command: Command = {
       .setDescription(
         `**<@${foundDiscordUserId}> (${getUser.displayName}) is linked to this playertag \`${playertag}\`**`
       )
-      .setColor(EmbedColor.BOTCOLOR);
+      .setColor(BOTCOLOR);
     await interaction.editReply({ embeds: [embed] });
   },
 };

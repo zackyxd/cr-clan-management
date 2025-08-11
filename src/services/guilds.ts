@@ -14,6 +14,28 @@ const DEFAULT_FEATURES: Record<string, boolean> = {
   links: true,
 };
 
+// Add all feature tables here
+const FEATURE_SETTINGS_DEFAULTS: Record<
+  string,
+  { table: string; defaults: Record<string, boolean | string | number> }
+> = {
+  links: {
+    table: 'linking_settings',
+    defaults: {
+      rename_players: false,
+    },
+  },
+  tickets: {
+    table: 'ticket_settings',
+    defaults: {
+      opened_identifier: 'ticket',
+      closed_identifier: 'closed',
+      allow_append: 'false',
+      send_logs: 'false',
+    },
+  },
+};
+
 export async function sync_default_features(client: PoolClient): Promise<void> {
   // Get all existing guild-features pairs
   const res = await client.query(
@@ -59,6 +81,29 @@ export async function sync_default_features(client: PoolClient): Promise<void> {
 `,
     Object.keys(DEFAULT_FEATURES)
   );
+
+  // === Sync settings for each feature that has a settings table ===
+  for (const [feature_name, { table, defaults }] of Object.entries(FEATURE_SETTINGS_DEFAULTS)) {
+    const existingRes = await client.query(`SELECT guild_id FROM ${table}`);
+    const existingGuilds = new Set(existingRes.rows.map((row) => row.guild_id));
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const settingsInserts: any[][] = [];
+
+    for (const guildId of guildIds) {
+      if (!existingGuilds.has(guildId)) {
+        const row = [guildId, ...Object.values(defaults)];
+        settingsInserts.push(row);
+      }
+    }
+
+    if (settingsInserts.length > 0) {
+      const columns = ['guild_id', ...Object.keys(defaults)];
+      const { query, params } = buildInsertQuery(table, columns, settingsInserts);
+      await client.query(query, params);
+      console.log(`Synced ${settingsInserts.length} rows in ${table}`);
+    }
+  }
 }
 
 /**
@@ -152,4 +197,15 @@ export async function insert_default_features(client: PoolClient, guildIds: stri
   const insertSql = buildInsertDefaultFeaturesQuery(guildIds, DEFAULT_FEATURES);
 
   await client.query(insertSql);
+}
+
+function buildInsertQuery(table: string, columns: string[], values: any[][]): { query: string; params: any[] } {
+  const params: any[] = [];
+  const valueStrings = values.map((row, i) => {
+    const paramIndexes = row.map((_, j) => `$${i * columns.length + j + 1}`);
+    params.push(...row);
+    return `(${paramIndexes.join(', ')})`;
+  });
+  const query = `INSERT INTO ${table} (${columns.join(', ')}) VALUES ${valueStrings.join(', ')}`;
+  return { query, params };
 }

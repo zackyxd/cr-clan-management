@@ -2,5 +2,6 @@ export enum EmbedColor {
   SUCCESS = 'Green',
   FAIL = 'Red',
   WARNING = 'Orange',
-  BOTCOLOR = '#D02FC3',
 }
+
+export const BOTCOLOR: [number, number, number] = [208, 47, 195];
