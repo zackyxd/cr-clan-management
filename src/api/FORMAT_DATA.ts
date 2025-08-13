@@ -1,6 +1,6 @@
 import { EmbedBuilder } from 'discord.js';
 import { Player } from './CR_API.js';
-import { BOTCOLOR, EmbedColor } from '../types/EmbedUtil.js';
+import { BOTCOLOR } from '../types/EmbedUtil.js';
 type BadgeEmoji = {
   name: string;
   id: string;
@@ -151,18 +151,19 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
       pathOfLegendsDescription += `Current: ${EMOJIS.polMedal}---\n`;
     }
 
-    if (lastPOLLeague === 10) {
+    if (lastPOLLeague && lastPOLLeague >= 7) {
       pathOfLegendsDescription += `Last: ${EMOJIS.polMedal} ${lastPOLTrophies} ${
-        lastPOLRank ? `(${lastPOLRank})\n` : ''
+        lastPOLRank ? `(${lastPOLRank})` : ''
       }\n`;
     }
 
-    if (bestPOLLeague === 10) {
+    if (bestPOLLeague && bestPOLLeague === 10) {
       pathOfLegendsDescription += `Best: ${EMOJIS.polMedal} ${bestPOLTrophies} ${
-        bestPOLRank ? `(${bestPOLRank})\n` : ''
-      }\n`;
+        bestPOLRank ? `(#${bestPOLRank})\n` : ''
+      }`;
     }
   }
+  console.log(pathOfLegendsDescription);
 
   let cardLevelDescription = `__**Card Levels**__ ${EMOJIS.cards}\n`;
   cardLevelDescription += `${EMOJIS.evolution}: ${evolutions}\n${EMOJIS.level15}: ${level15}\n${EMOJIS.level14}: ${level14}\n${EMOJIS.level13}: ${level13}`;

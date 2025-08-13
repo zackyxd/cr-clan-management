@@ -1,10 +1,18 @@
-import { ChatInputCommandInteraction, EmbedBuilder, GuildMember, SlashCommandBuilder, User } from 'discord.js';
+import {
+  ChatInputCommandInteraction,
+  EmbedBuilder,
+  GuildMember,
+  MessageFlags,
+  SlashCommandBuilder,
+  User,
+} from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { linkUser } from '../../services/users.js';
 import pool from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/check_has_role.js';
 import { checkFeatureEnabled } from '../../utils/checkFeatureEnabled.js';
+import logger from '../../logger.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -68,7 +76,7 @@ const command: Command = {
     const client = await pool.connect();
     await client.query('BEGIN');
     try {
-      const { embed, components } = await linkUser(client, guild.id, discordId, playertag);
+      const { embed, player_name, components } = await linkUser(client, guild.id, discordId, playertag);
       await client.query('COMMIT');
       if (components && components.length > 0) {
         // Convert builder instances to raw JSON data for Discord API
@@ -80,6 +88,37 @@ const command: Command = {
           embed.setFooter({ text: oldFooter, iconURL: user.displayAvatarURL() });
         }
         await interaction.editReply({ embeds: [embed] });
+        // Try to rename
+        try {
+          const renameEnabled = await pool.query(
+            `
+            SELECT rename_players
+            FROM linking_settings
+            WHERE guild_id = $1
+            `,
+            [guild.id]
+          );
+          if (renameEnabled.rows[0]['rename_players']) {
+            if (player_name) {
+              // Fetch the member from the guild
+              const member: GuildMember | null = await interaction.guild.members.fetch(user.id).catch(() => null);
+
+              if (!member) {
+                await interaction.reply({
+                  embeds: [
+                    new EmbedBuilder().setDescription('**This user is not in this server.**').setColor(EmbedColor.FAIL),
+                  ],
+                  ephemeral: true,
+                });
+                return;
+              }
+              await member.setNickname(player_name);
+            }
+          }
+        } catch (error) {
+          await interaction.followUp({ content: `Was unable to rename this player.`, flags: MessageFlags.Ephemeral });
+          logger.info(error);
+        }
       }
     } catch (error) {
       await client.query('ROLLBACK');

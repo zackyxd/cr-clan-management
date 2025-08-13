@@ -1,9 +1,11 @@
-import { ButtonInteraction, GuildMember } from 'discord.js';
+import { ButtonInteraction, EmbedBuilder, GuildMember, MessageFlags } from 'discord.js';
 import pool from '../../db.js';
 import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/check_has_role.js';
 import { buildFindLinkedDiscordId, buildUpsertRelinkPlayertag } from '../../sql_queries/users.js';
 import { CR_API, isFetchError } from '../../api/CR_API.js';
 import { formatPlayerData } from '../../api/FORMAT_DATA.js';
+import logger from '../../logger.js';
+import { EmbedColor } from '../../types/EmbedUtil.js';
 
 export default {
   customId: 'relinkUser',
@@ -47,6 +49,37 @@ export default {
           content: `The playertag \`${playertag}\` has been relinked from <@${currentDiscordId}> → <@${newDiscordId}>`,
           ephemeral: true,
         });
+        try {
+          if (!interaction || !interaction.guild) {
+            return;
+          }
+          const renameEnabled = await pool.query(
+            `
+            SELECT rename_players
+            FROM linking_settings
+            WHERE guild_id = $1
+            `,
+            [interaction.guild.id]
+          );
+          if (renameEnabled.rows[0]['rename_players']) {
+            // Fetch the member from the guild
+            const member: GuildMember | null = await interaction.guild.members.fetch(newDiscordId).catch(() => null);
+
+            if (!member) {
+              await interaction.reply({
+                embeds: [
+                  new EmbedBuilder().setDescription('**This user is not in this server.**').setColor(EmbedColor.FAIL),
+                ],
+                ephemeral: true,
+              });
+              return;
+            }
+            await member.setNickname(playerData.name);
+          }
+        } catch (error) {
+          await interaction.followUp({ content: `Was unable to rename this player.`, flags: MessageFlags.Ephemeral });
+          logger.info(error);
+        }
         await client.query('COMMIT');
       } else {
         await client.query('ROLLBACK');

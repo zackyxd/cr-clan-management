@@ -11,7 +11,7 @@ export async function linkUser(
   guildId: string,
   originalDiscordId: string,
   playertag: string
-): Promise<{ embed: EmbedBuilder; components?: ActionRowBuilder[] }> {
+): Promise<{ embed: EmbedBuilder; player_name?: string; components?: ActionRowBuilder[] }> {
   playertag = normalizeTag(playertag);
   const confirmPlayerExists = await CR_API.getPlayer(playertag);
   if (isFetchError(confirmPlayerExists)) {
@@ -38,7 +38,6 @@ export async function linkUser(
       };
     } else if (wasPlayertagInserted === false) {
       // Different user linked.
-      // TODO Offer relink button.
       const cooldown = 5000; // ms
       const relink = new ButtonBuilder()
         .setCustomId(`relinkUser:${cooldown}:${guildId}:${originalDiscordId}:${playertag}`)
@@ -70,7 +69,7 @@ export async function linkUser(
   if (wasPlayertagInserted) {
     player_embed?.setFooter({ text: `${playertag} | New Link!` });
   }
-  return { embed: player_embed };
+  return { embed: player_embed, player_name: confirmPlayerExists.name };
 }
 
 export async function unlinkUser(client: PoolClient, guildId: string, playertag: string): Promise<EmbedBuilder> {
