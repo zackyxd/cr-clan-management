@@ -19,14 +19,14 @@ export function checkPermissions(item: string, member: GuildMember, requiredRole
     PermissionsBitField.Flags.Administrator,
     PermissionsBitField.Flags.ManageGuild,
   ]);
-
+  const flatRoles = requiredRoles.flat().filter(Boolean); // remove empty strings/undefined
   if (hasRole || hasElevatedPerms) return;
-
+  console.log(requiredRoles);
   let rolesNeeded: string;
   if (requiredRoles.length === 0) {
-    rolesNeeded = `One of the server admins need to set up the following \`/staff\` roles for you to use this command.`;
+    rolesNeeded = `One of the server admins need to set up the following \`/set-staff-roles\` roles for you to use this command.`;
   } else {
-    rolesNeeded = `You need one of the following roles: ` + requiredRoles.map((id) => `<@&${id}>`).join(', ');
+    rolesNeeded = `You need one of the following roles: ` + flatRoles.map((id) => `<@&${id}>`).join(', ');
   }
   return new EmbedBuilder()
     .setDescription(`**You do not have permission to use this ${item}.**\n${rolesNeeded}`)

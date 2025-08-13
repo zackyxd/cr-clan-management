@@ -49,6 +49,6 @@ export async function handleButtonInteraction(interaction: ButtonInteraction) {
     await handler.execute(interaction, args);
   } catch (error) {
     logger.error(`Error in button handler [${interaction.customId}]`, error);
-    interaction.reply({ content: 'There was an error executing this action.', ephemeral: true });
+    interaction.followUp({ content: 'There was an error executing this action.', ephemeral: true });
   }
 }

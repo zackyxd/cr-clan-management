@@ -29,6 +29,7 @@ export default {
     console.log(guildId, settingName);
     const member = (await interaction.guild?.members.fetch(interaction.user.id)) as GuildMember;
     const getRoles = await pool.query(buildCheckHasRoleQuery(guildId));
+    console.log(getRoles);
     const { higher_leader_role_id } = getRoles.rows[0];
     // lower_leader_role_id is intentionally omitted
     const requiredRoleIds = [higher_leader_role_id].filter(Boolean) as string[];

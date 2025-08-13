@@ -12,8 +12,8 @@ export const up = (pgm) => {
 
   pgm.createTable('server_settings', {
     guild_id: { type: 'varchar(30)', references: 'guilds(guild_id)', onDelete: 'CASCADE', primaryKey: true },
-    lower_leader_role_id: { type: 'varchar(30)' },
-    higher_leader_role_id: { type: 'varchar(30)' }
+    lower_leader_role_id: { type: 'text[]', default: pgm.func(`'{}'`) },
+    higher_leader_role_id: { type: 'text[]', default: pgm.func(`'{}'`) }
   });
 };
 

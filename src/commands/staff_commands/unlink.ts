@@ -23,7 +23,7 @@ const command: Command = {
     const member = interaction.member instanceof GuildMember ? interaction.member : await guild.members.fetch(userId);
 
     const getRoles = await pool.query(buildCheckHasRoleQuery(guild.id));
-    const { lower_leader_role_id, higher_leader_role_id } = getRoles.rows[0];
+    const { lower_leader_role_id, higher_leader_role_id } = getRoles.rows[0] ?? [];
     const requiredRoleIds = [lower_leader_role_id, higher_leader_role_id].filter(Boolean) as string[];
     const hasPerms = await checkPermissions('command', member, requiredRoleIds);
     if (hasPerms && hasPerms.data) {
