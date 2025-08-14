@@ -5,13 +5,29 @@ import { BOTCOLOR } from '../../types/EmbedUtil.js';
 import { buildSettingsView } from '../../commands/settings_commands/serverSettings.js';
 import logger from '../../logger.js';
 
-export const LINK_FEATURES = [
-  {
-    key: 'rename_players',
-    label: 'Auto Rename',
-    description: 'Automatically rename linked users to match their in-game name.',
-    type: 'toggle',
-  },
+export const FEATURE_SETTINGS = {
+  links: [
+    {
+      key: 'rename_players',
+      label: 'Auto Rename',
+      description: 'Automatically rename linked users to match their in-game name.',
+      type: 'toggle',
+    },
+  ],
+  tickets: [
+    {
+      key: 'opened_identifier',
+      label: 'Ticket Created Text',
+      description: 'The text that will appear in created channels used for tickets.',
+      type: 'text',
+    },
+    {
+      key: 'closed_identifier',
+      label: 'Ticket Closed Text',
+      description: 'The text that will appear in closed channels used for tickets.',
+      type: 'text',
+    },
+  ],
   // {
   //   key: 'welcome_message',
   //   label: 'Welcome Message',
@@ -19,17 +35,22 @@ export const LINK_FEATURES = [
   //   type: 'text',
   //   getValue: (settings: any) => settings.welcome_message ?? '*Not set*',
   // },
-];
+};
+const SETTINGS_TABLES: Record<FeatureKey, string> = {
+  links: 'linking_settings',
+  tickets: 'ticket_settings',
+};
+
+type FeatureKey = keyof typeof FEATURE_SETTINGS;
+// 'links' | 'tickets'
 
 export default {
   customId: 'settings',
   async execute(interaction: ButtonInteraction, args: string[]) {
     await interaction.deferUpdate();
     const [guildId, settingName] = args;
-    console.log(guildId, settingName);
     const member = (await interaction.guild?.members.fetch(interaction.user.id)) as GuildMember;
     const getRoles = await pool.query(buildCheckHasRoleQuery(guildId));
-    console.log(getRoles);
     const { higher_leader_role_id } = getRoles.rows[0];
     // lower_leader_role_id is intentionally omitted
     const requiredRoleIds = [higher_leader_role_id].filter(Boolean) as string[];
@@ -49,6 +70,16 @@ export default {
         break;
       }
 
+      case 'tickets': {
+        const { embed, components } = await buildFeatureEmbedAndComponents(
+          guildId,
+          'tickets',
+          'Ticket features handles everything related to tickets and ensuring you can handle new members.'
+        );
+        await interaction.editReply({ embeds: [embed], components });
+        break;
+      }
+
       case 'return': {
         const { embed, components } = await buildSettingsView(guildId);
         try {
@@ -57,7 +88,7 @@ export default {
             components: components,
           });
         } catch (error) {
-          logger.error(`Error showign server settings: ${error}`);
+          logger.error(`Error showing server settings: ${error}`);
           interaction.editReply({ content: `Error showing settings. @Zacky to fix` });
           return;
         }
@@ -71,14 +102,16 @@ export default {
   },
 };
 
-export async function buildFeatureEmbedAndComponents(guildId: string, featureKey: string, purpose: string) {
+export async function buildFeatureEmbedAndComponents(guildId: string, featureKey: FeatureKey, purpose: string) {
+  console.log(guildId, featureKey, purpose);
   const featureRes = await pool.query(
     `SELECT is_enabled FROM guild_features WHERE guild_id = $1 AND feature_name = $2`,
     [guildId, featureKey]
   );
   const isFeatureEnabled = featureRes.rows[0]?.is_enabled ?? false;
 
-  const settingRes = await pool.query(`SELECT * FROM linking_settings WHERE guild_id = $1`, [guildId]);
+  const tableName = SETTINGS_TABLES[featureKey];
+  const settingRes = await pool.query(`SELECT * FROM ${tableName} WHERE guild_id = $1`, [guildId]);
   const settings = settingRes.rows[0] ?? {};
 
   const titleFeatureKey = featureKey.charAt(0).toUpperCase() + featureKey.substring(1);
@@ -103,17 +136,17 @@ export async function buildFeatureEmbedAndComponents(guildId: string, featureKey
 
   // let description = '';
   let description = `*${purpose}*\n\n\n`;
-
-  for (const [i, setting] of LINK_FEATURES.entries()) {
+  const featureSettings = FEATURE_SETTINGS[featureKey] ?? [];
+  for (const [i, setting] of featureSettings.entries()) {
     const value = settings[setting.key];
-
+    console.log(value);
     const displayValue =
       setting.type === 'text' ? `**Current:** ${value || '*None*'}` : value ? '✅ Enabled' : '❌ Disabled';
 
     description += `* **${setting.label}: ${displayValue}**\n`;
     description += `  * ${setting.description}\n\n`;
 
-    if (setting.type !== 'text') {
+    if (setting.type === 'toggle') {
       const button = new ButtonBuilder()
         .setLabel(`${value ? 'Disable' : 'Enable'} ${setting.label}`)
         .setCustomId(`toggle:1:${guildId}:${setting.key}`)
@@ -121,7 +154,18 @@ export async function buildFeatureEmbedAndComponents(guildId: string, featureKey
 
       currentRow.addComponents(button);
 
-      if ((i + 1) % 5 === 0 || i === LINK_FEATURES.length - 1) {
+      if ((i + 1) % 5 === 0 || i === FEATURE_SETTINGS[featureKey].length - 1) {
+        actionRows.push(currentRow);
+        currentRow = new ActionRowBuilder<ButtonBuilder>();
+      }
+    } else if (setting.type === 'text') {
+      const button = new ButtonBuilder()
+        .setLabel(`Change ${setting.label}`)
+        .setCustomId(`modal:1:${guildId}:${setting.key}`)
+        .setStyle(ButtonStyle.Primary);
+      currentRow.addComponents(button);
+
+      if ((i + 1) % 5 === 0 || i === FEATURE_SETTINGS[featureKey].length - 1) {
         actionRows.push(currentRow);
         currentRow = new ActionRowBuilder<ButtonBuilder>();
       }

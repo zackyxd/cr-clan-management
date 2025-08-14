@@ -10,7 +10,8 @@ import {
 import pool from '../../db.js';
 import { Command } from '../../types/Command.js';
 import { ButtonBuilder, EmbedBuilder } from '@discordjs/builders';
-import { BOTCOLOR, EmbedColor } from '../../types/EmbedUtil.js';
+import { BOTCOLOR } from '../../types/EmbedUtil.js';
+import logger from '../../logger.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -37,6 +38,7 @@ const command: Command = {
         components: components,
       });
     } catch (error) {
+      logger.info(`Could not show /server-settings: ${error}`);
       interaction.editReply({ content: `Error showing settings. @Zacky to fix` });
       return;
     }
@@ -69,7 +71,6 @@ export async function buildSettingsView(guildId: string) {
       .setCustomId(`settings:1:${guildId}:${feature_name}`)
       .setLabel(`${formatted_name}`)
       .setStyle(ButtonStyle.Primary);
-    console.log(button);
     currentRow.addComponents(button);
 
     if (currentRow.components.length === 5 || i === guildFeatures.length - 1) {

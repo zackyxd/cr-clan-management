@@ -1,6 +1,8 @@
 import { Collection, EmbedBuilder, Events, MessageFlags } from 'discord.js';
 import type { Interaction } from 'discord.js';
 import { Command } from '../types/Command.js';
+import pool from '../db.js';
+import { buildFeatureEmbedAndComponents } from '../interactions/buttons/serverSettings.js';
 // import buttonHandler from "../interactions/buttonHandler";
 // import modalHandler from "../interactions/modalHandler";
 // import { createErrorEmbed } from "../utils/embedUtility";
@@ -72,6 +74,44 @@ export const event = {
       // } else if (interaction.isModalSubmit()) {
       //   await modalHandler.handle(interaction);
       // }
+    } else if (interaction.isModalSubmit()) {
+      const [type, guildId, settingKey] = interaction.customId.split(':');
+      const messageId = interaction.message?.id;
+      if (!messageId) return;
+      const message = await interaction.channel?.messages.fetch(messageId);
+      if (!message) return;
+      await interaction.deferReply({ ephemeral: true });
+      if (type === 'modal_submit' && settingKey === 'opened_identifier') {
+        const newValue = interaction.fields.getTextInputValue('input').toLowerCase();
+        await pool.query(
+          `
+          UPDATE ticket_settings SET ${settingKey} = $1 WHERE guild_id = $2
+          `,
+          [newValue, guildId]
+        );
+        const { embed, components } = await buildFeatureEmbedAndComponents(
+          guildId,
+          'tickets',
+          'Ticket features handles everything related to tickets and ensuring you can handle new members.'
+        );
+        await message.edit({ embeds: [embed], components });
+        await interaction.editReply({ content: '✅ Updated successfully', embeds: [] });
+      } else if (type === 'modal_submit' && settingKey === 'closed_identifier') {
+        const newValue = interaction.fields.getTextInputValue('input').toLowerCase();
+        await pool.query(
+          `
+          UPDATE ticket_settings SET ${settingKey} = $1 WHERE guild_id = $2
+          `,
+          [newValue, guildId]
+        );
+        const { embed, components } = await buildFeatureEmbedAndComponents(
+          guildId,
+          'tickets',
+          'Ticket features handles everything related to tickets and ensuring you can handle new members.'
+        );
+        await message.edit({ embeds: [embed], components });
+        await interaction.editReply({ content: '✅ Updated successfully', embeds: [] });
+      }
     }
   },
 };
