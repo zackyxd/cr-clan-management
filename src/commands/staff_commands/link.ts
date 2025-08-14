@@ -29,18 +29,18 @@ const command: Command = {
     const userId = interaction.user.id;
 
     if (!guild) {
-      await interaction.reply({ content: '❌ This command must be used in a server.', ephemeral: true });
+      await interaction.reply({ content: '❌ This command must be used in a server.', flags: MessageFlags.Ephemeral });
       return;
     }
 
     const check = await checkFeatureEnabled(guild.id, 'links');
     if (!check.enabled) {
       if (check.embed) {
-        await interaction.reply({ embeds: [check.embed], ephemeral: true });
+        await interaction.reply({ embeds: [check.embed], flags: MessageFlags.Ephemeral });
       } else {
         await interaction.reply({
           content: 'Error showing embed for feature not enabled. Contact @Zacky',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
       return;
@@ -53,7 +53,7 @@ const command: Command = {
     const requiredRoleIds = [lower_leader_role_id, higher_leader_role_id].filter(Boolean) as string[];
     const hasPerms = await checkPermissions('command', member, requiredRoleIds);
     if (hasPerms && hasPerms.data) {
-      await interaction.reply({ embeds: [hasPerms], ephemeral: true });
+      await interaction.reply({ embeds: [hasPerms], flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -65,7 +65,7 @@ const command: Command = {
             .setDescription('**This user did not exist. Contact @Zacky if this is incorrect.**')
             .setColor(EmbedColor.FAIL),
         ],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -108,7 +108,7 @@ const command: Command = {
                   embeds: [
                     new EmbedBuilder().setDescription('**This user is not in this server.**').setColor(EmbedColor.FAIL),
                   ],
-                  ephemeral: true,
+                  flags: MessageFlags.Ephemeral,
                 });
                 return;
               }

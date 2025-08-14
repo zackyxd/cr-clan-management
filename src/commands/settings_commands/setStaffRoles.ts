@@ -29,19 +29,19 @@ const command: Command = {
     const guild = interaction.guild;
 
     if (!guild) {
-      await interaction.reply({ content: '❌ This command must be used in a server.', ephemeral: true });
+      await interaction.reply({ content: '❌ This command must be used in a server.', flags: MessageFlags.Ephemeral });
       return;
     }
 
     const typeSelected = interaction.options.getString('staff-type');
     const roleSelected = interaction.options.getRole('role');
     if (!typeSelected || !roleSelected) {
-      await interaction.reply({ content: '❌ You must select an option for both.', ephemeral: true });
+      await interaction.reply({ content: '❌ You must select an option for both.', flags: MessageFlags.Ephemeral });
       return;
     }
 
     if (!['lower', 'higher'].includes(typeSelected)) {
-      await interaction.reply({ content: '❌ Invalid type selected somehow.', ephemeral: true });
+      await interaction.reply({ content: '❌ Invalid type selected somehow.', flags: MessageFlags.Ephemeral });
     }
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });

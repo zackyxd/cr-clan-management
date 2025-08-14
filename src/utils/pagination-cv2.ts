@@ -53,7 +53,7 @@ export const paginationCV2 = async (interaction, pages, time = 30 * 1000) => {
       if (i.user.id !== interaction.user.id)
         return await i.reply({
           content: `Only **${interaction.user.username}** may use these buttons`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       await i.deferUpdate();
 

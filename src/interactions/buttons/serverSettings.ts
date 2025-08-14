@@ -1,4 +1,12 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ButtonStyle, EmbedBuilder, GuildMember } from 'discord.js';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonInteraction,
+  ButtonStyle,
+  EmbedBuilder,
+  GuildMember,
+  MessageFlags,
+} from 'discord.js';
 import pool from '../../db.js';
 import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/check_has_role.js';
 import { BOTCOLOR } from '../../types/EmbedUtil.js';
@@ -8,7 +16,7 @@ import logger from '../../logger.js';
 export const FEATURE_SETTINGS = {
   links: [
     {
-      key: 'rename_players',
+      key: 'rename_players', // done
       label: 'Auto Rename',
       description: 'Automatically rename linked users to match their in-game name.',
       type: 'toggle',
@@ -16,16 +24,36 @@ export const FEATURE_SETTINGS = {
   ],
   tickets: [
     {
-      key: 'opened_identifier',
+      key: 'opened_identifier', // done
       label: 'Ticket Created Text',
       description: 'The text that will appear in created channels used for tickets.',
-      type: 'text',
+      type: 'modal',
     },
     {
-      key: 'closed_identifier',
+      key: 'closed_identifier', // done
       label: 'Ticket Closed Text',
       description: 'The text that will appear in closed channels used for tickets.',
-      type: 'text',
+      type: 'modal',
+    },
+    {
+      key: 'allow_append',
+      label: 'Append to ticket',
+      description:
+        'Allow the bot to append text to the channel name. Coleaders+ can use `/append` inside of the channel to add to it.',
+      type: 'toggle',
+    },
+    {
+      key: 'send_logs',
+      label: 'Send Logs',
+      description: 'Allow the bot to send log information about tickets.',
+      type: 'toggle',
+    },
+    {
+      key: 'logs_channel_id',
+      label: 'Logs Channel',
+      description:
+        'Which channel do you want to send logs to? Use `/set-ticket-log-channel` command to set the channel.',
+      type: 'channel',
     },
   ],
   // {
@@ -51,12 +79,12 @@ export default {
     const [guildId, settingName] = args;
     const member = (await interaction.guild?.members.fetch(interaction.user.id)) as GuildMember;
     const getRoles = await pool.query(buildCheckHasRoleQuery(guildId));
-    const { higher_leader_role_id } = getRoles.rows[0];
+    const { higher_leader_role_id } = getRoles.rows[0] ?? [];
     // lower_leader_role_id is intentionally omitted
     const requiredRoleIds = [higher_leader_role_id].filter(Boolean) as string[];
     const hasPerms = checkPermissions('button', member, requiredRoleIds);
     if (hasPerms && hasPerms.data) {
-      return await interaction.followUp({ embeds: [hasPerms], ephemeral: true });
+      return await interaction.followUp({ embeds: [hasPerms], flags: MessageFlags.Ephemeral });
     }
 
     switch (settingName) {
@@ -131,44 +159,46 @@ export async function buildFeatureEmbedAndComponents(guildId: string, featureKey
     .setEmoji('↩')
     .setStyle(ButtonStyle.Primary)
     .setCustomId(`settings:1:${guildId}:return`);
-  currentRow.addComponents(returnToSettings);
-  currentRow.addComponents(toggleFeature);
+  currentRow.addComponents(returnToSettings, toggleFeature);
 
-  // let description = '';
   let description = `*${purpose}*\n\n\n`;
   const featureSettings = FEATURE_SETTINGS[featureKey] ?? [];
   for (const [i, setting] of featureSettings.entries()) {
     const value = settings[setting.key];
-    console.log(value);
-    const displayValue =
-      setting.type === 'text' ? `**Current:** ${value || '*None*'}` : value ? '✅ Enabled' : '❌ Disabled';
+    let displayValue: string = '';
+    if (setting.type === 'text' || setting.type === 'modal') {
+      displayValue = `__${value || '*None*'}__`;
+    } else if (setting.type === 'toggle') {
+      displayValue = value ? '✅ Enabled' : '❌ Disabled';
+    } else if (setting.type === 'channel') {
+      displayValue = value ? `<#${value}>` : '*None*';
+    }
+    // displayValue = setting.type === 'text' ? `**Current:** ${value || '*None*'}` : value ? '✅ Enabled' : '❌ Disabled';
 
     description += `* **${setting.label}: ${displayValue}**\n`;
     description += `  * ${setting.description}\n\n`;
+    console.log(setting.type);
+    let button: ButtonBuilder | null = null;
 
     if (setting.type === 'toggle') {
-      const button = new ButtonBuilder()
+      button = new ButtonBuilder()
         .setLabel(`${value ? 'Disable' : 'Enable'} ${setting.label}`)
         .setCustomId(`toggle:1:${guildId}:${setting.key}`)
         .setStyle(ButtonStyle.Primary);
-
-      currentRow.addComponents(button);
-
-      if ((i + 1) % 5 === 0 || i === FEATURE_SETTINGS[featureKey].length - 1) {
-        actionRows.push(currentRow);
-        currentRow = new ActionRowBuilder<ButtonBuilder>();
-      }
-    } else if (setting.type === 'text') {
-      const button = new ButtonBuilder()
+    } else if (setting.type === 'modal') {
+      button = new ButtonBuilder()
         .setLabel(`Change ${setting.label}`)
         .setCustomId(`modal:1:${guildId}:${setting.key}`)
         .setStyle(ButtonStyle.Primary);
-      currentRow.addComponents(button);
+    }
 
-      if ((i + 1) % 5 === 0 || i === FEATURE_SETTINGS[featureKey].length - 1) {
-        actionRows.push(currentRow);
-        currentRow = new ActionRowBuilder<ButtonBuilder>();
-      }
+    if (button) {
+      currentRow.addComponents(button);
+    }
+
+    if (currentRow.components.length === 5 || i === featureSettings.length - 1) {
+      actionRows.push(currentRow);
+      currentRow = new ActionRowBuilder<ButtonBuilder>();
     }
   }
 

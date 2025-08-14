@@ -1,4 +1,4 @@
-import axios, { AxiosError, isAxiosError } from 'axios';
+import axios, { isAxiosError } from 'axios';
 import logger from '../logger.js';
 import 'dotenv-flow/config';
 import z from 'zod';
@@ -311,4 +311,5 @@ export const CR_API = {
   getClanMembers,
   getCurrentRiverRace,
   getBattleLog,
+  normalizeTag,
 };

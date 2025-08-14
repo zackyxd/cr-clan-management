@@ -24,8 +24,9 @@ export const up = (pgm) => {
     guild_id: { type: 'varchar(30)', notNull: true, references: 'guilds(guild_id)', onDelete: 'CASCADE' },
     channel_id: { type: 'varchar(30)', notNull: true },
     initial_ticket_name: { type: 'varchar(30)' }, // Get initial ticket name
-    appended_name: { type: 'varchar(30)' }, // Add to ticket name. 
-    playertags: { type: 'text[]', default: '{}' }, // array of playertags
+    appended_name: { type: 'varchar(30)' }, // Add to ticket name.
+    appended_at: { type: 'timestamptz' },
+    playertags: { type: 'text[]', default: pgm.func(`'{}'`) }, // array of playertags
     created_by: { type: 'varchar(30)' }, // Discord Id of recruit, update after they enter playertags
     created_at: { type: 'timestamptz', notNull: true, default: pgm.func('current_timestamp') },
     is_closed: { type: 'boolean', notNull: true, default: false }, // if ticket is closed or open

@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, EmbedBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import pool from '../../db.js';
 import { Command } from '../../types/Command.js';
 import { normalizeTag } from '../../api/CR_API.js';
@@ -15,7 +15,7 @@ const command: Command = {
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const guild = interaction.guild;
     if (!guild) {
-      await interaction.reply({ content: '❌ This command must be used in a server.', ephemeral: true });
+      await interaction.reply({ content: '❌ This command must be used in a server.', flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -23,7 +23,6 @@ const command: Command = {
     playertag = normalizeTag(playertag);
     await interaction.deferReply();
     const playerRes = await pool.query(buildFindMember(guild.id, playertag));
-    console.log(playerRes);
     const foundDiscordUserId = playerRes?.rows[0]?.discord_id ?? null;
     if (!foundDiscordUserId) {
       const embed = new EmbedBuilder()

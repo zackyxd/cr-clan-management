@@ -1,4 +1,4 @@
-import { ButtonInteraction, GuildMember } from 'discord.js';
+import { ButtonInteraction, GuildMember, MessageFlags } from 'discord.js';
 import pool from '../../db.js';
 import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/check_has_role.js';
 import { buildFeatureEmbedAndComponents } from './serverSettings.js';
@@ -10,11 +10,11 @@ export default {
     const [guildId, toggleName] = args;
     const member = (await interaction.guild?.members.fetch(interaction.user.id)) as GuildMember;
     const getRoles = await pool.query(buildCheckHasRoleQuery(guildId));
-    const { higher_leader_role_id } = getRoles.rows[0];
+    const { higher_leader_role_id } = getRoles.rows[0] ?? [];
     const requiredRoleIds = [higher_leader_role_id].filter(Boolean) as string[];
     const hasPerms = checkPermissions('button', member, requiredRoleIds);
     if (hasPerms && hasPerms.data) {
-      return await interaction.followUp({ embeds: [hasPerms], ephemeral: true });
+      return await interaction.followUp({ embeds: [hasPerms], flags: MessageFlags.Ephemeral });
     }
 
     // Enable linking feature
@@ -41,7 +41,7 @@ export default {
       await interaction.editReply({ embeds: [embed], components });
     }
 
-    // Ticket renaming players
+    // Toggle if linking should rename players
     if (toggleName === 'rename_players') {
       await pool.query(
         `
@@ -77,6 +77,46 @@ export default {
      ON CONFLICT (guild_id, feature_name) DO UPDATE SET is_enabled = EXCLUDED.is_enabled`,
         [guildId, 'tickets', newValue]
       );
+      const { embed, components } = await buildFeatureEmbedAndComponents(
+        guildId,
+        'tickets',
+        'Ticket features handles everything related to tickets and ensuring you can handle new members.'
+      );
+      await interaction.editReply({ embeds: [embed], components });
+    }
+
+    // Toggle enabling appending name
+    if (toggleName === 'allow_append') {
+      await pool.query(
+        `
+        UPDATE ticket_settings
+        SET ${toggleName} = NOT ${toggleName}
+        WHERE guild_id = $1
+        RETURNING ${toggleName}
+        `,
+        [guildId]
+      );
+
+      const { embed, components } = await buildFeatureEmbedAndComponents(
+        guildId,
+        'tickets',
+        'Ticket features handles everything related to tickets and ensuring you can handle new members.'
+      );
+      await interaction.editReply({ embeds: [embed], components });
+    }
+
+    // Toggle enabling logs
+    if (toggleName === 'send_logs') {
+      await pool.query(
+        `
+        UPDATE ticket_settings
+        SET ${toggleName} = NOT ${toggleName}
+        WHERE guild_id = $1
+        RETURNING ${toggleName}
+        `,
+        [guildId]
+      );
+
       const { embed, components } = await buildFeatureEmbedAndComponents(
         guildId,
         'tickets',

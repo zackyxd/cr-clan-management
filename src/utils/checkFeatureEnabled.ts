@@ -26,3 +26,28 @@ export async function checkFeatureEnabled(
   }
   return { enabled: true };
 }
+
+export async function checkTicketFeatureEnabled(
+  guildId: string,
+  featureName: string
+): Promise<{ enabled: boolean; embed?: EmbedBuilder }> {
+  const checkEnabledSQL = await pool.query(
+    `
+    SELECT ${featureName}
+    FROM ticket_settings
+    WHERE guild_id = $1
+    `,
+    [guildId]
+  );
+  const res = checkEnabledSQL.rows[0]['allow_append'] ?? false;
+  if (!res) {
+    // TODO show command they use to enable a feature
+    const embed = new EmbedBuilder()
+      .setDescription(
+        `**The \`${featureName}\` feature for Tickets has not been enabled for this guild.**\nPlease ask one of the server admins to enable it in \`/server-settings\``
+      )
+      .setColor(EmbedColor.FAIL);
+    return { enabled: false, embed: embed };
+  }
+  return { enabled: true };
+}

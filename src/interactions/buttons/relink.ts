@@ -14,11 +14,11 @@ export default {
     const [guildId, originalDiscordId, playertag] = args;
     const member = (await interaction.guild?.members.fetch(interaction.user.id)) as GuildMember;
     const getRoles = await pool.query(buildCheckHasRoleQuery(guildId));
-    const { lower_leader_role_id, higher_leader_role_id } = getRoles.rows[0];
+    const { lower_leader_role_id, higher_leader_role_id } = getRoles.rows[0] ?? [];
     const requiredRoleIds = [lower_leader_role_id, higher_leader_role_id].filter(Boolean) as string[];
     const hasPerms = checkPermissions('button', member, requiredRoleIds);
     if (hasPerms && hasPerms.data) {
-      return await interaction.followUp({ embeds: [hasPerms], ephemeral: true });
+      return await interaction.followUp({ embeds: [hasPerms], flags: MessageFlags.Ephemeral });
     }
 
     const client = await pool.connect();
@@ -47,7 +47,7 @@ export default {
         await interaction.editReply({ embeds: [playerEmbed], components: [] });
         await interaction.followUp({
           content: `The playertag \`${playertag}\` has been relinked from <@${currentDiscordId}> → <@${newDiscordId}>`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         try {
           if (!interaction || !interaction.guild) {
@@ -70,7 +70,7 @@ export default {
                 embeds: [
                   new EmbedBuilder().setDescription('**This user is not in this server.**').setColor(EmbedColor.FAIL),
                 ],
-                ephemeral: true,
+                flags: MessageFlags.Ephemeral,
               });
               return;
             }

@@ -14,7 +14,7 @@ const DEFAULT_FEATURES: Record<string, boolean> = {
   links: true,
 };
 
-// Add all feature tables here
+// TODO Add all feature tables here
 const FEATURE_SETTINGS_DEFAULTS: Record<
   string,
   { table: string; defaults: Record<string, boolean | string | number> }
@@ -199,7 +199,9 @@ export async function insert_default_features(client: PoolClient, guildIds: stri
   await client.query(insertSql);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildInsertQuery(table: string, columns: string[], values: any[][]): { query: string; params: any[] } {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const params: any[] = [];
   const valueStrings = values.map((row, i) => {
     const paramIndexes = row.map((_, j) => `$${i * columns.length + j + 1}`);
