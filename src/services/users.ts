@@ -33,7 +33,9 @@ export async function linkUser(
       // Same user already linked.
       return {
         embed: new EmbedBuilder()
-          .setDescription(`<@${alreadyLinkedDiscordId}> was already linked to this account \`(${playertag})\``)
+          .setDescription(
+            `<@${alreadyLinkedDiscordId}> was already linked to this account \`(${playertag})\`. No Action Needed.`
+          )
           .setColor(EmbedColor.WARNING),
       };
     } else if (wasPlayertagInserted === false) {

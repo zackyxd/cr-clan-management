@@ -163,7 +163,6 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
       }`;
     }
   }
-  console.log(pathOfLegendsDescription);
 
   let cardLevelDescription = `__**Card Levels**__ ${EMOJIS.cards}\n`;
   cardLevelDescription += `${EMOJIS.evolution}: ${evolutions}\n${EMOJIS.level15}: ${level15}\n${EMOJIS.level14}: ${level14}\n${EMOJIS.level13}: ${level13}`;

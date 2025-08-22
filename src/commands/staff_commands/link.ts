@@ -83,6 +83,7 @@ const command: Command = {
         const rawComponents = components.map((c) => c.toJSON());
         await interaction.editReply({ embeds: [embed], components: rawComponents }); // If need to relink
       } else {
+        // If new link
         const oldFooter = embed.data.footer?.text ?? '';
         if (oldFooter.length > 1) {
           embed.setFooter({ text: oldFooter, iconURL: user.displayAvatarURL() });
@@ -122,7 +123,7 @@ const command: Command = {
       }
     } catch (error) {
       await client.query('ROLLBACK');
-      console.log(error);
+      console.log(`error from link.ts`, error);
       await interaction.editReply({ content: `There was an error with linking: ${error}` });
       return;
     } finally {

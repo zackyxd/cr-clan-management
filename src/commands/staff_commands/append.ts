@@ -3,6 +3,7 @@ import { Command } from '../../types/Command.js';
 import pool from '../../db.js';
 import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/check_has_role.js';
 import { checkTicketFeatureEnabled } from '../../utils/checkFeatureEnabled.js';
+import { EmbedColor } from '../../types/EmbedUtil.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -111,7 +112,9 @@ const command: Command = {
         `,
         [originalChannelName, textWanted, guild.id, interaction.channelId]
       );
-      const embed = new EmbedBuilder().setDescription(`Successfully changed the ticket name to \`${newName}\``);
+      const embed = new EmbedBuilder()
+        .setDescription(`Successfully changed the ticket name to \`${newName}\``)
+        .setColor(EmbedColor.SUCCESS);
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
       console.log(error);
