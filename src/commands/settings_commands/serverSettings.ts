@@ -12,6 +12,7 @@ import { Command } from '../../types/Command.js';
 import { ButtonBuilder, EmbedBuilder } from '@discordjs/builders';
 import { BOTCOLOR } from '../../types/EmbedUtil.js';
 import logger from '../../logger.js';
+import { makeCustomId } from '../../utils/customId.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -67,8 +68,9 @@ export async function buildSettingsView(guildId: string) {
     const formatted_name = feature_name.charAt(0).toUpperCase() + feature_name.slice(1);
     description += `${formatted_name} ${is_enabled ? '✅' : '❌'}\n`;
 
+    // Goes to buttons/serverSettings
     const button = new ButtonBuilder()
-      .setCustomId(`settings:1:${guildId}:${feature_name}`)
+      .setCustomId(makeCustomId('button', 'settings', guildId, { cooldown: 1, extra: [feature_name] }))
       .setLabel(`${formatted_name}`)
       .setStyle(ButtonStyle.Primary);
     currentRow.addComponents(button);

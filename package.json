@@ -43,6 +43,7 @@
     "discord.js": "^14.21.0",
     "dotenv": "^17.2.0",
     "dotenv-flow": "^4.1.0",
+    "fastq": "^1.19.1",
     "node-pg-migrate": "^8.0.3",
     "pad": "^3.3.0",
     "pg": "^8.16.3",

@@ -1,20 +1,23 @@
-import { ButtonInteraction, GuildMember, MessageFlags } from 'discord.js';
+import { GuildMember, MessageFlags } from 'discord.js';
 import pool from '../../db.js';
 import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/check_has_role.js';
-import { buildFeatureEmbedAndComponents } from './serverSettings.js';
+import { buildFeatureEmbedAndComponents } from './serverSettingsButton.js';
+import { ButtonHandler } from '../../types/Handlers.js';
 
-export default {
+const toggleButton: ButtonHandler = {
   customId: 'toggle',
-  async execute(interaction: ButtonInteraction, args: string[]) {
+  async execute(interaction, parsed) {
     await interaction.deferUpdate();
-    const [guildId, toggleName] = args;
+    const { guildId, extra } = parsed;
+    const toggleName = extra[0];
     const member = (await interaction.guild?.members.fetch(interaction.user.id)) as GuildMember;
     const getRoles = await pool.query(buildCheckHasRoleQuery(guildId));
     const { higher_leader_role_id } = getRoles.rows[0] ?? [];
     const requiredRoleIds = [higher_leader_role_id].filter(Boolean) as string[];
     const hasPerms = checkPermissions('button', member, requiredRoleIds);
     if (hasPerms && hasPerms.data) {
-      return await interaction.followUp({ embeds: [hasPerms], flags: MessageFlags.Ephemeral });
+      await interaction.followUp({ embeds: [hasPerms], flags: MessageFlags.Ephemeral });
+      return;
     }
 
     // Enable linking feature
@@ -126,3 +129,5 @@ export default {
     }
   },
 };
+
+export default toggleButton;

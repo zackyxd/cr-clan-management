@@ -1,15 +1,16 @@
 import { ButtonInteraction, ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
+import { makeCustomId, parseCustomId } from '../../utils/customId.js';
 
 export default {
-  customId: 'modal',
-  async execute(interaction: ButtonInteraction, args: string[]) {
-    console.log('Args from modal.ts', args);
-
-    const [guildId, settingKey, isChannel] = args;
-    if (settingKey === 'opened_identifier' || settingKey === 'closed_identifier') {
+  customId: 'open_modal',
+  async execute(interaction: ButtonInteraction) {
+    const { guildId, extra } = parseCustomId(interaction.customId);
+    console.log('parsed modal data', { guildId, extra });
+    const action = extra[0];
+    if (action === 'opened_identifier' || action === 'closed_identifier') {
       const modal = new ModalBuilder()
-        .setCustomId(`modal_submit:${guildId}:${settingKey}`)
-        .setTitle(`Edit ${settingKey}`)
+        .setCustomId(makeCustomId('modal', action, guildId))
+        .setTitle(`Edit ${action}`)
         .addComponents(
           new ActionRowBuilder<TextInputBuilder>().addComponents(
             new TextInputBuilder().setCustomId('input').setLabel('Enter new value').setStyle(TextInputStyle.Short)
@@ -19,10 +20,10 @@ export default {
       return interaction.showModal(modal); // ✅ No reply/defer before this
     }
 
-    // guildId, settingKey = channelId, channelId = channel
-    if (isChannel) {
+    // Ticket channel playertags
+    else if (action === 'ticket_channel') {
       const modal = new ModalBuilder()
-        .setCustomId(`modal_submit:${guildId}:${settingKey}:channel`)
+        .setCustomId(makeCustomId('modal', action, guildId))
         .setTitle('Paste your CR tags.')
         .addComponents(
           new ActionRowBuilder<TextInputBuilder>().addComponents(
@@ -34,5 +35,7 @@ export default {
         );
       return interaction.showModal(modal);
     }
+
+    console.warn(`Unhandled modal settingKey: ${action}`);
   },
 };

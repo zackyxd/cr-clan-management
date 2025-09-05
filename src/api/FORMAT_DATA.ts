@@ -59,7 +59,7 @@ type FullPlayer = Partial<{
     badgeId?: string;
   };
   expLevel: number;
-  role: string;
+  // role: string;
   currentPathOfLegendSeasonResult: {
     leagueNumber: number;
     trophies: number;
@@ -85,12 +85,12 @@ type FullPlayer = Partial<{
   Player;
 
 export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
-  if (!data || !data.role || !data.cards) return null;
+  if (!data || !data.cards) return null;
   const playerName = data.name ?? 'N/A';
   const playertag = data.tag ?? 'N/A';
   const expLevel = data.expLevel ?? 'N/A';
   const expLevelIcon = `<:${rawExpData[`experience_${expLevel}`].name}:${rawExpData[`experience_${expLevel}`].id}>`;
-  const role = ROLE_DISPLAY[data.role] ?? '';
+  const role = typeof data.role === 'string' ? ROLE_DISPLAY[data.role] ?? '' : '';
   const clanName = data?.clan?.name ?? 'No Clan';
   const badgeId = data?.clan?.badgeId?.toString() ?? '00';
   const {
@@ -153,7 +153,7 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
 
     if (lastPOLLeague && lastPOLLeague >= 7) {
       pathOfLegendsDescription += `Last: ${EMOJIS.polMedal} ${lastPOLTrophies} ${
-        lastPOLRank ? `(${lastPOLRank})` : ''
+        lastPOLRank ? `(#${lastPOLRank})` : ''
       }\n`;
     }
 

@@ -1,10 +1,11 @@
 import { PoolClient } from 'pg';
-import { CR_API, normalizeTag, isFetchError } from '../api/CR_API.js';
+import { CR_API, FetchError, normalizeTag } from '../api/CR_API.js';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { buildFindLinkedDiscordId, buildInsertPlayerLinkQuery, buildUnlinkPlayertag } from '../sql_queries/users.js';
 import { EmbedColor } from '../types/EmbedUtil.js';
 import { formatPlayerData } from '../api/FORMAT_DATA.js';
 import logger from '../logger.js';
+import { makeCustomId } from '../utils/customId.js';
 
 export async function linkUser(
   client: PoolClient,
@@ -14,11 +15,14 @@ export async function linkUser(
 ): Promise<{ embed: EmbedBuilder; player_name?: string; components?: ActionRowBuilder[] }> {
   playertag = normalizeTag(playertag);
   const confirmPlayerExists = await CR_API.getPlayer(playertag);
-  if (isFetchError(confirmPlayerExists)) {
-    return { embed: confirmPlayerExists.embed };
+  if ('error' in confirmPlayerExists) {
+    const fetchError = confirmPlayerExists as FetchError;
+    return {
+      embed:
+        fetchError.embed ?? new EmbedBuilder().setDescription(`Failed to fetch ${playertag}`).setColor(EmbedColor.FAIL),
+    };
   }
 
-  // console.log(confirmPlayerExists);
   const insertUserSQL = buildInsertPlayerLinkQuery(guildId, originalDiscordId, playertag);
   const res = await client.query(insertUserSQL);
   const insertedTag = res.rows[0].inserted_tag; // 1 for inserted, null for not inserted
@@ -42,7 +46,13 @@ export async function linkUser(
       // Different user linked.
       const cooldown = 5000; // ms
       const relink = new ButtonBuilder()
-        .setCustomId(`relinkUser:${cooldown}:${guildId}:${originalDiscordId}:${playertag}`)
+        .setCustomId(
+          makeCustomId('button', 'relinkUser', guildId, {
+            cooldown: cooldown,
+            extra: [originalDiscordId, playertag],
+          })
+        )
+        // .setCustomId(`relinkUser:${cooldown}:${guildId}:${originalDiscordId}:${playertag}`)
         .setLabel('Relink?')
         .setStyle(ButtonStyle.Secondary);
       const row = new ActionRowBuilder().addComponents(relink);
@@ -56,14 +66,15 @@ export async function linkUser(
       };
     }
   }
-  const player_embed: EmbedBuilder | null = await formatPlayerData(confirmPlayerExists);
+  const player_embed: EmbedBuilder | null = formatPlayerData(confirmPlayerExists);
+
   if (!player_embed) {
     logger.error(
       `Issue linking ${playertag} to ${originalDiscordId} due to formatPlayerData not being valid. Should have been a new link. `
     );
     return {
       embed: new EmbedBuilder()
-        .setDescription('**There was an issue with linking this player. May need to contact @Zacky')
+        .setDescription('**There was an issue with linking this player. May need to contact @Zacky**')
         .setColor(EmbedColor.FAIL),
       components: [],
     };

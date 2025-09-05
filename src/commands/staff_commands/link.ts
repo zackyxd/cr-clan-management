@@ -77,11 +77,11 @@ const command: Command = {
     await client.query('BEGIN');
     try {
       const { embed, player_name, components } = await linkUser(client, guild.id, discordId, playertag);
-      await client.query('COMMIT');
       if (components && components.length > 0) {
         // Convert builder instances to raw JSON data for Discord API
         const rawComponents = components.map((c) => c.toJSON());
         await interaction.editReply({ embeds: [embed], components: rawComponents }); // If need to relink
+        await client.query('COMMIT');
       } else {
         // If new link
         const oldFooter = embed.data.footer?.text ?? '';
@@ -89,6 +89,7 @@ const command: Command = {
           embed.setFooter({ text: oldFooter, iconURL: user.displayAvatarURL() });
         }
         await interaction.editReply({ embeds: [embed] });
+        await client.query('COMMIT');
         // Try to rename
         try {
           const renameEnabled = await pool.query(
@@ -117,7 +118,7 @@ const command: Command = {
             }
           }
         } catch (error) {
-          await interaction.followUp({ content: `Was unable to rename this player.`, flags: MessageFlags.Ephemeral });
+          await interaction.followUp({ content: `Could not rename this player.`, flags: MessageFlags.Ephemeral });
           logger.info(error);
         }
       }

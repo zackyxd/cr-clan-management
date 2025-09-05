@@ -1,7 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel } from 'discord.js';
 import pool from '../../../db.js';
 import logger from '../../../logger.js';
-// import logger from "../../../logger.js";
+import { makeCustomId } from '../../../utils/customId.js';
 
 export async function handleTicketCreate(textChannel: TextChannel, guildId: string): Promise<boolean> {
   // gf = guild_feature table, ts = ticket_settings table
@@ -26,7 +26,7 @@ export async function handleTicketCreate(textChannel: TextChannel, guildId: stri
   if (textChannel.name.includes(ticketData.opened_identifier)) {
     const button = new ButtonBuilder()
       .setLabel(`Enter Clash Royale Playertags`)
-      .setCustomId(`modal:1:${guildId}:${textChannel.id}:channel`)
+      .setCustomId(makeCustomId('button', 'open_modal', guildId, { cooldown: 1, extra: ['ticket_channel'] }))
       .setStyle(ButtonStyle.Primary);
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
 
