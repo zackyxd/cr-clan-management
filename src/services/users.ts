@@ -23,6 +23,32 @@ export async function linkUser(
     };
   }
 
+  // Get max_links from linking_settings to ensure they arent going to be over
+  const maxLinkRes = await client.query(
+    `SELECT max_links
+    FROM linking_settings
+    WHERE guild_id = $1`,
+    [guildId]
+  );
+  const maxLinks = maxLinkRes.rows[0]?.max_links ?? 10;
+
+  // Check if user is at the limit
+  const userLinkCountRes = await client.query(
+    `SELECT COUNT(*)::int AS link_count
+    FROM user_playertags
+    WHERE guild_id = $1 AND discord_id = $2`,
+    [guildId, originalDiscordId]
+  );
+  const currentUserLinkCount = userLinkCountRes.rows[0]?.link_count ?? 0;
+
+  if (currentUserLinkCount >= maxLinks) {
+    return {
+      embed: new EmbedBuilder()
+        .setDescription(`<@${originalDiscordId}> already has the maximum **${maxLinks}** linked accounts allowed.`)
+        .setColor(EmbedColor.FAIL),
+    };
+  }
+
   const insertUserSQL = buildInsertPlayerLinkQuery(guildId, originalDiscordId, playertag);
   const res = await client.query(insertUserSQL);
   const insertedTag = res.rows[0].inserted_tag; // 1 for inserted, null for not inserted
