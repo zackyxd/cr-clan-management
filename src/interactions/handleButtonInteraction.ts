@@ -34,7 +34,6 @@ export interface ButtonHandler {
 
 export async function handleButtonInteraction(interaction: ButtonInteraction) {
   const parsed = parseCustomId(interaction.customId);
-  console.log(parsed);
   const { category, action } = parsed;
   let { cooldown } = parsed;
   cooldown *= 1000;

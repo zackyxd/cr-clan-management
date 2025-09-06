@@ -28,7 +28,6 @@ export async function loadModals() {
       modals.set(modal.customId, modal);
     }
   }
-  console.log(modals);
 }
 
 export async function handleModalInteraction(interaction: ModalSubmitInteraction) {
