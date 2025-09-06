@@ -48,6 +48,13 @@ export async function handleButtonInteraction(interaction: ButtonInteraction) {
     return interaction.reply({ content: 'Unknown button.', flags: MessageFlags.Ephemeral });
   }
 
+  if (parsed.ownerId && parsed.ownerId !== interaction.user.id) {
+    return interaction.reply({
+      content: '❌ Please run your own command to use this button.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
   if (cooldown > 0 && buttonCooldown.has(key)) {
     await interaction.reply({
       content: '⏳ Please wait a moment before trying again.',

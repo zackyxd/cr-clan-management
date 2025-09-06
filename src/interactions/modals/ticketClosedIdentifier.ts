@@ -24,6 +24,7 @@ const ticketClosedIdentifier: ModalHandler = {
     );
     const { embed, components } = await buildFeatureEmbedAndComponents(
       guildId,
+      interaction.user.id,
       'tickets',
       'Ticket features handles everything related to tickets and ensuring you can handle new members.'
     );

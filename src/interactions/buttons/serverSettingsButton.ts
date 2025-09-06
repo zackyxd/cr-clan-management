@@ -94,6 +94,7 @@ const settingsButton: ButtonHandler = {
       case 'links': {
         const { embed, components } = await buildFeatureEmbedAndComponents(
           guildId,
+          interaction.user.id,
           'links',
           'Links feature handles everything related to linking Discord accounts to their Clash Royale playertags.'
         );
@@ -104,6 +105,7 @@ const settingsButton: ButtonHandler = {
       case 'tickets': {
         const { embed, components } = await buildFeatureEmbedAndComponents(
           guildId,
+          interaction.user.id,
           'tickets',
           'Ticket features handles everything related to tickets and ensuring you can handle new members.'
         );
@@ -112,7 +114,7 @@ const settingsButton: ButtonHandler = {
       }
 
       case 'return': {
-        const { embed, components } = await buildSettingsView(guildId);
+        const { embed, components } = await buildSettingsView(guildId, interaction.user.id);
         try {
           interaction.editReply({
             embeds: [embed],
@@ -134,7 +136,12 @@ const settingsButton: ButtonHandler = {
 };
 export default settingsButton;
 
-export async function buildFeatureEmbedAndComponents(guildId: string, featureKey: FeatureKey, purpose: string) {
+export async function buildFeatureEmbedAndComponents(
+  guildId: string,
+  ownerId: string,
+  featureKey: FeatureKey,
+  purpose: string
+) {
   // console.log(guildId, featureKey, purpose);
   const featureRes = await pool.query(
     `SELECT is_enabled FROM guild_features WHERE guild_id = $1 AND feature_name = $2`,
@@ -191,12 +198,14 @@ export async function buildFeatureEmbedAndComponents(guildId: string, featureKey
     if (setting.type === 'toggle') {
       button = new ButtonBuilder()
         .setLabel(`${value ? 'Disable' : 'Enable'} ${setting.label}`)
-        .setCustomId(makeCustomId('button', `toggle`, guildId, { cooldown: 1, extra: [setting.key] }))
+        .setCustomId(makeCustomId('button', `toggle`, guildId, { cooldown: 1, extra: [setting.key], ownerId: ownerId }))
         .setStyle(ButtonStyle.Primary);
     } else if (setting.type === 'modal') {
       button = new ButtonBuilder()
         .setLabel(`Change ${setting.label}`)
-        .setCustomId(makeCustomId('button', 'open_modal', guildId, { cooldown: 1, extra: [setting.key] }))
+        .setCustomId(
+          makeCustomId('button', 'open_modal', guildId, { cooldown: 1, extra: [setting.key], ownerId: ownerId })
+        )
         // .setCustomId(makeCustomId('modal', setting.key, guildId))
         // .setCustomId(`modal:1:${guildId}:${setting.key}`)
         .setStyle(ButtonStyle.Primary);

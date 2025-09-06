@@ -49,9 +49,9 @@ export async function handleTicketUpdate(
 
         const channel = await newChannel.guild.channels.fetch(ticketChannelId);
         if (channel?.isTextBased()) {
-          await channel.send(
-            'Ticket is closed...show info about auto-link. Tags to link are: ' + ticketData.playertags
-          );
+          // await channel.send(
+          //   'Ticket is closed...show info about auto-link. Tags to link are: ' + ticketData.playertags
+          // );
 
           let avatarUrl: string | undefined;
           let user;
@@ -74,12 +74,7 @@ export async function handleTicketUpdate(
             for (let i = 0; i < ticketData.playertags.length; i++) {
               const playertag = ticketData.playertags[i];
 
-              const { embed, player_name, components } = await linkUser(
-                client,
-                guildId,
-                ticketData.created_by,
-                playertag
-              );
+              const { embed, components } = await linkUser(client, guildId, ticketData.created_by, playertag);
               if (components && components.length > 0) {
                 // Convert builder instances to raw JSON data for Discord API
                 const rawComponents = components.map((c) => c.toJSON());

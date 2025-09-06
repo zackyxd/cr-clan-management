@@ -5,7 +5,6 @@ export default {
   customId: 'open_modal',
   async execute(interaction: ButtonInteraction) {
     const { guildId, extra } = parseCustomId(interaction.customId);
-    console.log('parsed modal data', { guildId, extra });
     const action = extra[0];
     if (action === 'opened_identifier' || action === 'closed_identifier') {
       const modal = new ModalBuilder()

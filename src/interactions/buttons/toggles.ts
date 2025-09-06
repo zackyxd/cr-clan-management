@@ -38,6 +38,7 @@ const toggleButton: ButtonHandler = {
       );
       const { embed, components } = await buildFeatureEmbedAndComponents(
         guildId,
+        interaction.user.id,
         'links',
         'Links feature handles everything related to linking Discord accounts to their Clash Royale playertags.'
       );
@@ -58,6 +59,7 @@ const toggleButton: ButtonHandler = {
 
       const { embed, components } = await buildFeatureEmbedAndComponents(
         guildId,
+        interaction.user.id,
         'links',
         'Links feature handles everything related to linking Discord accounts to their Clash Royale playertags.'
       );
@@ -82,6 +84,7 @@ const toggleButton: ButtonHandler = {
       );
       const { embed, components } = await buildFeatureEmbedAndComponents(
         guildId,
+        interaction.user.id,
         'tickets',
         'Ticket features handles everything related to tickets and ensuring you can handle new members.'
       );
@@ -102,6 +105,7 @@ const toggleButton: ButtonHandler = {
 
       const { embed, components } = await buildFeatureEmbedAndComponents(
         guildId,
+        interaction.user.id,
         'tickets',
         'Ticket features handles everything related to tickets and ensuring you can handle new members.'
       );
@@ -122,6 +126,7 @@ const toggleButton: ButtonHandler = {
 
       const { embed, components } = await buildFeatureEmbedAndComponents(
         guildId,
+        interaction.user.id,
         'tickets',
         'Ticket features handles everything related to tickets and ensuring you can handle new members.'
       );

@@ -21,9 +21,9 @@ export function checkPermissions(item: string, member: GuildMember, requiredRole
   ]);
   const flatRoles = requiredRoles.flat().filter(Boolean); // remove empty strings/undefined
   if (hasRole || hasElevatedPerms) return;
-  console.log(requiredRoles);
+  console.log(flatRoles);
   let rolesNeeded: string;
-  if (requiredRoles.length === 0) {
+  if (flatRoles.length === 0) {
     rolesNeeded = `One of the server admins need to set up the following \`/set-staff-roles\` roles for you to use this command.`;
   } else {
     rolesNeeded = `You need one of the following roles: ` + flatRoles.map((id) => `<@&${id}>`).join(', ');

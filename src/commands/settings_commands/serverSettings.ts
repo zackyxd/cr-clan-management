@@ -31,7 +31,7 @@ const command: Command = {
 
     await interaction.deferReply();
 
-    const { embed, components } = await buildSettingsView(guild.id);
+    const { embed, components } = await buildSettingsView(guild.id, interaction.user.id);
 
     try {
       interaction.editReply({
@@ -46,7 +46,7 @@ const command: Command = {
   },
 };
 
-export async function buildSettingsView(guildId: string) {
+export async function buildSettingsView(guildId: string, ownerId: string) {
   const settingsRes = await pool.query(
     `
       SELECT feature_name, is_enabled
@@ -70,7 +70,9 @@ export async function buildSettingsView(guildId: string) {
 
     // Goes to buttons/serverSettings
     const button = new ButtonBuilder()
-      .setCustomId(makeCustomId('button', 'settings', guildId, { cooldown: 1, extra: [feature_name] }))
+      .setCustomId(
+        makeCustomId('button', 'settings', guildId, { cooldown: 1, extra: [feature_name], ownerId: ownerId })
+      )
       .setLabel(`${formatted_name}`)
       .setStyle(ButtonStyle.Primary);
     currentRow.addComponents(button);
