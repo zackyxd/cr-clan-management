@@ -12,8 +12,7 @@ export const up = (pgm) => {
 
   pgm.createTable('linking_settings', {
     guild_id: { type: 'varchar(30)', references: 'guilds(guild_id)', onDelete: 'CASCADE', primaryKey: true },
-    rename_players: { type: 'boolean', default: false },
-    max_links: { type: 'integer', default: 10 }
+    rename_players: { type: 'boolean', default: false }
   });
 };
 

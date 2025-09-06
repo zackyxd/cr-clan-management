@@ -35,6 +35,6 @@ export default {
       return interaction.showModal(modal);
     }
 
-    console.warn(`Unhandled modal settingKey: ${action}`);
+    console.warn(`Unhandled open_modal settingKey: ${action}`);
   },
 };

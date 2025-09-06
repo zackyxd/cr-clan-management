@@ -25,12 +25,12 @@ export async function linkUser(
 
   // Get max_links from linking_settings to ensure they arent going to be over
   const maxLinkRes = await client.query(
-    `SELECT max_links
-    FROM linking_settings
+    `SELECT max_player_links
+    FROM guilds
     WHERE guild_id = $1`,
     [guildId]
   );
-  const maxLinks = maxLinkRes.rows[0]?.max_links ?? 10;
+  const maxLinks = maxLinkRes.rows[0]?.max_player_links ?? 10;
 
   // Check if user is at the limit
   const userLinkCountRes = await client.query(

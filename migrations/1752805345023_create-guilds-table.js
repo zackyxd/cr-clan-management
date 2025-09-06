@@ -13,6 +13,7 @@ export const up = (pgm) => {
     guild_id: { type: 'varchar(30)', primaryKey: true },
     max_clans: { type: 'integer', default: 15 },
     max_family_clans: { type: 'integer', default: 10 },
+    max_player_links: { type: 'integer', default: 10 },
     joined_at: { type: 'timestamptz', notNull: true, default: pgm.func('current_timestamp') },
     in_guild: { type: 'boolean', default: true },
     left_at: { type: 'timestamptz', default: null }
