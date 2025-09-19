@@ -54,6 +54,7 @@ client.once(Events.ClientReady, async (c) => {
   });
   await loadButtons();
   await loadModals();
+  await loadSelectMenus();
   const dbClient = await pool.connect();
   try {
     await dbClient.query('BEGIN');
@@ -72,9 +73,10 @@ client.once(Events.ClientReady, async (c) => {
 client.on('interactionCreate', async (interaction) => {
   if (interaction.isButton()) {
     return handleButtonInteraction(interaction);
-  }
-  if (interaction.isModalSubmit()) {
+  } else if (interaction.isModalSubmit()) {
     return handleModalInteraction(interaction);
+  } else if (interaction.isStringSelectMenu()) {
+    return handleSelectMenuInteraction(interaction);
   }
 });
 
@@ -106,6 +108,7 @@ import logger from './logger.js';
 import pool from './db.js';
 import { handleButtonInteraction, loadButtons } from './interactions/handleButtonInteraction.js';
 import { handleModalInteraction, loadModals } from './interactions/handleModalInteraction.js';
+import { handleSelectMenuInteraction, loadSelectMenus } from './interactions/handleSelectMenuInteraction.js';
 
 // import pool from './dbConfig.js';
 logger.info(`🌱 Environment: ${process.env.NODE_ENV || 'development (default)'}`);

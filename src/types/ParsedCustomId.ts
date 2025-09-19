@@ -1,10 +1,11 @@
-import { InteractionCategory } from '../utils/customId.js';
+import { CustomIdType } from '../utils/customId.js';
 
 // types.ts
 export interface ParsedCustomId {
-  category: InteractionCategory;
+  category: CustomIdType;
   action: string; // column name OR keyword
   guildId: string;
   cooldown: number;
   extra: string[];
+  ownerId?: string;
 }

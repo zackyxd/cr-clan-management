@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, GuildMember, MessageFlags } from 'discord.js';
 import pool from '../../db.js';
-import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/check_has_role.js';
+import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/checkPermissions.js';
 import { BOTCOLOR } from '../../types/EmbedUtil.js';
 import { buildSettingsView } from '../../commands/settings_commands/serverSettings.js';
 import logger from '../../logger.js';

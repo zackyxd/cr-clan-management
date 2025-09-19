@@ -2,6 +2,7 @@ import { Collection, EmbedBuilder, Events, MessageFlags } from 'discord.js';
 import type { Interaction } from 'discord.js';
 import { Command } from '../types/Command.js';
 import * as selectMenuHandlers from '../interactions/selectMenus/players.js';
+import { parseCustomId } from '../utils/customId.js';
 
 // import buttonHandler from "../interactions/buttonHandler";
 // import modalHandler from "../interactions/modalHandler";
@@ -68,22 +69,22 @@ export const event = {
           await interaction.reply(reply);
         }
       }
-    } else if (interaction.isStringSelectMenu()) {
-      // handler name is the custom Id of the select menu
-      const handler = (selectMenuHandlers as Record<string, unknown>)[interaction.customId.split(':')[0]];
-      const sameDiscordInteractor = interaction.customId.split(':')[1];
-      if (interaction.user.id != sameDiscordInteractor) {
-        await interaction.reply({
-          content: `Sorry, you cannot use these options. Please run your own \`/${
-            interaction.customId.split(':')[0]
-          }\` command.`,
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      if (typeof handler === 'function') {
-        await (handler as (interaction: Interaction) => Promise<void>)(interaction);
-      }
+      // } else if (interaction.isStringSelectMenu()) {
+      //   // handler name is the custom Id of the select menu
+      //   const handler = (selectMenuHandlers as Record<string, unknown>)[interaction.customId.split(':')[0]];
+      //   const { ownerId } = parseCustomId(interaction.customId);
+      //   if (interaction.user.id != ownerId) {
+      //     await interaction.reply({
+      //       content: `Sorry, you cannot use these options. Please run your own \`/${
+      //         interaction.customId.split(':')[0]
+      //       }\` command.`,
+      //       flags: MessageFlags.Ephemeral,
+      //     });
+      //     return;
+      //   }
+      //   if (typeof handler === 'function') {
+      //     await (handler as (interaction: Interaction) => Promise<void>)(interaction);
+      //   }
     }
   },
 };

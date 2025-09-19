@@ -6,6 +6,7 @@ import { ModalHandler } from '../types/Handlers.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
+import { ensureInteractionGuards } from '../utils/ensureInteractionOwner.js';
 
 const modals = new Map<string, ModalHandler>();
 
@@ -32,11 +33,18 @@ export async function loadModals() {
 
 export async function handleModalInteraction(interaction: ModalSubmitInteraction) {
   const parsed = parseCustomId(interaction.customId);
+  console.log(parsed);
   const { action } = parsed;
   const handler = modals.get(action);
   if (!handler) {
     return interaction.reply({ content: 'Unknown modal.', flags: MessageFlags.Ephemeral });
   }
+
+  const allowed = await ensureInteractionGuards(interaction, parsed, {
+    ensureOwner: true,
+  });
+
+  if (!allowed) return;
 
   try {
     await handler.execute(interaction, parsed);

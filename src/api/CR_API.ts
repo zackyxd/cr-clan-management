@@ -1,4 +1,4 @@
-import axios, { AxiosError, isAxiosError } from 'axios';
+import axios, { isAxiosError } from 'axios';
 import logger from '../logger.js';
 import 'dotenv-flow/config';
 import z from 'zod';
@@ -37,7 +37,7 @@ export function isFetchError(obj: any): obj is FetchError {
   return obj && typeof obj === 'object' && 'error' in obj;
 }
 
-async function fetchData<T = unknown>(url: string, tag = 'unknown'): Promise<T | FetchError> {
+async function fetchData<T = unknown>(url: string, tag: string, kind: 'player' | 'clan'): Promise<T | FetchError> {
   try {
     // <-- HARD CODED TEST 503
     // return {
@@ -72,13 +72,13 @@ async function fetchData<T = unknown>(url: string, tag = 'unknown'): Promise<T |
             .setColor('Orange'),
         };
       } else if (status === 404) {
-        logger.info(`API error 404: Resource not found for ${url}`);
+        logger.warn(`API error 404: Resource not found for ${url}`);
         return {
           error: true,
           statusCode: 404,
           reason: 'Resource not found',
           tag,
-          embed: new EmbedBuilder().setDescription(`❌ *This playertag **${tag}** does not exist.*`).setColor('Red'),
+          embed: new EmbedBuilder().setDescription(`❌ *This ${kind} tag **${tag}** does not exist.*`).setColor('Red'),
         };
       }
 
@@ -115,7 +115,7 @@ export type PlayerResult = Player | FetchError;
 export async function getPlayer(playertag: string): Promise<PlayerResult> {
   const normalizedTag = normalizeTag(playertag);
   const url = `https://proxy.royaleapi.dev/v1/players/${encodeURIComponent(playertag)}`;
-  const data = await fetchData<z.infer<typeof PlayerSchema>>(url);
+  const data = await fetchData<z.infer<typeof PlayerSchema>>(url, normalizedTag, 'player');
 
   if ('error' in data) {
     return data; // already a FetchError with embed + tag
@@ -129,16 +129,12 @@ export async function getPlayer(playertag: string): Promise<PlayerResult> {
       reason: 'Invalid player structure',
       tag: normalizedTag,
       embed: new EmbedBuilder()
-        .setDescription('⚠️ API data format may have changed. Requires <@272201620446511104> to fix.')
+        .setDescription('⚠️ API player data format may have changed. Requires <@272201620446511104> to fix.')
         .setColor('Red'),
     };
   }
 
   return parsed.data;
-}
-
-export function isPlayer(p: PlayerResult): p is Player {
-  return !(p as FetchError).error;
 }
 
 // const BattleSchema = z.looseObject({
@@ -183,33 +179,40 @@ export function isPlayer(p: PlayerResult): p is Player {
 //   return parsed.data;
 // }
 
-// const ClanSchema = z.looseObject({
-//   tag: z.string(),
-//   name: z.string(),
-//   description: z.string(),
-//   members: z.number(),
-//   memberList: z.array(z.object({}).loose()),
-// });
-// type Clan = z.infer<typeof ClanSchema>;
-// type ClanResult = Clan | FetchError;
-// export async function getClan(clantag: string): Promise<ClanResult> {
-//   clantag = normalizeTag(clantag);
-//   const url = `https://proxy.royaleapi.dev/v1/clans/${encodeURIComponent(clantag)}`;
-//   const data = await fetchData(url);
-//   if (isFetchError(data)) {
-//     return data; // Error data
-//   }
+const ClanSchema = z.looseObject({
+  tag: z.string(),
+  name: z.string(),
+  description: z.string(),
+  members: z.number(),
+  memberList: z.array(z.object({}).loose()),
+  clanWarTrophies: z.number(),
+});
 
-//   const parsed = ClanSchema.safeParse(data);
-//   if (!parsed.success) {
-//     return {
-//       error: true,
-//       statusCode: 400,
-//       reason: 'Invalid clan structure',
-//     };
-//   }
-//   return parsed.data;
-// }
+type Clan = z.infer<typeof ClanSchema>;
+type ClanResult = Clan | FetchError;
+export async function getClan(clantag: string): Promise<ClanResult> {
+  const normalizedTag = normalizeTag(clantag);
+  const url = `https://proxy.royaleapi.dev/v1/clans/${encodeURIComponent(clantag)}`;
+  const data = await fetchData<z.infer<typeof ClanSchema>>(url, normalizedTag, 'clan');
+
+  if ('error' in data) {
+    return data; // already a FetchError with embed + tag
+  }
+
+  const parsed = ClanSchema.safeParse(data);
+  if (!parsed.success) {
+    return {
+      error: true,
+      statusCode: 400,
+      reason: 'Invalid clan structure',
+      tag: normalizedTag,
+      embed: new EmbedBuilder()
+        .setDescription('⚠️ API clan data format may have changed. Requires <@272201620446511104> to fix.')
+        .setColor('Red'),
+    };
+  }
+  return parsed.data;
+}
 
 // const ClanMemberEntrySchema = z
 //   .object({
@@ -307,7 +310,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
 export const CR_API = {
   getPlayer,
-  // getClan,
+  getClan,
   // getClanMembers,
   // getCurrentRiverRace,
   // getBattleLog,

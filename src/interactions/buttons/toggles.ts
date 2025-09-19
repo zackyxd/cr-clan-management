@@ -1,6 +1,6 @@
 import { GuildMember, MessageFlags } from 'discord.js';
 import pool from '../../db.js';
-import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/check_has_role.js';
+import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/checkPermissions.js';
 import { buildFeatureEmbedAndComponents } from './serverSettingsButton.js';
 import { ButtonHandler } from '../../types/Handlers.js';
 

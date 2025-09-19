@@ -1,6 +1,6 @@
 import { EmbedBuilder, GuildMember, MessageFlags } from 'discord.js';
 import pool from '../../db.js';
-import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/check_has_role.js';
+import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/checkPermissions.js';
 import { buildFindLinkedDiscordId, buildUpsertRelinkPlayertag } from '../../sql_queries/users.js';
 import { CR_API } from '../../api/CR_API.js';
 import { formatPlayerData } from '../../api/FORMAT_DATA.js';
@@ -97,7 +97,7 @@ const relinkUserButton: ButtonHandler = {
         });
       }
     } catch (error) {
-      console.log(error);
+      logger.error(`Error in relinkButton.ts: ${error}`);
       await client.query('ROLLBACK');
       await interaction.followUp(`Error with relinking: ${error}`);
       return;

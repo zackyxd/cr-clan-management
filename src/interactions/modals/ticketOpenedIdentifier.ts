@@ -10,7 +10,6 @@ const ticketOpenedIdentifier: ModalHandler = {
   async execute(interaction, parsed) {
     const { guildId, action } = parsed; // action will be "opened_identifier"
     const messageId = interaction.message?.id;
-    console.log('cameh ere');
     if (!messageId) return;
     const message = await interaction.channel?.messages.fetch(messageId);
     if (!message) return;

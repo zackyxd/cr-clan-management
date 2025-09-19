@@ -5,9 +5,9 @@ import { fileURLToPath } from 'url';
 import logger from '../logger.js';
 import { parseCustomId } from '../utils/customId.js';
 import { ParsedCustomId } from '../types/ParsedCustomId.js';
+import { ensureInteractionGuards } from '../utils/ensureInteractionOwner.js';
 
 const buttons = new Map<string, ButtonHandler>();
-const buttonCooldown = new Set<string>();
 
 export async function loadButtons() {
   const __filename = fileURLToPath(import.meta.url);
@@ -25,6 +25,7 @@ export async function loadButtons() {
       buttons.set(button.customId, button);
     }
   }
+  console.log(buttons);
 }
 
 export interface ButtonHandler {
@@ -34,38 +35,21 @@ export interface ButtonHandler {
 
 export async function handleButtonInteraction(interaction: ButtonInteraction) {
   const parsed = parseCustomId(interaction.customId);
-  const { category, action } = parsed;
-  let { cooldown } = parsed;
-  cooldown *= 1000;
+  const { category, action, cooldown } = parsed;
   if (category !== 'button') {
     return interaction.reply({ content: 'Invalid interaction type for button.', flags: MessageFlags.Ephemeral });
   }
-  const key = `${interaction.user.id}:${action}`; // or use parsed.action or parsed.extra too
-  // console.log(buttons);
   const handler = buttons.get(action); // <-- use action ("relinkUser", "toggle", "settings")
   if (!handler) {
     return interaction.reply({ content: 'Unknown button.', flags: MessageFlags.Ephemeral });
   }
 
-  if (parsed.ownerId && parsed.ownerId !== interaction.user.id) {
-    return interaction.reply({
-      content: '❌ Please run your own command to use this button.',
-      flags: MessageFlags.Ephemeral,
-    });
-  }
-
-  if (cooldown > 0 && buttonCooldown.has(key)) {
-    await interaction.reply({
-      content: '⏳ Please wait a moment before trying again.',
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
-  if (cooldown > 0) {
-    buttonCooldown.add(key);
-    setTimeout(() => buttonCooldown.delete(key), cooldown);
-  }
+  const allowed = await ensureInteractionGuards(interaction, parsed, {
+    cooldownMs: cooldown * 1000,
+    ensureOwner: true,
+  });
+  console.log('1');
+  if (!allowed) return;
 
   try {
     // pass the parsed object instead of args[]
@@ -74,4 +58,5 @@ export async function handleButtonInteraction(interaction: ButtonInteraction) {
     logger.error(`Error in button handler [${interaction.customId}]`, error);
     interaction.followUp({ content: 'There was an error executing this action.', flags: MessageFlags.Ephemeral });
   }
+  console.log('parsed:', parsed);
 }
