@@ -32,8 +32,8 @@ export function checkPermissions(item: string, member: GuildMember, requiredRole
     PermissionsBitField.Flags.ManageGuild,
   ]);
   const flatRoles = requiredRoles.flat().filter(Boolean); // remove empty strings/undefined
+  console.log(hasElevatedPerms);
   if (hasRole || hasElevatedPerms) return;
-  console.log(flatRoles);
   let rolesNeeded: string;
   if (flatRoles.length === 0) {
     rolesNeeded = `One of the server admins need to set up the following \`/set-staff-roles\` roles for you to use this command.`;
@@ -55,6 +55,26 @@ export async function checkPerms(
 ): Promise<boolean> {
   // 1️⃣ Fetch member & required roles FIRST (don't defer yet)
   const member = await interaction.guild?.members.fetch(interaction.user.id);
+
+  // 1️⃣ Check implicit permissions first (owner, admin, manage guild)
+  const isOwner = interaction.guild?.ownerId === interaction.user.id;
+  const hasAdmin = member?.permissions.has([
+    PermissionsBitField.Flags.Administrator,
+    PermissionsBitField.Flags.ManageGuild,
+  ]);
+
+  if (isOwner || hasAdmin) {
+    // ✅ Immediately allow — don't care about staff roles at all
+    if (!skipDefer) {
+      if (ephemeral) {
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      } else {
+        await interaction.deferUpdate();
+      }
+    }
+    return true;
+  }
+
   const getRoles = await pool.query(buildCheckHasRoleQuery(guildId));
   const { lower_leader_role_id, higher_leader_role_id } = getRoles.rows[0] ?? {};
 
@@ -70,8 +90,7 @@ export async function checkPerms(
 
     if (level === 'either') {
       embed.setDescription(
-        'One of the server admins needs to set up staff roles with `/set-staff-roles` before you can use this. ' +
-          'Run `/set-staff-roles` to configure the lower/higher leadership roles.'
+        'One of the server admins needs to set up staff roles with `/set-staff-roles` before you can use this.'
       );
     } else {
       const label = level === 'higher' ? 'higher' : 'lower';

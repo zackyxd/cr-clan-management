@@ -25,7 +25,7 @@ export const CLAN_FEATURE_SETTINGS = [
     type: 'modal',
   },
   {
-    key: 'role_id',
+    key: 'clan_role_id',
     label: 'Clan Role',
     description: 'Role used for this clan',
     type: 'role',

@@ -20,7 +20,7 @@ export default {
     const { clantag, clanName } = JSON.parse(interaction.values[0]);
     const guildId = interaction.guildId!;
     const ownerId = interaction.user.id;
-
+    console.log(`Currently checking out ${clanName}`);
     // Rebuild the select menu row as a builder
     const oldSelectMenuRow = interaction.message.components.find(
       (row): row is ActionRow<MessageActionRowComponent> =>

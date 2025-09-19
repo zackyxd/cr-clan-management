@@ -48,7 +48,6 @@ export async function handleButtonInteraction(interaction: ButtonInteraction) {
     cooldownMs: cooldown * 1000,
     ensureOwner: true,
   });
-  console.log('1');
   if (!allowed) return;
 
   try {
@@ -58,5 +57,4 @@ export async function handleButtonInteraction(interaction: ButtonInteraction) {
     logger.error(`Error in button handler [${interaction.customId}]`, error);
     interaction.followUp({ content: 'There was an error executing this action.', flags: MessageFlags.Ephemeral });
   }
-  console.log('parsed:', parsed);
 }

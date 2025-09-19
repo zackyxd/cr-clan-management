@@ -33,7 +33,6 @@ export async function loadModals() {
 
 export async function handleModalInteraction(interaction: ModalSubmitInteraction) {
   const parsed = parseCustomId(interaction.customId);
-  console.log(parsed);
   const { action } = parsed;
   const handler = modals.get(action);
   if (!handler) {

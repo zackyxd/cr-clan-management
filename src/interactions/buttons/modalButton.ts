@@ -1,34 +1,17 @@
-import {
-  ButtonInteraction,
-  ModalBuilder,
-  ActionRowBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  GuildMember,
-  MessageFlags,
-} from 'discord.js';
+import { ButtonInteraction, ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 import { makeCustomId, parseCustomId } from '../../utils/customId.js';
-import pool from '../../db.js';
-import { buildCheckHasRoleQuery, checkPermissions, checkPerms } from '../../utils/checkPermissions.js';
+import { checkPerms } from '../../utils/checkPermissions.js';
 
 export default {
   customId: 'open_modal',
   async execute(interaction: ButtonInteraction) {
     const { guildId, extra } = parseCustomId(interaction.customId);
     const action = extra[0];
-    const member = (await interaction.guild?.members.fetch(interaction.user.id)) as GuildMember;
-    const getRoles = await pool.query(buildCheckHasRoleQuery(guildId));
-    const { lower_leader_role_id, higher_leader_role_id } = getRoles.rows[0] ?? [];
 
     // Ticket settings change text
     if (action === 'opened_identifier' || action === 'closed_identifier') {
-      const requiredRoleIds = [higher_leader_role_id].filter(Boolean) as string[];
-      const hasPerms = checkPermissions('button', member, requiredRoleIds);
-      if (hasPerms && hasPerms.data) {
-        // Returns Promise<Message>, ButtonHandler.execute handled for Promise<void> so await -> return
-        await interaction.followUp({ embeds: [hasPerms], flags: MessageFlags.Ephemeral });
-        return;
-      }
+      const allowed = await checkPerms(interaction, guildId, 'button', 'higher', false, true);
+      if (!allowed) return;
       const modal = new ModalBuilder()
         .setCustomId(makeCustomId('modal', action, guildId))
         .setTitle(`Edit ${action}`)
@@ -43,6 +26,8 @@ export default {
 
     // Ticket channel playertags
     else if (action === 'ticket_channel') {
+      const allowed = await checkPerms(interaction, guildId, 'button', 'higher', false, true);
+      if (!allowed) return;
       const modal = new ModalBuilder()
         .setCustomId(makeCustomId('modal', action, guildId))
         .setTitle('Paste your CR tags.')
