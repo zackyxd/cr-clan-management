@@ -30,6 +30,13 @@ export const CLAN_FEATURE_SETTINGS = [
     description: 'Role used for this clan',
     type: 'role',
   },
+  {
+    // TODO add this to the settings
+    key: 'purge_invites',
+    label: 'Purge Invites',
+    description: 'Purge any active clan invites sent',
+    type: 'action',
+  },
   // ...add more as needed
 ];
 

@@ -32,7 +32,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
   const actionRows: ActionRowBuilder<ButtonBuilder>[] = [];
   let currentRow = new ActionRowBuilder<ButtonBuilder>();
 
-  for (const [settingKey, settingConfig] of Object.entries(CLAN_FEATURE_SETTINGS)) {
+  for (const [, settingConfig] of Object.entries(CLAN_FEATURE_SETTINGS)) {
     const value = settings[settingConfig.key];
     // Format value for display
     let displayValue = '';
