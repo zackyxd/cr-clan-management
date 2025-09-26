@@ -15,7 +15,9 @@ export const up = (pgm) => {
     clan_name: { type: 'varchar(25)' },
     clan_trophies: { type: 'integer', notNull: true },
     abbreviation: { type: 'varchar(10)' },
-    family_clan: { type: 'boolean', default: false }
+    family_clan: { type: 'boolean', default: false },
+    active_clan_link: { type: 'varchar(200)' },
+    active_clan_link_expiry_time: { type: 'timestamptz', default: null }
   },
     {
       constraints: {

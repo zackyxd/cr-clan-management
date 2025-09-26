@@ -12,6 +12,7 @@ import {
 const DEFAULT_FEATURES: Record<string, boolean> = {
   tickets: false,
   links: true,
+  clan_invites: true,
 };
 
 // TODO Add all feature tables here
@@ -31,6 +32,16 @@ const FEATURE_SETTINGS_DEFAULTS: Record<
       opened_identifier: 'ticket',
       closed_identifier: 'closed',
       allow_append: 'false',
+      send_logs: 'false',
+    },
+  },
+  clan_invites: {
+    table: 'clan_invite_settings',
+    defaults: {
+      pin_message: 'false',
+      delete_method: 'update',
+      show_inactive: 'false',
+      ping_expired: 'false',
       send_logs: 'false',
     },
   },
@@ -72,6 +83,7 @@ export async function sync_default_features(client: PoolClient): Promise<void> {
     console.log(`Synced ${inserts.length} new features to existing guilds.`);
   }
 
+  // Clean up features that were removed from DEFAULT_FEATURES
   await client.query(
     `
   DELETE FROM guild_features
@@ -87,6 +99,7 @@ export async function sync_default_features(client: PoolClient): Promise<void> {
     const existingRes = await client.query(`SELECT guild_id FROM ${table}`);
     const existingGuilds = new Set(existingRes.rows.map((row) => row.guild_id));
 
+    // 1. Insert missing rows
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const settingsInserts: any[][] = [];
 
@@ -102,6 +115,42 @@ export async function sync_default_features(client: PoolClient): Promise<void> {
       const { query, params } = buildInsertQuery(table, columns, settingsInserts);
       await client.query(query, params);
       console.log(`Synced ${settingsInserts.length} rows in ${table}`);
+    }
+
+    // 2. Update existing rows with any new default columns
+    for (const guildId of guildIds) {
+      if (existingGuilds.has(guildId)) {
+        const res = await client.query(`SELECT ${Object.keys(defaults).join(', ')} FROM ${table} WHERE guild_id = $1`, [
+          guildId,
+        ]);
+        if (!res || !res.rowCount) continue;
+
+        if (res.rowCount > 0) {
+          const row = res.rows[0];
+          const updates: string[] = [];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const params: any[] = [];
+          let paramIndex = 1;
+
+          for (const [key, value] of Object.entries(defaults)) {
+            if (row[key] === null || row[key] === undefined) {
+              updates.push(`${key} = $${paramIndex++}`);
+              params.push(value);
+            }
+          }
+
+          if (updates.length > 0) {
+            params.push(guildId);
+            const updateQuery = `
+              UPDATE ${table}
+              SET ${updates.join(', ')}
+              WHERE guild_id = $${paramIndex}
+            `;
+            await client.query(updateQuery, params);
+            console.log(`Updated guild ${guildId} in ${table} with new defaults.`);
+          }
+        }
+      }
     }
   }
 }

@@ -83,7 +83,7 @@ const clanSettingsButton: ButtonHandler = {
     const featureName = extra[0]; // 'nudges',
     const clantag = extra[1];
 
-    const allowed = await checkPerms(interaction, guildId, 'button', 'either', false);
+    const allowed = await checkPerms(interaction, guildId, 'button', 'either', { hideNoPerms: true });
     if (!allowed) return; // no perms
 
     switch (featureName) {

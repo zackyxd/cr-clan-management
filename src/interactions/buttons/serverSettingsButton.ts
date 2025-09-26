@@ -1,12 +1,17 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, GuildMember, MessageFlags } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import pool from '../../db.js';
-import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/checkPermissions.js';
+import { checkPerms } from '../../utils/checkPermissions.js';
 import { BOTCOLOR } from '../../types/EmbedUtil.js';
 import { buildSettingsView } from '../../commands/settings_commands/serverSettings.js';
 import logger from '../../logger.js';
 import { ButtonHandler } from '../../types/Handlers.js';
 import { makeCustomId } from '../../utils/customId.js';
+import EMBED_SERVER_FEATURE_CONFIG from '../../config/serverSettingEmbedBuilderConfig.js';
 
+// Key: same name as in db
+// label: How it shows for 'Disable/Enable ...', 'Change ...'
+// Description: Describe what it does
+// type: Which method to use when button clicked
 export const FEATURE_SETTINGS = {
   links: [
     {
@@ -56,6 +61,49 @@ export const FEATURE_SETTINGS = {
       type: 'channel',
     },
   ],
+  clan_invites: [
+    {
+      key: 'pin_message',
+      label: 'Pin Message',
+      description: 'Keep the clan invites message pinned.',
+      type: 'toggle',
+    },
+    {
+      key: 'delete_method',
+      label: 'Expiry method',
+      description: 'Switch how expire generated links are handled. Delete the messages or edit them.',
+      type: 'swap',
+    },
+    {
+      key: 'show_inactive',
+      label: 'Inactive Links',
+      description: 'Show the inactive links on the clan invites message.',
+      type: 'toggle',
+    },
+    {
+      key: 'ping_expired',
+      label: 'Ping Expired',
+      description: 'Ping the clan role in the clan invites channel to notify that a new link is needed.',
+      type: 'toggle',
+    },
+    {
+      key: 'send_logs',
+      label: 'Send Logs',
+      description: 'Allow the bot to send log information about clan invites.',
+      type: 'toggle',
+    },
+    {
+      key: 'logs_channel_id',
+      label: 'Logs Channel',
+      description:
+        'Which channel do you want to send logs to? Use `/set-invites-log-channel` command to set the channel.',
+      type: 'channel',
+    },
+  ],
+  //     key: '',
+  //     label: '',
+  //     description: '',
+  //     type: ''
   // {
   //   key: 'welcome_message',
   //   label: 'Welcome Message',
@@ -67,36 +115,31 @@ export const FEATURE_SETTINGS = {
 const SETTINGS_TABLES: Record<FeatureKey, string> = {
   links: 'linking_settings',
   tickets: 'ticket_settings',
+  clan_invites: 'clan_invite_settings',
 };
 
 type FeatureKey = keyof typeof FEATURE_SETTINGS;
-// 'links' | 'tickets'
+// 'links' | 'tickets' | 'clan_invites'
 
 const settingsButton: ButtonHandler = {
   customId: 'settings',
   async execute(interaction, parsed) {
-    await interaction.deferUpdate();
+    // await interaction.deferUpdate();
     const { guildId, extra } = parsed;
     const featureName = extra[0]; // "links"
-    const member = (await interaction.guild?.members.fetch(interaction.user.id)) as GuildMember;
-    const getRoles = await pool.query(buildCheckHasRoleQuery(guildId));
-    const { higher_leader_role_id } = getRoles.rows[0] ?? [];
+
     // lower_leader_role_id is intentionally omitted
-    const requiredRoleIds = [higher_leader_role_id].filter(Boolean) as string[];
-    const hasPerms = checkPermissions('button', member, requiredRoleIds);
-    if (hasPerms && hasPerms.data) {
-      // Returns Promise<Message>, ButtonHandler.execute handled for Promise<void> so await -> return
-      await interaction.followUp({ embeds: [hasPerms], flags: MessageFlags.Ephemeral });
-      return;
-    }
+    if (!interaction || !interaction.guild) return;
+    const allowed = await checkPerms(interaction, interaction.guild.id, 'button', 'higher', { hideNoPerms: true });
+    if (!allowed) return; // no perms
 
     switch (featureName) {
       case 'links': {
         const { embed, components } = await buildFeatureEmbedAndComponents(
           guildId,
           interaction.user.id,
-          'links',
-          'Links feature handles everything related to linking Discord accounts to their Clash Royale playertags.'
+          EMBED_SERVER_FEATURE_CONFIG['link_settings'].displayName,
+          EMBED_SERVER_FEATURE_CONFIG['link_settings'].description
         );
         await interaction.editReply({ embeds: [embed], components });
         break;
@@ -106,8 +149,19 @@ const settingsButton: ButtonHandler = {
         const { embed, components } = await buildFeatureEmbedAndComponents(
           guildId,
           interaction.user.id,
-          'tickets',
-          'Ticket features handles everything related to tickets and ensuring you can handle new members.'
+          EMBED_SERVER_FEATURE_CONFIG['ticket_settings'].displayName,
+          EMBED_SERVER_FEATURE_CONFIG['ticket_settings'].description
+        );
+        await interaction.editReply({ embeds: [embed], components });
+        break;
+      }
+
+      case 'clan_invites': {
+        const { embed, components } = await buildFeatureEmbedAndComponents(
+          guildId,
+          interaction.user.id,
+          EMBED_SERVER_FEATURE_CONFIG['clan_invite_settings'].displayName,
+          EMBED_SERVER_FEATURE_CONFIG['clan_invite_settings'].description
         );
         await interaction.editReply({ embeds: [embed], components });
         break;
@@ -153,7 +207,10 @@ export async function buildFeatureEmbedAndComponents(
   const settingRes = await pool.query(`SELECT * FROM ${tableName} WHERE guild_id = $1`, [guildId]);
   const settings = settingRes.rows[0] ?? {};
 
-  const titleFeatureKey = featureKey.charAt(0).toUpperCase() + featureKey.substring(1);
+  const titleFeatureKey = featureKey
+    .split('_') // ['clan', 'invites']
+    .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)) // ['Clan', 'Invites']
+    .join(' '); // 'Clan Invites'
   const embed = new EmbedBuilder()
     .setTitle(`${titleFeatureKey} Features: ${isFeatureEnabled ? '✅ Enabled' : '❌ Disabled'}`)
     .setColor(BOTCOLOR);
@@ -163,7 +220,9 @@ export async function buildFeatureEmbedAndComponents(
 
   const toggleFeature = new ButtonBuilder()
     .setLabel(`${isFeatureEnabled ? 'Disable Feature' : 'Enable Feature'}`)
-    .setCustomId(makeCustomId('button', `toggle`, guildId, { cooldown: 1, extra: [`${featureKey}_feature`] }))
+    .setCustomId(
+      makeCustomId('button', `toggle`, guildId, { cooldown: 1, extra: [`${featureKey}_feature`, tableName] })
+    )
     // .setCustomId(`toggle:1:${guildId}:${featureKey}_feature`)
     .setStyle(ButtonStyle.Primary);
 
@@ -179,7 +238,7 @@ export async function buildFeatureEmbedAndComponents(
   for (const [i, setting] of featureSettings.entries()) {
     const value = settings[setting.key];
     let displayValue: string = '';
-    if (setting.type === 'text' || setting.type === 'modal') {
+    if (setting.type === 'text' || setting.type === 'modal' || setting.type === 'swap') {
       displayValue = `__${value || '*None*'}__`;
     } else if (setting.type === 'toggle') {
       displayValue = value ? '✅ Enabled' : '❌ Disabled';
@@ -198,16 +257,27 @@ export async function buildFeatureEmbedAndComponents(
     if (setting.type === 'toggle') {
       button = new ButtonBuilder()
         .setLabel(`${value ? 'Disable' : 'Enable'} ${setting.label}`)
-        .setCustomId(makeCustomId('button', `toggle`, guildId, { cooldown: 1, extra: [setting.key], ownerId: ownerId }))
+        .setCustomId(
+          makeCustomId('button', `toggle`, guildId, { cooldown: 1, extra: [setting.key, tableName], ownerId: ownerId })
+        ) // extra = 'send_logs', table_name
         .setStyle(ButtonStyle.Primary);
     } else if (setting.type === 'modal') {
       button = new ButtonBuilder()
         .setLabel(`Change ${setting.label}`)
         .setCustomId(
-          makeCustomId('button', 'open_modal', guildId, { cooldown: 1, extra: [setting.key], ownerId: ownerId })
+          makeCustomId('button', 'open_modal', guildId, {
+            cooldown: 1,
+            extra: [setting.key],
+            ownerId: ownerId,
+          })
         )
-        // .setCustomId(makeCustomId('modal', setting.key, guildId))
-        // .setCustomId(`modal:1:${guildId}:${setting.key}`)
+        .setStyle(ButtonStyle.Primary);
+    } else if (setting.type === 'swap') {
+      button = new ButtonBuilder()
+        .setLabel(`Swap ${setting.label}`)
+        .setCustomId(
+          makeCustomId('button', 'swap', guildId, { cooldown: 1, extra: [setting.key, tableName], ownerId: ownerId })
+        )
         .setStyle(ButtonStyle.Primary);
     }
 
@@ -216,7 +286,9 @@ export async function buildFeatureEmbedAndComponents(
     }
 
     if (currentRow.components.length === 5 || i === featureSettings.length - 1) {
-      actionRows.push(currentRow);
+      if (currentRow.components.length > 0) {
+        actionRows.push(currentRow);
+      }
       currentRow = new ActionRowBuilder<ButtonBuilder>();
     }
   }

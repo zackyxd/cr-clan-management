@@ -14,7 +14,8 @@ export default {
   async execute(interaction: StringSelectMenuInteraction) {
     if (!interaction || !interaction.guild) return;
 
-    const allowed = await checkPerms(interaction, interaction.guild.id, 'select menu', 'either', false);
+    // TODO check if this is right
+    const allowed = await checkPerms(interaction, interaction.guild.id, 'select menu', 'either', { hideNoPerms: true });
     if (!allowed) return; // no perms
 
     const { clantag, clanName } = JSON.parse(interaction.values[0]);

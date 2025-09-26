@@ -65,7 +65,10 @@ export async function buildSettingsView(guildId: string, ownerId: string) {
   let currentRow = new ActionRowBuilder<ButtonBuilder>();
   for (const [i, feature] of guildFeatures.entries()) {
     const { feature_name, is_enabled } = feature;
-    const formatted_name = feature_name.charAt(0).toUpperCase() + feature_name.slice(1);
+    const formatted_name = feature_name
+      .split('_') // ['clan', 'invites']
+      .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)) // ['Clan', 'Invites']
+      .join(' '); // 'Clan Invites'
     description += `${formatted_name} ${is_enabled ? '✅' : '❌'}\n`;
 
     // Goes to buttons/serverSettings

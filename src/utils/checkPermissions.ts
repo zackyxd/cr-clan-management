@@ -1,5 +1,6 @@
 import {
   ButtonInteraction,
+  ChatInputCommandInteraction,
   EmbedBuilder,
   GuildMember,
   MessageFlags,
@@ -11,7 +12,11 @@ import format from 'pg-format';
 import { EmbedColor } from '../types/EmbedUtil.js';
 import pool from '../db.js';
 
-export type InteractionTypes = ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction;
+export type InteractionTypes =
+  | ButtonInteraction
+  | StringSelectMenuInteraction
+  | ModalSubmitInteraction
+  | ChatInputCommandInteraction;
 type RoleLevel = 'lower' | 'higher' | 'either';
 
 export function buildCheckHasRoleQuery(guildId: string): string {
@@ -32,7 +37,7 @@ export function checkPermissions(item: string, member: GuildMember, requiredRole
     PermissionsBitField.Flags.ManageGuild,
   ]);
   const flatRoles = requiredRoles.flat().filter(Boolean); // remove empty strings/undefined
-  console.log(hasElevatedPerms);
+  // console.log(hasElevatedPerms);
   if (hasRole || hasElevatedPerms) return;
   let rolesNeeded: string;
   if (flatRoles.length === 0) {
@@ -45,14 +50,33 @@ export function checkPermissions(item: string, member: GuildMember, requiredRole
     .setColor(EmbedColor.WARNING);
 }
 
+function deferInteraction(interaction: InteractionTypes, ephemeral = false) {
+  if (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) {
+    if (ephemeral) {
+      return interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    } else {
+      return interaction.deferUpdate();
+    }
+  } else {
+    // Slash command (ChatInputCommandInteraction)
+    return interaction.deferReply({
+      flags: ephemeral ? MessageFlags.Ephemeral : undefined,
+    });
+  }
+}
+
 export async function checkPerms(
   interaction: InteractionTypes,
   guildId: string,
   interactionType: 'button' | 'modal' | 'select menu',
   level: RoleLevel,
-  ephemeral: boolean = true,
-  skipDefer: boolean = false // if for a button that opens a modal
+  opts: {
+    hideNoPerms?: boolean; // hide 'you dont have permission' message
+    deferEphemeral?: boolean; // whether valid defers should be ephemeral
+    skipDefer?: boolean; // for modal buttons
+  }
 ): Promise<boolean> {
+  const { hideNoPerms = false, deferEphemeral = false, skipDefer = false } = opts;
   // 1️⃣ Fetch member & required roles FIRST (don't defer yet)
   const member = await interaction.guild?.members.fetch(interaction.user.id);
 
@@ -64,13 +88,8 @@ export async function checkPerms(
   ]);
 
   if (isOwner || hasAdmin) {
-    // ✅ Immediately allow — don't care about staff roles at all
     if (!skipDefer) {
-      if (ephemeral) {
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      } else {
-        await interaction.deferUpdate();
-      }
+      await deferInteraction(interaction, deferEphemeral);
     }
     return true;
   }
@@ -98,17 +117,18 @@ export async function checkPerms(
         `The **${label}** leadership role has not been configured yet. Please ask a server admin to run \`/set-staff-roles\` to configure it.`
       );
     }
+
     // respond appropriately depending on skipDefer & ephemeral
     if (skipDefer) {
-      await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+      await interaction.reply({
+        embeds: [embed],
+        flags: hideNoPerms ? MessageFlags.Ephemeral : undefined,
+      });
     } else {
-      if (ephemeral) {
-        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        await interaction.editReply({ embeds: [embed] });
-      } else {
-        await interaction.deferUpdate();
-        await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
-      }
+      await interaction.deferReply({
+        flags: hideNoPerms ? MessageFlags.Ephemeral : undefined,
+      });
+      await interaction.editReply({ embeds: [embed] });
     }
     return false;
   }
@@ -121,12 +141,18 @@ export async function checkPerms(
     if (skipDefer) {
       await interaction.reply({ embeds: [permEmbed], flags: MessageFlags.Ephemeral });
     } else {
-      if (ephemeral) {
+      if (deferEphemeral) {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await interaction.editReply({ embeds: [permEmbed] });
       } else {
-        await interaction.deferUpdate();
-        await interaction.followUp({ embeds: [permEmbed], flags: MessageFlags.Ephemeral });
+        if (interaction.isButton() || interaction.isStringSelectMenu()) {
+          await interaction.deferUpdate();
+          await interaction.followUp({ embeds: [permEmbed], flags: MessageFlags.Ephemeral });
+        } else {
+          // slash command (ChatInputCommandInteraction)
+          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+          await interaction.editReply({ embeds: [permEmbed] });
+        }
       }
     }
     return false;
@@ -134,11 +160,7 @@ export async function checkPerms(
 
   // 3️⃣ Only defer if they have permission and skipDefer is false
   if (!skipDefer) {
-    if (ephemeral) {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    } else {
-      await interaction.deferUpdate(); // keeps original message visible
-    }
+    await deferInteraction(interaction, deferEphemeral);
   }
 
   return true; // ✅ Allowed

@@ -19,7 +19,7 @@ export const up = (pgm) => {
     primaryKey: ['guild_id', 'clantag']
   });
 
-  pgm.addConstraint('clan_settings', 'clan_Settings_clan_fk', {
+  pgm.addConstraint('clan_settings', 'clan_settings_clan_fk', {
     foreignKeys: {
       columns: ['guild_id', 'clantag'],
       references: 'clans(guild_id, clantag)',

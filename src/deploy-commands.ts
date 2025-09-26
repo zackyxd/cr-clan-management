@@ -26,7 +26,13 @@ for (const folder of commandFolders) {
     const commandModule = await import(filePath);
     const command = commandModule.default || commandModule;
     if ('data' in command && 'execute' in command) {
-      commands.push(command.data.toJSON());
+      try {
+        commands.push(command.data.toJSON());
+      } catch (err) {
+        console.error(`❌ Failed to build command from ${filePath}`);
+        console.error(err);
+        throw err; // stop here so you know exactly which command failed
+      }
     } else {
       console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
     }

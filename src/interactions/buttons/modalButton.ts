@@ -10,7 +10,10 @@ export default {
 
     // Ticket settings change text
     if (action === 'opened_identifier' || action === 'closed_identifier') {
-      const allowed = await checkPerms(interaction, guildId, 'button', 'higher', false, true);
+      const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {
+        hideNoPerms: true,
+        skipDefer: true,
+      });
       if (!allowed) return;
       const modal = new ModalBuilder()
         .setCustomId(makeCustomId('modal', action, guildId))
@@ -26,7 +29,10 @@ export default {
 
     // Ticket channel playertags
     else if (action === 'ticket_channel') {
-      const allowed = await checkPerms(interaction, guildId, 'button', 'higher', false, true);
+      const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {
+        hideNoPerms: true,
+        skipDefer: true,
+      });
       if (!allowed) return;
       const modal = new ModalBuilder()
         .setCustomId(makeCustomId('modal', action, guildId))
@@ -46,7 +52,10 @@ export default {
     else if (action === 'abbreviation') {
       // Can't ephemeral modals
       // TODO if user can see these buttons, but loses permissions, it skips the defer from 'true', so cant reply
-      const allowed = await checkPerms(interaction, guildId, 'button', 'higher', false, true);
+      const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {
+        hideNoPerms: true,
+        skipDefer: true,
+      });
       if (!allowed) return;
       const clantag = extra[1];
       const modal = new ModalBuilder()
