@@ -1,4 +1,4 @@
-// The features that will show
+// The features that will show under /clan-settings
 export const CLAN_FEATURE_SETTINGS = [
   {
     key: 'family_clan',
@@ -15,7 +15,7 @@ export const CLAN_FEATURE_SETTINGS = [
   {
     key: 'invites_enabled',
     label: 'Invites',
-    description: "Remove this clan's invite from invites channel and prevent generation for members.",
+    description: "Show this clan's invite in the invites channel and ability to generate them for members.",
     type: 'toggle',
   },
   {
@@ -43,8 +43,8 @@ export const CLAN_FEATURE_SETTINGS = [
 // The default features
 export const DEFAULT_CLAN_SETTINGS = {
   nudge_enabled: false,
-  invites_enabled: false,
+  invites_enabled: true,
   abbreviation: '',
-  role_id: '',
+  clan_role_id: '',
   // ...add more as needed, matching your CLAN_FEATURE_SETTINGS keys
 };

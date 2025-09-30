@@ -17,6 +17,7 @@ import { CLAN_FEATURE_SETTINGS, DEFAULT_CLAN_SETTINGS } from '../../config/clanS
 import { fetchClanName } from '../../services/clans.js';
 import logger from '../../logger.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
+import { repostInviteMessage, updateInviteMessage } from '../../commands/staff_commands/updateClanInvite.js';
 
 export async function buildClanSettingsView(guildId: string, clanName: string, clantag: string, ownerId: string) {
   const res = await pool.query(`SELECT settings FROM clan_settings WHERE guild_id = $1 AND clantag = $2`, [
@@ -51,7 +52,9 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
     if (settingConfig.type === 'toggle') {
       button = new ButtonBuilder()
         .setLabel(`${value ? 'Disable' : 'Enable'} ${settingConfig.label}`)
-        .setCustomId(makeCustomId('button', 'clanSettings', guildId, { extra: [settingConfig.key, clantag], ownerId }))
+        .setCustomId(
+          makeCustomId('button', 'clanSettings', guildId, { cooldown: 2, extra: [settingConfig.key, clantag], ownerId })
+        )
         .setStyle(ButtonStyle.Primary);
     } else if (settingConfig.type === 'modal' || settingConfig.type === 'text') {
       button = new ButtonBuilder()
@@ -202,6 +205,36 @@ const clanSettingsButton: ButtonHandler = {
           guildId,
           clantag,
         ]);
+
+        const { rows } = await pool.query(
+          `SELECT cis.channel_id,
+            cis.message_id,
+            cis.pin_message,
+            (cs.settings ->> 'invites_enabled' = 'true') as invites_enabled
+          FROM clan_invite_settings cis
+          JOIN clan_settings cs
+            ON cis.guild_id = cs.guild_id
+            AND cs.clantag = $2   -- match clan
+          WHERE cis.guild_id = $1
+          LIMIT 1
+          `,
+          [guildId, clantag]
+        );
+        if (rows.length) {
+          const { channel_id, message_id, pin_message } = rows[0];
+          const { embeds, components } = await updateInviteMessage(pool, guildId);
+
+          await repostInviteMessage({
+            client: interaction.client,
+            channelId: channel_id,
+            messageId: message_id,
+            embeds,
+            components,
+            pin: pin_message,
+            pool: pool,
+            guildId,
+          });
+        }
 
         const clanName = await fetchClanName(guildId, clantag);
 

@@ -16,7 +16,7 @@ const clanSettingsAbbreviation: ModalHandler = {
     await interaction.deferReply({ ephemeral: true });
     const message = await interaction.channel?.messages.fetch(messageId);
     if (!message) return;
-    // logic for opened_identifier
+    // logic for abbreviation
     const newValue = interaction.fields.getTextInputValue('input').toLowerCase();
     // action = 'abbreviation'
     const client = await pool.connect();

@@ -3,6 +3,8 @@ import { checkPerms } from '../../utils/checkPermissions.js';
 import { buildFeatureEmbedAndComponents } from './serverSettingsButton.js';
 import { ButtonHandler } from '../../types/Handlers.js';
 import EMBED_SERVER_FEATURE_CONFIG from '../../config/serverSettingEmbedBuilderConfig.js';
+import { TextChannel, NewsChannel } from 'discord.js';
+import { updateInviteMessage, repostInviteMessage } from '../../commands/staff_commands/updateClanInvite.js';
 
 export type FeatureTable = keyof typeof EMBED_SERVER_FEATURE_CONFIG;
 export function getFeatureConfig(tableName: FeatureTable) {
@@ -141,25 +143,7 @@ const toggleButton: ButtonHandler = {
       await interaction.editReply({ embeds: [embed], components });
     }
 
-    if (toggleName === 'pin_message') {
-      await pool.query(
-        `
-        UPDATE clan_invite_settings
-        SET ${toggleName} = NOT ${toggleName}
-        WHERE guild_id = $1
-        RETURNING ${toggleName}
-        `,
-        [guildId]
-      );
-
-      const { embed, components } = await buildFeatureEmbedAndComponents(
-        guildId,
-        interaction.user.id,
-        config.displayName,
-        config.description
-      );
-      await interaction.editReply({ embeds: [embed], components });
-    }
+    // Show expired clan invites
     if (toggleName === 'show_inactive') {
       await pool.query(
         `
@@ -171,13 +155,45 @@ const toggleButton: ButtonHandler = {
         [guildId]
       );
 
-      const { embed, components } = await buildFeatureEmbedAndComponents(
-        guildId,
-        interaction.user.id,
-        config.displayName,
-        config.description
+      // update the message immediately
+      const { embeds, components: components2 } = await updateInviteMessage(pool, guildId);
+
+      const { rows } = await pool.query(
+        `SELECT cis.channel_id,
+          cis.message_id,
+          cis.pin_message,
+          (cs.settings ->> 'invites_enabled' = 'true') as invites_enabled
+        FROM clan_invite_settings cis
+        JOIN clan_settings cs
+          ON cis.guild_id = cs.guild_id
+        WHERE cis.guild_id = $1
+        LIMIT 1
+        `,
+        [guildId]
       );
-      await interaction.editReply({ embeds: [embed], components });
+      console.log(rows);
+      if (rows.length) {
+        const { channel_id, message_id, pin_message } = rows[0];
+
+        await repostInviteMessage({
+          client: interaction.client,
+          channelId: channel_id,
+          messageId: message_id,
+          embeds,
+          components: components2,
+          pin: pin_message,
+          pool: pool, // your PG client for transaction
+          guildId,
+        });
+
+        const { embed, components } = await buildFeatureEmbedAndComponents(
+          guildId,
+          interaction.user.id,
+          config.displayName,
+          config.description
+        );
+        await interaction.editReply({ embeds: [embed], components });
+      }
     }
 
     if (toggleName === 'ping_expired') {
@@ -190,6 +206,100 @@ const toggleButton: ButtonHandler = {
         `,
         [guildId]
       );
+
+      const { embed, components } = await buildFeatureEmbedAndComponents(
+        guildId,
+        interaction.user.id,
+        config.displayName,
+        config.description
+      );
+      await interaction.editReply({ embeds: [embed], components });
+    }
+
+    if (toggleName === 'pin_message') {
+      const { rows } = await pool.query(
+        `
+        UPDATE clan_invite_settings
+        SET ${toggleName} = NOT ${toggleName}
+        WHERE guild_id = $1
+        RETURNING ${toggleName}
+        `,
+        [guildId]
+      );
+
+      const isNowPinned = rows[0][toggleName]; // boolean after toggle
+
+      if (isNowPinned) {
+        const { rows: messageRows } = await pool.query(
+          `
+          SELECT channel_id, message_id
+          FROM clan_invite_settings
+          WHERE guild_id = $1
+          LIMIT 1
+          `,
+          [guildId]
+        );
+
+        if (messageRows.length) {
+          const { channel_id, message_id } = messageRows[0];
+
+          try {
+            const channel = await interaction.client.channels.fetch(channel_id);
+
+            // Type guard for text-based channels
+            if (
+              channel &&
+              channel.isTextBased() &&
+              (channel instanceof TextChannel || channel instanceof NewsChannel)
+            ) {
+              const message = await channel.messages.fetch(message_id);
+              await message.pin();
+
+              // Optionally delete the system pin message
+              const recent = await channel.messages.fetch({ limit: 5 });
+              const systemMessage = recent.find((msg) => msg.type === 6);
+              if (systemMessage) await systemMessage.delete().catch(console.error);
+            }
+          } catch (err) {
+            console.error('Failed to pin message:', err);
+          }
+        }
+      } else {
+        const { rows: messageRows } = await pool.query(
+          `
+          SELECT channel_id, message_id
+          FROM clan_invite_settings
+          WHERE guild_id = $1
+          LIMIT 1
+          `,
+          [guildId]
+        );
+
+        if (messageRows.length) {
+          const { channel_id, message_id } = messageRows[0];
+
+          try {
+            const channel = await interaction.client.channels.fetch(channel_id);
+
+            // Type guard for text-based channels
+            if (
+              channel &&
+              channel.isTextBased() &&
+              (channel instanceof TextChannel || channel instanceof NewsChannel)
+            ) {
+              const message = await channel.messages.fetch(message_id);
+              await message.unpin();
+
+              // Optionally delete the system pin message
+              const recent = await channel.messages.fetch({ limit: 5 });
+              const systemMessage = recent.find((msg) => msg.type === 6);
+              if (systemMessage) await systemMessage.delete().catch(console.error);
+            }
+          } catch (err) {
+            console.error('Failed to unpin message:', err);
+          }
+        }
+      }
 
       const { embed, components } = await buildFeatureEmbedAndComponents(
         guildId,
