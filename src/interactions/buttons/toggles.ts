@@ -1,10 +1,11 @@
 import pool from '../../db.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
-import { buildFeatureEmbedAndComponents } from './serverSettingsButton.js';
 import { ButtonHandler } from '../../types/Handlers.js';
-import EMBED_SERVER_FEATURE_CONFIG from '../../config/serverSettingEmbedBuilderConfig.js';
 import { TextChannel, NewsChannel } from 'discord.js';
 import { updateInviteMessage, repostInviteMessage } from '../../commands/staff_commands/updateClanInvite.js';
+import EMBED_SERVER_FEATURE_CONFIG, {
+  buildServerFeatureEmbedAndComponents,
+} from '../../config/serverSettingsConfig.js';
 
 export type FeatureTable = keyof typeof EMBED_SERVER_FEATURE_CONFIG;
 export function getFeatureConfig(tableName: FeatureTable) {
@@ -42,7 +43,7 @@ const toggleButton: ButtonHandler = {
      ON CONFLICT (guild_id, feature_name) DO UPDATE SET is_enabled = EXCLUDED.is_enabled`,
         [guildId, 'links', newValue]
       );
-      const { embed, components } = await buildFeatureEmbedAndComponents(
+      const { embed, components } = await buildServerFeatureEmbedAndComponents(
         guildId,
         interaction.user.id,
         config.displayName,
@@ -67,7 +68,7 @@ const toggleButton: ButtonHandler = {
      ON CONFLICT (guild_id, feature_name) DO UPDATE SET is_enabled = EXCLUDED.is_enabled`,
         [guildId, 'clan_invites', newValue]
       );
-      const { embed, components } = await buildFeatureEmbedAndComponents(
+      const { embed, components } = await buildServerFeatureEmbedAndComponents(
         guildId,
         interaction.user.id,
         config.displayName,
@@ -88,7 +89,7 @@ const toggleButton: ButtonHandler = {
         [guildId]
       );
 
-      const { embed, components } = await buildFeatureEmbedAndComponents(
+      const { embed, components } = await buildServerFeatureEmbedAndComponents(
         guildId,
         interaction.user.id,
         config.displayName,
@@ -113,7 +114,7 @@ const toggleButton: ButtonHandler = {
      ON CONFLICT (guild_id, feature_name) DO UPDATE SET is_enabled = EXCLUDED.is_enabled`,
         [guildId, 'tickets', newValue]
       );
-      const { embed, components } = await buildFeatureEmbedAndComponents(
+      const { embed, components } = await buildServerFeatureEmbedAndComponents(
         guildId,
         interaction.user.id,
         config.displayName,
@@ -134,7 +135,7 @@ const toggleButton: ButtonHandler = {
         [guildId]
       );
 
-      const { embed, components } = await buildFeatureEmbedAndComponents(
+      const { embed, components } = await buildServerFeatureEmbedAndComponents(
         guildId,
         interaction.user.id,
         config.displayName,
@@ -186,7 +187,7 @@ const toggleButton: ButtonHandler = {
           guildId,
         });
 
-        const { embed, components } = await buildFeatureEmbedAndComponents(
+        const { embed, components } = await buildServerFeatureEmbedAndComponents(
           guildId,
           interaction.user.id,
           config.displayName,
@@ -207,7 +208,7 @@ const toggleButton: ButtonHandler = {
         [guildId]
       );
 
-      const { embed, components } = await buildFeatureEmbedAndComponents(
+      const { embed, components } = await buildServerFeatureEmbedAndComponents(
         guildId,
         interaction.user.id,
         config.displayName,
@@ -301,7 +302,7 @@ const toggleButton: ButtonHandler = {
         }
       }
 
-      const { embed, components } = await buildFeatureEmbedAndComponents(
+      const { embed, components } = await buildServerFeatureEmbedAndComponents(
         guildId,
         interaction.user.id,
         config.displayName,
@@ -323,7 +324,7 @@ const toggleButton: ButtonHandler = {
         [guildId]
       );
 
-      const { embed, components } = await buildFeatureEmbedAndComponents(
+      const { embed, components } = await buildServerFeatureEmbedAndComponents(
         guildId,
         interaction.user.id,
         config.displayName,
