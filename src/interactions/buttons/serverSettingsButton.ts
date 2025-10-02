@@ -6,7 +6,9 @@ import { ButtonHandler } from '../../types/Handlers.js';
 // Edit the below to when adding new global server settings
 // Build the title/description of what a feature does.
 // Get the server setting info to make the buttons / embed description
-import { buildServerFeatureEmbedAndComponents } from '../../config/serverSettingsConfig.js';
+import EMBED_SERVER_FEATURE_CONFIG, {
+  buildServerFeatureEmbedAndComponents,
+} from '../../config/serverSettingsConfig.js';
 
 // Handles all buttons on the initial /server-settings command
 const settingsButton: ButtonHandler = {
