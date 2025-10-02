@@ -1,10 +1,13 @@
 import { EmbedBuilder, MessageFlags } from 'discord.js';
 import pool from '../../db.js';
 import { ModalHandler } from '../../types/Handlers.js';
-import { buildClanSettingsView, getSelectMenuRowBuilder } from '../buttons/clanSettingsButton.js';
 import { fetchClanName } from '../../services/clans.js';
 import logger from '../../logger.js';
-import { DEFAULT_CLAN_SETTINGS } from '../../config/clanSettingsConfig.js';
+import {
+  buildClanSettingsView,
+  DEFAULT_CLAN_SETTINGS,
+  getSelectMenuRowBuilder,
+} from '../../config/clanSettingsConfig.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 
 const clanSettingsAbbreviation: ModalHandler = {

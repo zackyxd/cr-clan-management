@@ -14,7 +14,7 @@ import { Command } from '../../types/Command.js';
 import { makeCustomId } from '../../utils/customId.js';
 import { BOTCOLOR, EmbedColor } from '../../types/EmbedUtil.js';
 import { clanEmbedCache } from '../../cache/clanEmbedCache.js';
-import { buildClanSettingsView } from '../../interactions/buttons/clanSettingsButton.js';
+import { buildClanSettingsView } from '../../config/clanSettingsConfig.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
