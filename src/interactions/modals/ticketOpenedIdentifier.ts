@@ -1,7 +1,7 @@
 import { MessageFlags } from 'discord.js';
 import pool from '../../db.js';
 import { ModalHandler } from '../../types/Handlers.js';
-import { buildFeatureEmbedAndComponents } from '../buttons/serverSettingsButton.js';
+import { buildServerFeatureEmbedAndComponents } from '../../config/serverSettingsConfig.js';
 
 // When modal with action (column) of 'opened_identifier' is called,
 // run this code to set the text of the identifier for tickets
@@ -22,7 +22,7 @@ const ticketOpenedIdentifier: ModalHandler = {
       `,
       [newValue, guildId]
     );
-    const { embed, components } = await buildFeatureEmbedAndComponents(
+    const { embed, components } = await buildServerFeatureEmbedAndComponents(
       guildId,
       interaction.user.id,
       'tickets',

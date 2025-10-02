@@ -1,8 +1,9 @@
-import EMBED_SERVER_FEATURE_CONFIG from '../../config/serverSettingEmbedBuilderConfig.js';
+import EMBED_SERVER_FEATURE_CONFIG, {
+  buildServerFeatureEmbedAndComponents,
+} from '../../config/serverSettingsConfig.js';
 import pool from '../../db.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { ButtonHandler } from '../handleButtonInteraction.js';
-import { buildFeatureEmbedAndComponents } from './serverSettingsButton.js';
 import { FeatureTable, getFeatureConfig } from './toggles.js';
 
 const swapButton: ButtonHandler = {
@@ -34,7 +35,7 @@ const swapButton: ButtonHandler = {
         [guildId]
       );
 
-      const { embed, components } = await buildFeatureEmbedAndComponents(
+      const { embed, components } = await buildServerFeatureEmbedAndComponents(
         guildId,
         interaction.user.id,
         config.displayName,
