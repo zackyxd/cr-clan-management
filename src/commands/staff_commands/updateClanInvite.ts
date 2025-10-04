@@ -21,6 +21,7 @@ import { inviteQueue } from '../../queues/inviteQueue.js';
 import { Pool, PoolClient } from 'pg';
 import { makeCustomId } from '../../utils/customId.js';
 import logger from '../../logger.js';
+import { INVITE_EXPIRY_INTERVAL_SQL, INVITE_EXPIRY_MS, safeRemoveJob } from '../../config/clanInvitesConfig.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -64,7 +65,7 @@ const command: Command = {
     const match = inviteLink.match(regex); // gets the clantag
     const apiLink = inviteLink.match(regexLink); // gets the entire link
     if (match === null || match[1] === undefined || apiLink === null) {
-      console.log('not valid');
+      console.log('not valid invite updateclaninvie.ts');
       return;
     }
     // match
@@ -111,10 +112,9 @@ const command: Command = {
         await client.query('BEGIN');
 
         // Update DB
-        // TODO change to 3 days
         const update = await client.query(
           `UPDATE clans
-       SET active_clan_link = $1, active_clan_link_expiry_time = NOW() + interval '15 seconds'
+       SET active_clan_link = $1, active_clan_link_expiry_time = NOW() + ${INVITE_EXPIRY_INTERVAL_SQL}
        WHERE guild_id = $2 AND clantag = $3
        RETURNING active_clan_link_expiry_time`,
           [apiLink[0], guild.id, clantag]
@@ -124,7 +124,7 @@ const command: Command = {
 
         // Remove existing job if any
         const existing = await inviteQueue.getJob(`${guild.id}_${clantag}`);
-        if (existing) await existing.remove();
+        await safeRemoveJob(existing ?? null);
 
         // Add job to queue
         await inviteQueue.add(
@@ -132,7 +132,7 @@ const command: Command = {
           { guildId: guild.id, clantag },
           {
             jobId: `${guild.id}_${clantag}`,
-            delay: 1000 * 15, // TODO change to 3 days
+            delay: INVITE_EXPIRY_MS,
             removeOnComplete: true,
             removeOnFail: true,
           }
@@ -261,7 +261,6 @@ export async function updateInviteMessage(
   );
 
   expiredClans.sort((a, b) => b.clan_trophies - a.clan_trophies);
-  console.log(expiredClans);
   const embeds: EmbedBuilder[] = [];
   const activeEmbed = new EmbedBuilder().setTitle('Active Clan Links').setColor(BOTCOLOR);
   if (visibleClans.length === 0) {

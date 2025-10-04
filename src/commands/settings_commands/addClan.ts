@@ -8,7 +8,14 @@ const command: Command = {
   data: new SlashCommandBuilder()
     .setName('add-clan')
     .setDescription('(Management) Link a clan to your server')
-    .addStringOption((option) => option.setName('clantag').setDescription('#ABC123').setRequired(true)),
+    .addStringOption((option) => option.setName('clantag').setDescription('#ABC123').setRequired(true))
+    .addStringOption((option) =>
+      option
+        .setName('abbreviation')
+        .setDescription('10 character max abbreviation for this clan')
+        .setRequired(true)
+        .setMaxLength(10)
+    ),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const guild = interaction.guild;
     const userId = interaction.user.id;
@@ -32,11 +39,12 @@ const command: Command = {
     await interaction.deferReply();
 
     const clantag = interaction.options.getString('clantag') as string;
+    const abbreviation = interaction.options.getString('abbreviation') as string;
 
     const client = await pool.connect();
     await client.query('BEGIN');
     try {
-      const { embed, components } = await linkClan(client, guild.id, clantag);
+      const { embed, components } = await linkClan(client, guild.id, clantag, abbreviation);
       await interaction.editReply({ embeds: [embed] });
       await client.query('COMMIT');
     } catch (error) {

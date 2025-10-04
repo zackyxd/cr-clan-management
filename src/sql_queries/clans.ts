@@ -1,21 +1,23 @@
 import format from 'pg-format';
 
-export function buildInsertClanLinkQuery(guildId: string, clantag: string, clanName: string, trophies: number): string {
+export function buildInsertClanLinkQuery(
+  guildId: string,
+  clantag: string,
+  clanName: string,
+  trophies: number,
+  abbreviation: string
+): string {
   return format(
     `
-    WITH inserted_clan AS (
-    INSERT INTO clans (guild_id, clantag, clan_name, clan_trophies)
-    VALUES (%L, %L, %L, %L)
-    ON CONFLICT (guild_id, clantag) DO NOTHING
-    RETURNING clantag
-    )
-    SELECT
-      (SELECT clantag FROM inserted_clan) AS inserted_clan;
+    INSERT INTO clans (guild_id, clantag, clan_name, clan_trophies, abbreviation)
+    VALUES (%L, %L, %L, %L, %L)
+    RETURNING clantag;
     `,
     guildId,
     clantag,
     clanName,
-    trophies
+    trophies,
+    abbreviation
   );
 }
 

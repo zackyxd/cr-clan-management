@@ -15,7 +15,6 @@ discordClient.once('ready', () => {
     'inviteQueue',
     async (job) => {
       const { guildId, clantag } = job.data;
-      console.log('came in here?');
       // Check DB if link expired
       const { rows } = await pool.query(
         `
@@ -37,12 +36,10 @@ discordClient.once('ready', () => {
         LIMIT 1`,
         [guildId, clantag]
       );
-      console.log(rows);
       if (!rows.length) return;
 
       const { active_clan_link_expiry_time, channel_id, message_id, pin_message } = rows[0];
       if (new Date(active_clan_link_expiry_time) > new Date()) {
-        console.log('here');
         return;
       }
 

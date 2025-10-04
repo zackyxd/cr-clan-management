@@ -4,6 +4,7 @@ import { ModalHandler } from '../../types/Handlers.js';
 import pool from '../../db.js';
 import { repostInviteMessage, updateInviteMessage } from '../../commands/staff_commands/updateClanInvite.js';
 import { inviteQueue } from '../../queues/inviteQueue.js';
+import { INVITE_EXPIRY_INTERVAL_SQL, INVITE_EXPIRY_MS, safeRemoveJob } from '../../config/clanInvitesConfig.js';
 
 const updateInvite: ModalHandler = {
   customId: 'update_invite',
@@ -57,7 +58,7 @@ const updateInvite: ModalHandler = {
         // TODO change to 3 days
         const update = await client.query(
           `UPDATE clans
-           SET active_clan_link = $1, active_clan_link_expiry_time = NOW() + interval '15 seconds'
+           SET active_clan_link = $1, active_clan_link_expiry_time = NOW() + ${INVITE_EXPIRY_INTERVAL_SQL}
            WHERE guild_id = $2 AND clantag = $3
            RETURNING active_clan_link_expiry_time`,
           [apiLink[0], guildId, clantag]
@@ -67,7 +68,7 @@ const updateInvite: ModalHandler = {
 
         // Remove existing job if any
         const existing = await inviteQueue.getJob(`${guildId}_${clantag}`);
-        if (existing) await existing.remove();
+        await safeRemoveJob(existing ?? null);
 
         // Add job to queue
         await inviteQueue.add(
@@ -75,7 +76,7 @@ const updateInvite: ModalHandler = {
           { guildId: guildId, clantag },
           {
             jobId: `${guildId}_${clantag}`,
-            delay: 1000 * 15, // TODO change to 3 days
+            delay: INVITE_EXPIRY_MS, // TODO change to 3 days
             removeOnComplete: true,
             removeOnFail: true,
           }

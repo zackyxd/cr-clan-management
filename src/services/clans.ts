@@ -4,11 +4,13 @@ import { PoolClient } from 'pg';
 import { EmbedColor } from '../types/EmbedUtil.js';
 import { buildFindLinkedClan, buildInsertClanLinkQuery } from '../sql_queries/clans.js';
 import pool from '../db.js';
+import { isPgUniqueViolation } from '../utils/postgresError.js';
 
 export async function linkClan(
   client: PoolClient,
   guildId: string,
-  clantag: string
+  clantag: string,
+  abbreviation: string
 ): Promise<{ embed: EmbedBuilder; components?: ActionRowBuilder<ButtonBuilder>[] }> {
   clantag = normalizeTag(clantag);
   const confirmClanExists = await CR_API.getClan(clantag);
@@ -45,37 +47,16 @@ export async function linkClan(
         .setColor(EmbedColor.FAIL),
     };
   }
-
-  const insertClanSQL = buildInsertClanLinkQuery(
-    guildId,
-    clantag,
-    confirmClanExists.name,
-    confirmClanExists.clanWarTrophies
-  );
-  const res = await client.query(insertClanSQL);
-  const insertedTag = res.rows[0].inserted_clan;
-  const wasClanInserted = Boolean(insertedTag);
-  // null means not inserted
-  if (wasClanInserted === false) {
-    const findLinkedClanQuery = buildFindLinkedClan(guildId, clantag);
-    const alreadyLinkedRes = await client.query(findLinkedClanQuery);
-    const alreadyLinkedClantag = await alreadyLinkedRes.rows[0].clantag;
-    if (clantag === alreadyLinkedClantag) {
-      // Already linked
-      return {
-        embed: new EmbedBuilder()
-          .setDescription(`**${clantag}** was already linked to this server. No Action Needed.`)
-          .setColor(EmbedColor.WARNING),
-      };
-    } else {
-      return {
-        embed: new EmbedBuilder()
-          .setDescription(`Should not get this. Contact Zacky.\n-# Could not link clan, and didn't find it in db.`)
-          .setColor(EmbedColor.FAIL),
-      };
-    }
-  } else {
-    // Is inserted, show settings for it.
+  try {
+    const insertClanSQL = buildInsertClanLinkQuery(
+      guildId,
+      clantag,
+      confirmClanExists.name,
+      confirmClanExists.clanWarTrophies,
+      abbreviation
+    );
+    const res = await client.query(insertClanSQL);
+    // Insert settings too
     await client.query(
       `
     INSERT INTO clan_settings (guild_id, clantag, settings)
@@ -89,6 +70,24 @@ export async function linkClan(
         .setDescription(`**${confirmClanExists.name}** was linked to the server!`)
         .setColor(EmbedColor.SUCCESS),
     };
+  } catch (error: unknown) {
+    if (isPgUniqueViolation(error)) {
+      if (error.detail?.includes('(guild_id, clantag)')) {
+        return {
+          embed: new EmbedBuilder()
+            .setDescription(`**${clantag}** is already linked in this server.`)
+            .setColor(EmbedColor.WARNING),
+        };
+      }
+      if (error.detail?.includes('abbreviation')) {
+        return {
+          embed: new EmbedBuilder()
+            .setDescription(`The abbreviation \`${abbreviation}\` is already in use. Choose another one.`)
+            .setColor(EmbedColor.WARNING),
+        };
+      }
+    }
+    throw error;
   }
 }
 

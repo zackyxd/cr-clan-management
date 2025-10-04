@@ -6,8 +6,8 @@ import {
   StringSelectMenuBuilder,
   StringSelectMenuInteraction,
 } from 'discord.js';
-import { buildClanSettingsView } from '../buttons/clanSettingsButton.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
+import { buildClanSettingsView } from '../../config/clanSettingsConfig.js';
 
 export default {
   customId: 'clan',
