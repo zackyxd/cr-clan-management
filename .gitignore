@@ -7,3 +7,4 @@ migrate-cheatsheet.txt
 src/logs
 one-off-scripts/
 performance.ts
+src/api/testApiLimiter.ts

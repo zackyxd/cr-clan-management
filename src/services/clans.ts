@@ -2,8 +2,8 @@ import { ActionRowBuilder, ButtonBuilder, EmbedBuilder } from 'discord.js';
 import { CR_API, FetchError, normalizeTag } from '../api/CR_API.js';
 import { PoolClient } from 'pg';
 import { EmbedColor } from '../types/EmbedUtil.js';
-import { buildFindLinkedClan, buildInsertClanLinkQuery } from '../sql_queries/clans.js';
-import pool from '../db.js';
+import { buildInsertClanLinkQuery } from '../sql_queries/clans.js';
+import { pool } from '../db.js';
 import { isPgUniqueViolation } from '../utils/postgresError.js';
 
 export async function linkClan(

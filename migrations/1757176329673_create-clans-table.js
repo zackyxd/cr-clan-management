@@ -17,7 +17,8 @@ export const up = (pgm) => {
     abbreviation: { type: 'varchar(10)' },
     family_clan: { type: 'boolean', default: false },
     active_clan_link: { type: 'varchar(200)' },
-    active_clan_link_expiry_time: { type: 'timestamptz', default: null }
+    active_clan_link_expiry_time: { type: 'timestamptz', default: null },
+    show_clan_link: { type: 'boolean', default: true }
   },
     {
       constraints: {

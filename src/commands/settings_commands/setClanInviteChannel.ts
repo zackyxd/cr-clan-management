@@ -79,6 +79,8 @@ const command: Command = {
       await interaction.editReply({ embeds: [embed] });
 
       return;
+    } finally {
+      client.release();
     }
 
     const checkAdded = await pool.query(

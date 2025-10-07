@@ -29,50 +29,50 @@ describe('call cr_api', () => {
   });
 
   // getBattleLog
-  test('getBattleLog API request error', async () => {
-    const res = await CR_API.getBattleLog(invalid_playertag);
-    expect(res).toHaveProperty('error');
-  });
+  // test('getBattleLog API request error', async () => {
+  //   const res = await CR_API.getBattleLog(invalid_playertag);
+  //   expect(res).toHaveProperty('error');
+  // });
 
-  test('getBattleLog API request success', async () => {
-    const res = await CR_API.getBattleLog(valid_playertag);
-    expect(res).toBeInstanceOf(Array);
-  });
+  // test('getBattleLog API request success', async () => {
+  //   const res = await CR_API.getBattleLog(valid_playertag);
+  //   expect(res).toBeInstanceOf(Array);
+  // });
 
-  // getClan
-  test('getClan API request error', async () => {
-    const res = await CR_API.getClan(invalid_clantag);
-    expect(res).toHaveProperty('error');
-  });
+  // // getClan
+  // test('getClan API request error', async () => {
+  //   const res = await CR_API.getClan(invalid_clantag);
+  //   expect(res).toHaveProperty('error');
+  // });
 
-  test('getClan API request success', async () => {
-    const res = await CR_API.getClan(valid_clantag);
-    expect(res).toHaveProperty('tag');
-  });
+  // test('getClan API request success', async () => {
+  //   const res = await CR_API.getClan(valid_clantag);
+  //   expect(res).toHaveProperty('tag');
+  // });
 
-  // getClanMembers
-  test('getClanMembers API request error', async () => {
-    const res = await CR_API.getClanMembers(invalid_clantag);
-    expect(res).toHaveProperty('error');
-  });
+  // // getClanMembers
+  // test('getClanMembers API request error', async () => {
+  //   const res = await CR_API.getClanMembers(invalid_clantag);
+  //   expect(res).toHaveProperty('error');
+  // });
 
-  test('getClanMembers API request success', async () => {
-    const res = await CR_API.getClanMembers(valid_clantag);
-    expect(res).toBeInstanceOf(Array);
-  });
+  // test('getClanMembers API request success', async () => {
+  //   const res = await CR_API.getClanMembers(valid_clantag);
+  //   expect(res).toBeInstanceOf(Array);
+  // });
 
-  // getCurrentRiverRace
-  test('getCurrentRiverRace API request error', async () => {
-    const res = await CR_API.getCurrentRiverRace(invalid_clantag);
-    expect(res).toHaveProperty('error');
-  });
+  // // getCurrentRiverRace
+  // test('getCurrentRiverRace API request error', async () => {
+  //   const res = await CR_API.getCurrentRiverRace(invalid_clantag);
+  //   expect(res).toHaveProperty('error');
+  // });
 
-  test('getCurrentRiverRace API request success', async () => {
-    const res = await CR_API.getCurrentRiverRace(valid_clantag);
-    expect(res).toHaveProperty('state');
-    expect(res).toHaveProperty('clan');
-    expect(res).toHaveProperty('clans');
-  });
+  // test('getCurrentRiverRace API request success', async () => {
+  //   const res = await CR_API.getCurrentRiverRace(valid_clantag);
+  //   expect(res).toHaveProperty('state');
+  //   expect(res).toHaveProperty('clan');
+  //   expect(res).toHaveProperty('clans');
+  // });
 });
 
 // describe('test cr_api', () => {

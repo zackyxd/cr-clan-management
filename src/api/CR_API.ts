@@ -1,28 +1,13 @@
 import axios, { isAxiosError } from 'axios';
-import logger from '../logger.js';
 import 'dotenv-flow/config';
 import z from 'zod';
 import { EmbedBuilder } from 'discord.js';
+import { limitedGet } from './crApiClient.js';
 
 export function normalizeTag(rawTag: string): string {
   const tag = rawTag.trim().toUpperCase().replace(/O/gi, '0').replace(/\s+/g, '');
   return tag.startsWith('#') ? tag : `#${tag}`;
 }
-
-// type FetchError = { error: true; statusCode: number; reason: string; embed: EmbedBuilder; tag: string };
-// export function isFetchError(obj: unknown): obj is FetchError {
-//   return (
-//     typeof obj === 'object' &&
-//     obj !== null &&
-//     'error' in obj &&
-//     'statusCode' in obj &&
-//     'reason' in obj &&
-//     'tag' in obj &&
-//     (obj as Record<string, unknown>).error === true &&
-//     typeof (obj as Record<string, unknown>).statusCode === 'number' &&
-//     typeof (obj as Record<string, unknown>).reason === 'string'
-//   );
-// }
 
 export type FetchError = {
   error: true;
@@ -37,31 +22,24 @@ export function isFetchError(obj: any): obj is FetchError {
   return obj && typeof obj === 'object' && 'error' in obj;
 }
 
-async function fetchData<T = unknown>(url: string, tag: string, kind: 'player' | 'clan'): Promise<T | FetchError> {
+export async function fetchData<T>(url: string, tag: string, kind: 'player' | 'clan'): Promise<T | FetchError> {
   try {
-    // <-- HARD CODED TEST 503
-    // return {
-    //   error: true,
-    //   statusCode: 503,
-    //   reason: `Maintainence Break.`,
-    //   tag: `x+${Math.random()}`,
-    //   embed: new EmbedBuilder()
-    //     .setDescription(`🚧 *It is currently Maintainence Break. Please try again later.*`)
-    //     .setColor('Orange'),
-    // };
-    const res = await axios<T>(url, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${process.env.CR_KEY}`,
-      },
-    });
-    return res.data;
+    const data = await limitedGet<T>(url);
+    if (!data) {
+      // fallback if Axios/Bottleneck somehow returns null/undefined
+      return {
+        error: true,
+        statusCode: 500,
+        reason: 'No data returned from API',
+        tag,
+        embed: new EmbedBuilder().setDescription('❌ No data returned from the API.').setColor('Red'),
+      };
+    }
+    return data;
   } catch (error: unknown) {
     if (isAxiosError(error)) {
       const status = error.response?.status ?? 500;
-
       if (status === 503) {
-        logger.warn(`API error 503: Service unavailable for ${url}`);
         return {
           error: true,
           statusCode: 503,
@@ -72,27 +50,24 @@ async function fetchData<T = unknown>(url: string, tag: string, kind: 'player' |
             .setColor('Orange'),
         };
       } else if (status === 404) {
-        logger.warn(`API error 404: Resource not found for ${url}`);
         return {
           error: true,
           statusCode: 404,
           reason: 'Resource not found',
           tag,
-          embed: new EmbedBuilder().setDescription(`❌ *This ${kind} tag **${tag}** does not exist.*`).setColor('Red'),
+          embed: new EmbedBuilder().setDescription(`❌ This ${kind} tag **${tag}** does not exist.`).setColor('Red'),
         };
       }
 
-      logger.error(`API error ${status} at ${url}: ${error.message}`);
       return {
         error: true,
         statusCode: status,
-        reason: 'Unhandled API error',
+        reason: `API error ${status}`,
         tag,
-        embed: new EmbedBuilder().setDescription(`Unhandled Error: ${status}`).setColor('Red'),
+        embed: new EmbedBuilder().setDescription(`Unhandled API error: ${status}`).setColor('Red'),
       };
     }
 
-    logger.error(`Unknown fetch failure at ${url}: ${String(error)}`);
     return {
       error: true,
       statusCode: 500,
@@ -114,9 +89,9 @@ export type Player = z.infer<typeof PlayerSchema>;
 export type PlayerResult = Player | FetchError;
 export async function getPlayer(playertag: string): Promise<PlayerResult> {
   const normalizedTag = normalizeTag(playertag);
-  const url = `https://proxy.royaleapi.dev/v1/players/${encodeURIComponent(playertag)}`;
+  const url = `players/${encodeURIComponent(normalizedTag)}`;
   const data = await fetchData<z.infer<typeof PlayerSchema>>(url, normalizedTag, 'player');
-
+  console.log(data);
   if ('error' in data) {
     return data; // already a FetchError with embed + tag
   }
