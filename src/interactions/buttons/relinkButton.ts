@@ -1,5 +1,5 @@
 import { EmbedBuilder, GuildMember, MessageFlags } from 'discord.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/checkPermissions.js';
 import { buildFindLinkedDiscordId, buildUpsertRelinkPlayertag } from '../../sql_queries/users.js';
 import { CR_API } from '../../api/CR_API.js';

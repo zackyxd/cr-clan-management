@@ -1,4 +1,4 @@
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { ButtonHandler } from '../../types/Handlers.js';
 import { TextChannel, NewsChannel } from 'discord.js';

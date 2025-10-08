@@ -7,7 +7,7 @@ import {
   EmbedBuilder,
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { BOTCOLOR } from '../../types/EmbedUtil.js';
 
 const command: Command = {

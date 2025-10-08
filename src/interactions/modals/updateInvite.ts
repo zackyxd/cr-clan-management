@@ -1,7 +1,7 @@
 import { EmbedBuilder } from 'discord.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { ModalHandler } from '../../types/Handlers.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { repostInviteMessage, updateInviteMessage } from '../../commands/staff_commands/updateClanInvite.js';
 import { inviteQueue } from '../../queues/inviteQueue.js';
 import { INVITE_EXPIRY_INTERVAL_SQL, INVITE_EXPIRY_MS, safeRemoveJob } from '../../config/clanInvitesConfig.js';

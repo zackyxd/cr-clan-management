@@ -1,5 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, TextChannel } from 'discord.js';
-import pool from '../../../db.js';
+import { pool } from '../../../db.js';
 import logger from '../../../logger.js';
 import { makeCustomId } from '../../../utils/customId.js';
 

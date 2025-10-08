@@ -1,4 +1,4 @@
-import axios, { isAxiosError } from 'axios';
+import { isAxiosError } from 'axios';
 import 'dotenv-flow/config';
 import z from 'zod';
 import { EmbedBuilder } from 'discord.js';
@@ -91,7 +91,6 @@ export async function getPlayer(playertag: string): Promise<PlayerResult> {
   const normalizedTag = normalizeTag(playertag);
   const url = `players/${encodeURIComponent(normalizedTag)}`;
   const data = await fetchData<z.infer<typeof PlayerSchema>>(url, normalizedTag, 'player');
-  console.log(data);
   if ('error' in data) {
     return data; // already a FetchError with embed + tag
   }
@@ -272,12 +271,12 @@ export async function getClan(clantag: string): Promise<ClanResult> {
 //   return parsed.data;
 // }
 
-async function main() {
-  // const apiTest = await getPlayer('    J2oY2QGoY    ');
-  // console.log(apiTest);
-  const apiTest = await getPlayer('   #P9J2d92 JCL         ');
-  // console.log(apiTest);
-}
+// async function main() {
+//   // const apiTest = await getPlayer('    J2oY2QGoY    ');
+//   // console.log(apiTest);
+//   const apiTest = await getPlayer('   #P9J2d92 JCL         ');
+//   // console.log(apiTest);
+// }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   main();

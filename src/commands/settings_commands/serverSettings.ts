@@ -7,7 +7,7 @@ import {
   InteractionContextType,
   ActionRowBuilder,
 } from 'discord.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { Command } from '../../types/Command.js';
 import { ButtonBuilder, EmbedBuilder } from '@discordjs/builders';
 import { BOTCOLOR } from '../../types/EmbedUtil.js';

@@ -105,11 +105,11 @@ process.on('unhandledRejection', (err) => {
 import 'dotenv-flow/config';
 import { insert_guilds_on_startup, remove_guilds_on_startup, sync_default_features } from './services/guilds.js';
 import logger from './logger.js';
-import pool from './db.js';
+import { pool } from './db.js';
 import { handleButtonInteraction, loadButtons } from './interactions/handleButtonInteraction.js';
 import { handleModalInteraction, loadModals } from './interactions/handleModalInteraction.js';
 import { handleSelectMenuInteraction, loadSelectMenus } from './interactions/handleSelectMenuInteraction.js';
 
-// import pool from './dbConfig.js';
+// import { pool } from './dbConfig.js';
 logger.info(`🌱 Environment: ${process.env.NODE_ENV || 'development (default)'}`);
 client.login(process.env.TOKEN);

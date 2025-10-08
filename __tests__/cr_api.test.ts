@@ -20,12 +20,15 @@ describe('call cr_api', () => {
   // getPlayer
   test('getPlayer API request error', async () => {
     const res = await CR_API.getPlayer(invalid_playertag);
-    expect(res).toHaveProperty('error');
+    expect(res).toHaveProperty('error', true);
   });
 
   test('getPlayer API request success', async () => {
     const res = await CR_API.getPlayer(valid_playertag);
     expect(res).toHaveProperty('tag');
+    expect(res).toHaveProperty('name');
+    expect(res).toHaveProperty('expLevel');
+    expect(res).toHaveProperty('badges');
   });
 
   // getBattleLog

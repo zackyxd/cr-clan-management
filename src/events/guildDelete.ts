@@ -1,7 +1,7 @@
 import { Events, Guild } from 'discord.js';
 import { remove_guild } from '../services/guilds.js';
 import logger from '../logger.js';
-import pool from '../db.js';
+import { pool } from '../db.js';
 // import { isDev } from '../utils/env.js';
 
 export const event = {

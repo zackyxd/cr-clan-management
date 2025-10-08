@@ -1,5 +1,5 @@
 import { TextChannel } from 'discord.js';
-import pool from '../../../db.js';
+import { pool } from '../../../db.js';
 import logger from '../../../logger.js';
 import { linkUser } from '../../../services/users.js';
 

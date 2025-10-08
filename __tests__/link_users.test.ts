@@ -1,4 +1,4 @@
-import pool from '../src/db.ts';
+import { pool } from '../src/db.ts';
 import { PoolClient } from 'pg';
 import { initialize_guild } from '../src/services/guilds.ts';
 import { linkUser, unlinkUser } from '../src/services/users.ts';

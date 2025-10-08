@@ -1,5 +1,5 @@
 import { EmbedBuilder, MessageFlags } from 'discord.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { ModalHandler } from '../../types/Handlers.js';
 import { fetchClanName } from '../../services/clans.js';
 import logger from '../../logger.js';

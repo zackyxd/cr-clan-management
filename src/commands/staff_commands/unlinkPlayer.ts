@@ -1,6 +1,6 @@
 import { ChatInputCommandInteraction, GuildMember, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/checkPermissions.js';
 import { unlinkUser } from '../../services/users.js';
 

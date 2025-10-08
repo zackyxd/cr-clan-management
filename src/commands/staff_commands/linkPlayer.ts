@@ -8,7 +8,7 @@ import {
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { linkUser } from '../../services/users.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/checkPermissions.js';
 import { checkFeatureEnabled } from '../../utils/checkFeatureEnabled.js';

@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import { execSync } from 'child_process';
-
+import { pool } from './src/db.ts';
 // Load .env.test before tests run
 dotenv.config({ path: '.env.test' });
 

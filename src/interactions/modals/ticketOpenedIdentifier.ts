@@ -1,5 +1,5 @@
 import { MessageFlags } from 'discord.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { ModalHandler } from '../../types/Handlers.js';
 import { buildServerFeatureEmbedAndComponents } from '../../config/serverSettingsConfig.js';
 

@@ -2,7 +2,6 @@ import axios from 'axios';
 import Bottleneck from 'bottleneck';
 import axiosRetry from 'axios-retry';
 import 'dotenv-flow/config';
-console.log(process.env.CR_KEY);
 // --- Bottleneck rate limiter ---
 // Example: 10 requests per second (Clash Royale API is 10/s per token)
 const limiter = new Bottleneck({

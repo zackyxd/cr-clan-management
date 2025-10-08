@@ -4,7 +4,7 @@
 // type: Which method to use when button clicked
 
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import pool from '../db.js';
+import { pool } from '../db.js';
 import { BOTCOLOR } from '../types/EmbedUtil.js';
 import { makeCustomId } from '../utils/customId.js';
 

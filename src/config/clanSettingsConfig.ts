@@ -9,7 +9,7 @@ import {
   MessageActionRowComponent,
   ComponentType,
 } from 'discord.js';
-import pool from '../db.js';
+import { pool } from '../db.js';
 import { BOTCOLOR } from '../types/EmbedUtil.js';
 import { makeCustomId } from '../utils/customId.js';
 

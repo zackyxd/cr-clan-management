@@ -14,7 +14,7 @@ import {
 import { Command } from '../../types/Command.js';
 import { checkFeatureEnabled } from '../../utils/checkFeatureEnabled.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { normalizeTag } from '../../api/CR_API.js';
 import { BOTCOLOR, EmbedColor } from '../../types/EmbedUtil.js';
 import { inviteQueue } from '../../queues/inviteQueue.js';

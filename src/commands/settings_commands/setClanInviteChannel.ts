@@ -7,7 +7,7 @@ import {
   SlashCommandBuilder,
   TextChannel,
 } from 'discord.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { Command } from '../../types/Command.js';
 import { updateInviteMessage } from '../staff_commands/updateClanInvite.js';

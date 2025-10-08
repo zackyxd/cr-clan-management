@@ -1,7 +1,7 @@
 // worker.ts
 import { Worker } from 'bullmq';
 import { inviteQueue } from './queues/inviteQueue.js';
-import pool from './db.js';
+import { pool } from './db.js';
 import { Client, DMChannel, GatewayIntentBits, NewsChannel, TextChannel } from 'discord.js';
 const discordClient = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
 import 'dotenv-flow/config';

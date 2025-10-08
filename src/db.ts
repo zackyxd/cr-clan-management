@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 
-const pool = new Pool({
+export const pool = new Pool({
   user: process.env.PGUSER,
   host: process.env.PGHOST,
   database: process.env.PGDATABASE,
@@ -11,5 +11,3 @@ const pool = new Pool({
   idleTimeoutMillis: 30_000, // close idle clients after 30 seconds
   connectionTimeoutMillis: 2_000, // return error if connection takes 2s or longer
 });
-
-export default pool;

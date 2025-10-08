@@ -1,5 +1,5 @@
 import { ChatInputCommandInteraction, EmbedBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { Command } from '../../types/Command.js';
 import { normalizeTag } from '../../api/CR_API.js';
 import { buildFindMember } from '../../sql_queries/users.js';

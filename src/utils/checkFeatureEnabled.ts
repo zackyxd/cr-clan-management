@@ -1,5 +1,5 @@
 import { EmbedBuilder } from 'discord.js';
-import pool from '../db.js';
+import { pool } from '../db.js';
 import { EmbedColor } from '../types/EmbedUtil.js';
 
 export async function checkFeatureEnabled(

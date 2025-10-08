@@ -8,7 +8,7 @@ import {
   ActionRowBuilder,
   EmbedBuilder,
 } from 'discord.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import logger from '../../logger.js';
 import { Command } from '../../types/Command.js';
 import { makeCustomId } from '../../utils/customId.js';

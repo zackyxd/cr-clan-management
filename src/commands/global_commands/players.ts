@@ -10,7 +10,7 @@ import {
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import fastq from 'fastq';
 import { CR_API, FetchError, isFetchError, PlayerResult } from '../../api/CR_API.js';
 import { formatPlayerData } from '../../api/FORMAT_DATA.js';

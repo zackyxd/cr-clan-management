@@ -1,7 +1,7 @@
 import EMBED_SERVER_FEATURE_CONFIG, {
   buildServerFeatureEmbedAndComponents,
 } from '../../config/serverSettingsConfig.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { ButtonHandler } from '../handleButtonInteraction.js';
 import { FeatureTable, getFeatureConfig } from './toggles.js';

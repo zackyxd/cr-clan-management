@@ -7,7 +7,7 @@ import {
 } from '../src/services/guilds.ts';
 import { mockGuild } from '../src/types/mockGuild.ts';
 import { PoolClient } from 'pg';
-import pool from '../src/db.ts';
+import { pool } from '../src/db.ts';
 
 describe('Init guild', () => {
   const guildId = '555';

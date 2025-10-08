@@ -6,7 +6,7 @@ import {
   EmbedBuilder,
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
-import pool from '../../db.js';
+import { pool } from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { DEFAULT_CLAN_SETTINGS } from '../../config/clanSettingsConfig.js';
 

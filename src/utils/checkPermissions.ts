@@ -10,7 +10,7 @@ import {
 } from 'discord.js';
 import format from 'pg-format';
 import { EmbedColor } from '../types/EmbedUtil.js';
-import pool from '../db.js';
+import { pool } from '../db.js';
 
 export type InteractionTypes =
   | ButtonInteraction
