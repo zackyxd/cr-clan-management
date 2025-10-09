@@ -22,7 +22,7 @@ export async function linkClan(
     };
   }
 
-  // Get max_clans from linking_settings to ensure they arent going to be over
+  // Get max_clans from server_settings to ensure they arent going to be over
   const maxClansRes = await client.query(
     `SELECT max_clans
     FROM server_settings

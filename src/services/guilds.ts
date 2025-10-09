@@ -21,7 +21,7 @@ const FEATURE_SETTINGS_DEFAULTS: Record<
   { table: string; defaults: Record<string, boolean | string | number> }
 > = {
   links: {
-    table: 'linking_settings',
+    table: 'link_settings',
     defaults: {
       rename_players: false,
     },

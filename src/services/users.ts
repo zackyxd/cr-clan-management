@@ -23,7 +23,7 @@ export async function linkUser(
     };
   }
 
-  // Get max_links from linking_settings to ensure they arent going to be over
+  // Get max_links from link_settings to ensure they arent going to be over
   const maxLinkRes = await client.query(
     `SELECT max_player_links
     FROM server_settings
@@ -64,7 +64,7 @@ export async function linkUser(
       return {
         embed: new EmbedBuilder()
           .setDescription(
-            `<@${alreadyLinkedDiscordId}> was already linked to this account \`(${playertag})\`. No Action Needed.`
+            `<@${alreadyLinkedDiscordId}> was already linked to this account \`(${playertag})\`.\nNo Action Needed.`
           )
           .setColor(EmbedColor.WARNING),
       };

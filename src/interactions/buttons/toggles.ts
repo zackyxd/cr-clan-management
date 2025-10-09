@@ -81,7 +81,7 @@ const toggleButton: ButtonHandler = {
     if (toggleName === 'rename_players') {
       await pool.query(
         `
-        UPDATE linking_settings
+        UPDATE link_settings
         SET ${toggleName} = NOT ${toggleName}
         WHERE guild_id = $1
         RETURNING ${toggleName}

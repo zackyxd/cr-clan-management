@@ -10,7 +10,7 @@ export const shorthands = undefined;
  */
 export const up = (pgm) => {
 
-  pgm.createTable('linking_settings', {
+  pgm.createTable('link_settings', {
     guild_id: { type: 'varchar(30)', references: 'guilds(guild_id)', onDelete: 'CASCADE', primaryKey: true },
     rename_players: { type: 'boolean', default: false }
   });
@@ -22,5 +22,5 @@ export const up = (pgm) => {
  * @returns {Promise<void> | void}
  */
 export const down = (pgm) => {
-  pgm.dropTable('linking_settings');
+  pgm.dropTable('link_settings');
 };

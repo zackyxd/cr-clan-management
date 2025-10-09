@@ -10,9 +10,9 @@ import { Command } from '../../types/Command.js';
 import { linkUser } from '../../services/users.js';
 import { pool } from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
-import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/checkPermissions.js';
-import { checkFeatureEnabled } from '../../utils/checkFeatureEnabled.js';
+import { checkValidRoles } from '../../utils/checkPermissions.js';
 import logger from '../../logger.js';
+import { checkFeature, checkLinkFeatureEnabled } from '../../utils/checkFeatureEnabled.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -33,27 +33,13 @@ const command: Command = {
       return;
     }
 
-    const check = await checkFeatureEnabled(guild.id, 'links');
-    if (!check.enabled) {
-      if (check.embed) {
-        await interaction.reply({ embeds: [check.embed], flags: MessageFlags.Ephemeral });
-      } else {
-        await interaction.reply({
-          content: 'Error showing embed for feature not enabled. Contact @Zacky',
-          flags: MessageFlags.Ephemeral,
-        });
-      }
+    const featureCheck = await checkFeature(interaction, guild.id, 'links');
+    if (!featureCheck) {
       return;
     }
 
-    const member = interaction.member instanceof GuildMember ? interaction.member : await guild.members.fetch(userId);
-
-    const getRoles = await pool.query(buildCheckHasRoleQuery(guild.id));
-    const { lower_leader_role_id, higher_leader_role_id } = getRoles.rows[0] ?? [];
-    const requiredRoleIds = [lower_leader_role_id, higher_leader_role_id].filter(Boolean) as string[];
-    const hasPerms = await checkPermissions('command', member, requiredRoleIds);
-    if (hasPerms && hasPerms.data) {
-      await interaction.reply({ embeds: [hasPerms], flags: MessageFlags.Ephemeral });
+    const roleCheck = await checkValidRoles(interaction, guild, userId);
+    if (!roleCheck) {
       return;
     }
 
@@ -90,17 +76,10 @@ const command: Command = {
         }
         await interaction.editReply({ embeds: [embed] });
         await client.query('COMMIT');
-        // Try to rename
+        // Try to rename if feature enabled
         try {
-          const renameEnabled = await pool.query(
-            `
-            SELECT rename_players
-            FROM linking_settings
-            WHERE guild_id = $1
-            `,
-            [guild.id]
-          );
-          if (renameEnabled.rows[0]['rename_players']) {
+          const renameEnabled = await checkLinkFeatureEnabled(guild.id, 'rename_players');
+          if (renameEnabled.enabled) {
             if (player_name) {
               // Fetch the member from the guild
               const member: GuildMember | null = await interaction.guild.members.fetch(user.id).catch(() => null);

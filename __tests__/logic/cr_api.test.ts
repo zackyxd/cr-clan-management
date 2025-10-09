@@ -1,4 +1,4 @@
-import { CR_API, normalizeTag } from '../src/api/CR_API.ts';
+import { CR_API, normalizeTag } from '../../src/api/CR_API.ts';
 
 describe('normalize tags', () => {
   const normalized = '#P9J292JCL';

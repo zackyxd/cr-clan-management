@@ -128,7 +128,7 @@ export const FEATURE_SETTINGS = {
   // },
 };
 export const SETTINGS_TABLES: Record<FeatureKey, string> = {
-  links: 'linking_settings',
+  links: 'link_settings',
   tickets: 'ticket_settings',
   clan_invites: 'clan_invite_settings',
 };

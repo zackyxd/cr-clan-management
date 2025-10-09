@@ -64,7 +64,7 @@ const relinkUserButton: ButtonHandler = {
           const renameEnabled = await pool.query(
             `
             SELECT rename_players
-            FROM linking_settings
+            FROM link_settings
             WHERE guild_id = $1
             `,
             [interaction.guild.id]
