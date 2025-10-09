@@ -12,7 +12,7 @@ import {
   TextChannel,
 } from 'discord.js';
 import { Command } from '../../types/Command.js';
-import { checkFeatureEnabled } from '../../utils/checkFeatureEnabled.js';
+import { checkFeature } from '../../utils/checkFeatureEnabled.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { pool } from '../../db.js';
 import { normalizeTag } from '../../api/CR_API.js';
@@ -38,20 +38,12 @@ const command: Command = {
       return;
     }
 
-    const check = await checkFeatureEnabled(guild.id, 'clan_invites');
-    if (!check.enabled) {
-      if (check.embed) {
-        await interaction.reply({ embeds: [check.embed], flags: MessageFlags.Ephemeral });
-      } else {
-        await interaction.reply({
-          content: 'Error showing embed for feature not enabled. Contact @Zacky',
-          flags: MessageFlags.Ephemeral,
-        });
-      }
+    const featureCheck = await checkFeature(interaction, guild.id, 'clan_invites');
+    if (!featureCheck) {
       return;
     }
 
-    const allowed = await checkPerms(interaction, guild.id, 'button', 'either', {
+    const allowed = await checkPerms(interaction, guild.id, 'command', 'either', {
       hideNoPerms: true,
       deferEphemeral: true,
     });

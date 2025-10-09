@@ -9,6 +9,7 @@ import { Command } from '../../types/Command.js';
 import { pool } from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { DEFAULT_CLAN_SETTINGS } from '../../config/clanSettingsConfig.js';
+import { checkPerms } from '../../utils/checkPermissions.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -29,6 +30,12 @@ const command: Command = {
       await interaction.reply({ content: '❌ This command must be used in a server.', flags: MessageFlags.Ephemeral });
       return;
     }
+
+    const allowed = await checkPerms(interaction, guild.id, 'command', 'either', {
+      hideNoPerms: true,
+      deferEphemeral: true,
+    });
+    if (!allowed) return;
 
     const roleSelected = interaction.options.getRole('role');
     const abbreviation = interaction.options.getString('abbreviation')?.toLowerCase();

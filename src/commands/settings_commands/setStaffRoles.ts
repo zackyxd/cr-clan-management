@@ -22,8 +22,8 @@ const command: Command = {
         .setRequired(true)
     )
     .addRoleOption((option) => option.setName('role').setDescription('Which role to set?').setRequired(true))
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .setContexts(InteractionContextType.Guild),
+    .setContexts(InteractionContextType.Guild)
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const guild = interaction.guild;

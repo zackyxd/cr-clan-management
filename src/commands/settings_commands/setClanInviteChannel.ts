@@ -28,6 +28,7 @@ const command: Command = {
       await interaction.reply({ content: '❌ This command must be used in a server.', flags: MessageFlags.Ephemeral });
       return;
     }
+
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const channel = interaction.options.getChannel('channel');
     if (!channel || !channel.id || !(channel instanceof TextChannel || channel instanceof NewsChannel)) {

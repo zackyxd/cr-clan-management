@@ -1,7 +1,7 @@
-import { ChatInputCommandInteraction, GuildMember, MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { pool } from '../../db.js';
-import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/checkPermissions.js';
+import { checkPerms } from '../../utils/checkPermissions.js';
 import { unlinkUser } from '../../services/users.js';
 
 const command: Command = {
@@ -13,23 +13,18 @@ const command: Command = {
     ),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const guild = interaction.guild;
-    const userId = interaction.user.id;
+    // const userId = interaction.user.id;
 
     if (!guild) {
       await interaction.reply({ content: '❌ This command must be used in a server.', flags: MessageFlags.Ephemeral });
       return;
     }
 
-    const member = interaction.member instanceof GuildMember ? interaction.member : await guild.members.fetch(userId);
-
-    const getRoles = await pool.query(buildCheckHasRoleQuery(guild.id));
-    const { lower_leader_role_id, higher_leader_role_id } = getRoles.rows[0] ?? [];
-    const requiredRoleIds = [lower_leader_role_id, higher_leader_role_id].filter(Boolean) as string[];
-    const hasPerms = await checkPermissions('command', member, requiredRoleIds);
-    if (hasPerms && hasPerms.data) {
-      await interaction.reply({ embeds: [hasPerms], flags: MessageFlags.Ephemeral });
-      return;
-    }
+    const allowed = await checkPerms(interaction, guild.id, 'command', 'either', {
+      hideNoPerms: true,
+      deferEphemeral: true,
+    });
+    if (!allowed) return;
 
     const playertag = interaction.options.getString('playertag') as string;
 

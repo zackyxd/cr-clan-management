@@ -10,7 +10,7 @@ import { Command } from '../../types/Command.js';
 import { linkUser } from '../../services/users.js';
 import { pool } from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
-import { checkValidRoles } from '../../utils/checkPermissions.js';
+import { checkPerms } from '../../utils/checkPermissions.js';
 import logger from '../../logger.js';
 import { checkFeature, checkLinkFeatureEnabled } from '../../utils/checkFeatureEnabled.js';
 
@@ -26,7 +26,7 @@ const command: Command = {
     ),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const guild = interaction.guild;
-    const userId = interaction.user.id;
+    // const userId = interaction.user.id;
 
     if (!guild) {
       await interaction.reply({ content: '❌ This command must be used in a server.', flags: MessageFlags.Ephemeral });
@@ -38,10 +38,11 @@ const command: Command = {
       return;
     }
 
-    const roleCheck = await checkValidRoles(interaction, guild, userId, 'either', 'command');
-    if (!roleCheck) {
-      return;
-    }
+    const allowed = await checkPerms(interaction, guild.id, 'command', 'either', {
+      hideNoPerms: true,
+      deferEphemeral: true,
+    });
+    if (!allowed) return;
 
     const user: User | null = interaction.options.getUser('user');
     if (!user) {

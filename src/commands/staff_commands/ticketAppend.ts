@@ -1,8 +1,8 @@
-import { ChatInputCommandInteraction, EmbedBuilder, GuildMember, MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, EmbedBuilder, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { pool } from '../../db.js';
-import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/checkPermissions.js';
-import { checkTicketFeatureEnabled } from '../../utils/checkFeatureEnabled.js';
+import { checkPerms } from '../../utils/checkPermissions.js';
+import { checkFeature } from '../../utils/checkFeatureEnabled.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 
 const command: Command = {
@@ -14,7 +14,7 @@ const command: Command = {
     ),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const guild = interaction.guild;
-    const userId = interaction.user.id;
+    // const userId = interaction.user.id;
 
     if (!guild) {
       await interaction.reply({
@@ -24,29 +24,16 @@ const command: Command = {
       return;
     }
 
-    const check = await checkTicketFeatureEnabled(guild.id, 'allow_append');
-    if (!check.enabled) {
-      if (check.embed) {
-        await interaction.reply({ embeds: [check.embed], flags: MessageFlags.Ephemeral });
-      } else {
-        await interaction.reply({
-          content: 'Error showing embed for feature not enabled. Contact @Zacky',
-          flags: MessageFlags.Ephemeral,
-        });
-      }
+    const featureCheck = await checkFeature(interaction, guild.id, 'allow_append');
+    if (!featureCheck) {
       return;
     }
 
-    const member = interaction.member instanceof GuildMember ? interaction.member : await guild.members.fetch(userId);
-
-    const getRoles = await pool.query(buildCheckHasRoleQuery(guild.id));
-    const { lower_leader_role_id, higher_leader_role_id } = getRoles.rows[0] ?? [];
-    const requiredRoleIds = [lower_leader_role_id, higher_leader_role_id].filter(Boolean) as string[];
-    const hasPerms = await checkPermissions('command', member, requiredRoleIds);
-    if (hasPerms && hasPerms.data) {
-      await interaction.reply({ embeds: [hasPerms], flags: MessageFlags.Ephemeral });
-      return;
-    }
+    const allowed = await checkPerms(interaction, guild.id, 'command', 'either', {
+      hideNoPerms: true,
+      deferEphemeral: true,
+    });
+    if (!allowed) return;
 
     const textWanted = interaction.options.getString('text');
 

@@ -15,8 +15,8 @@ const command: Command = {
     .setName('delete-staff-roles')
     .setDescription(`(Manager) Delete a staff role from being able to use certain commands.`)
     .addRoleOption((option) => option.setName('role').setDescription('Which role to delete?').setRequired(true))
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .setContexts(InteractionContextType.Guild),
+    .setContexts(InteractionContextType.Guild)
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const guild = interaction.guild;
