@@ -9,6 +9,7 @@ import {
   buildRemoveGuildsQuery,
 } from '../sql_queries/guilds.js';
 
+// TODO add new features here
 const DEFAULT_FEATURES: Record<string, boolean> = {
   tickets: false,
   links: true,

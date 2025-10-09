@@ -8,12 +8,30 @@ import {
 import { mockGuild } from '../../src/types/mockGuild.ts';
 import { PoolClient } from 'pg';
 import { pool } from '../../src/db.ts';
+import { resetDB } from '../helpers/dbReset.ts';
+
+const defaultFeatures = { tickets: false, links: true, clan_invites: true };
+
+async function expectGuildState(client, guildId, expected) {
+  const guildRes = await client.query('SELECT * FROM guilds WHERE guild_id = $1', [guildId]);
+  expect(guildRes.rows.length).toBe(1);
+  expect(guildRes.rows[0].in_guild).toBe(expected.in_guild);
+  expect(guildRes.rows[0].left_at).toBe(expected.left_at);
+
+  const featureRes = await client.query('SELECT * FROM guild_features WHERE guild_id = $1', [guildId]);
+  for (const [feature, enabled] of Object.entries(defaultFeatures)) {
+    const row = featureRes.rows.find((r) => r.feature_name === feature);
+    expect(row).toBeDefined();
+    expect(row.is_enabled).toBe(enabled);
+  }
+}
 
 describe('Init guild', () => {
   const guildId = '555';
   let client: PoolClient;
   beforeEach(async () => {
     client = await pool.connect();
+    await resetDB(client);
     await client.query('BEGIN');
   });
 
@@ -24,96 +42,53 @@ describe('Init guild', () => {
 
   test('initial guilds table is empty', async () => {
     const result = await client.query('SELECT COUNT(*) FROM guilds');
-    expect(Number(result.rows[0].count)).toBe(0); // Convert to number before checking
+    expect(Number(result.rows[0].count)).toBe(0);
   });
 
   test('should insert 1 guild', async () => {
     await initialize_guild(client, guildId);
-
-    const result = await client.query('SELECT * FROM guilds WHERE guild_id = $1', [guildId]);
-    expect(result.rows.length).toBe(1);
-    expect(result.rows[0].guild_id).toBe('555');
-    expect(result.rows[0].in_guild).toBe(true);
-    expect(result.rows[0].left_at).toBe(null);
-
-    const featureResult = await client.query(`SELECT * FROM guild_features WHERE guild_id = $1`, [guildId]);
-    expect(featureResult.rows[0].feature_name).toBe('tickets');
-    expect(featureResult.rows[0].is_enabled).toBe(false);
+    await expectGuildState(client, guildId, { in_guild: true, left_at: null });
   });
 
-  test('insert_guilds_on_startup inserts 2 guilds as joined', async () => {
-    await client.query(`
-    INSERT INTO guilds (guild_id, in_guild, joined_at)
-    VALUES 
-      ('111', true, NOW()),
-      ('333', true, NOW());
-  `);
-
+  test.each([
+    [
+      ['111', '333'],
+      ['222', '444'],
+    ],
+  ])('insert_guilds_on_startup inserts new guilds', async (existingIds, newIds) => {
+    // Seed existing guilds
+    for (const id of existingIds) {
+      await initialize_guild(client, id);
+    }
     const guilds = new Collection<string, Guild>();
-    guilds.set('222', mockGuild('222'));
-    guilds.set('444', mockGuild('444'));
-
+    newIds.forEach((id) => guilds.set(id, mockGuild(id)));
     await insert_guilds_on_startup(client, guilds);
-    let result = await client.query('SELECT COUNT(*) FROM guilds');
-    expect(Number(result.rows[0].count)).toBe(4);
 
-    result = await client.query(`SELECT * from guilds;`);
-    const guild222 = result.rows.find((r) => r.guild_id === '222');
-    const guild444 = result.rows.find((r) => r.guild_id === '444');
-
-    expect(typeof guild222.guild_id).toBe('string');
-    expect(guild222.in_guild).toBe(true);
-    expect(guild222.left_at).toBeNull();
-
-    expect(typeof guild444.guild_id).toBe('string');
-    expect(guild444.in_guild).toBe(true);
-    expect(guild444.left_at).toBeNull();
+    for (const id of [...existingIds, ...newIds]) {
+      await expectGuildState(client, id, { in_guild: true, left_at: null });
+    }
   });
 
   test('insert 1 guild, then remove', async () => {
     await initialize_guild(client, guildId);
     await remove_guild(client, guildId);
-    const result2 = await client.query('SELECT * FROM guilds WHERE guild_id = $1', [guildId]);
-    expect(result2.rows.length).toBe(1);
-    expect(result2.rows[0].guild_id).toBe('555');
-    expect(result2.rows[0].in_guild).toBe(false);
-    expect(result2.rows[0].left_at).toBeInstanceOf(Date); // or .not.toBeNull()
+    const result = await client.query('SELECT * FROM guilds WHERE guild_id = $1', [guildId]);
+    expect(result.rows[0].in_guild).toBe(false);
+    expect(result.rows[0].left_at).not.toBeNull();
   });
 
   test('remove_guilds_on_start marks missing guilds as left', async () => {
-    // Insert 3 guilds as if they were in DB
-    await client.query(`
-    INSERT INTO guilds (guild_id, in_guild, joined_at)
-    VALUES 
-      ('111', true, NOW()),
-      ('222', true, NOW()),
-      ('333', true, NOW());
-  `);
+    const ids = ['111', '222', '333'];
+    for (const id of ids) await initialize_guild(client, id);
 
-    // Simulate bot is currently only in '111' and '333'
     const guilds = new Collection<string, Guild>();
     guilds.set('111', mockGuild('111'));
     guilds.set('333', mockGuild('333'));
 
-    // Run the function
     await remove_guilds_on_startup(client, guilds);
 
-    // Check DB for results
-    const result = await client.query(`SELECT * FROM guilds ORDER BY guild_id`);
-
-    const guild111 = result.rows.find((r) => r.guild_id === '111');
-    const guild222 = result.rows.find((r) => r.guild_id === '222');
-    const guild333 = result.rows.find((r) => r.guild_id === '333');
-
-    // Still in guilds
-    expect(guild111.in_guild).toBe(true);
-    expect(guild111.left_at).toBeNull();
-
-    expect(guild333.in_guild).toBe(true);
-    expect(guild333.left_at).toBeNull();
-
-    // Was removed
-    expect(guild222.in_guild).toBe(false);
-    expect(guild222.left_at instanceof Date).toBe(true);
+    const result = await client.query('SELECT * FROM guilds ORDER BY guild_id');
+    expect(result.rows.find((r) => r.guild_id === '222').in_guild).toBe(false);
+    expect(result.rows.find((r) => r.guild_id === '222').left_at).not.toBeNull();
   });
 });
