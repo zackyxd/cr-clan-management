@@ -11,6 +11,7 @@ import { checkPerms } from '../../utils/checkPermissions.js';
 import { repostInviteMessage, updateInviteMessage } from '../../commands/staff_commands/updateClanInvite.js';
 
 // When a settings for a specific clan is clicked in /clan-settings
+// TOGGLES ONLY
 const clanSettingsButton: ButtonHandler = {
   customId: 'clanSettings',
   async execute(interaction, parsed) {

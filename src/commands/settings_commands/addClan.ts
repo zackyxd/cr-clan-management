@@ -44,7 +44,7 @@ const command: Command = {
     const client = await pool.connect();
     await client.query('BEGIN');
     try {
-      const { embed, components } = await linkClan(client, guild.id, clantag, abbreviation);
+      const { embed } = await linkClan(client, guild.id, clantag, abbreviation);
       await interaction.editReply({ embeds: [embed] });
       await client.query('COMMIT');
     } catch (error) {

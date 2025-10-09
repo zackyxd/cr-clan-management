@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, EmbedBuilder } from 'discord.js';
+import { EmbedBuilder } from 'discord.js';
 import { CR_API, FetchError, normalizeTag } from '../api/CR_API.js';
 import { PoolClient } from 'pg';
 import { EmbedColor } from '../types/EmbedUtil.js';
@@ -11,7 +11,7 @@ export async function linkClan(
   guildId: string,
   clantag: string,
   abbreviation: string
-): Promise<{ embed: EmbedBuilder; components?: ActionRowBuilder<ButtonBuilder>[] }> {
+): Promise<{ embed: EmbedBuilder }> {
   clantag = normalizeTag(clantag);
   const confirmClanExists = await CR_API.getClan(clantag);
   if ('error' in confirmClanExists) {
@@ -55,15 +55,16 @@ export async function linkClan(
       confirmClanExists.clanWarTrophies,
       abbreviation
     );
-    const res = await client.query(insertClanSQL);
+    await client.query(insertClanSQL);
+
     // Insert settings too
     await client.query(
       `
     INSERT INTO clan_settings (guild_id, clantag, settings)
-    VALUES ($1, $2, '{}')
+    VALUES ($1, $2, $3::json)
     ON CONFLICT (guild_id, clantag) DO NOTHING
     `,
-      [guildId, clantag]
+      [guildId, clantag, JSON.stringify({ abbreviation })]
     );
     return {
       embed: new EmbedBuilder()

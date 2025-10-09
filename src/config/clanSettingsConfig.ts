@@ -107,6 +107,13 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
         .setLabel(`Edit ${settingConfig.label}`)
         .setCustomId(makeCustomId('button', 'open_modal', guildId, { extra: [settingConfig.key, clantag], ownerId }))
         .setStyle(ButtonStyle.Secondary);
+    } else if (settingConfig.type === 'role') {
+      button = new ButtonBuilder()
+        .setLabel(`Edit ${settingConfig.label}`)
+        .setCustomId(
+          makeCustomId('button', 'open_modal', guildId, { extra: [settingConfig.key, clantag, clanName], ownerId })
+        )
+        .setStyle(ButtonStyle.Secondary);
     }
     // For 'role', you might want to use a slash command or a select menu, so you can just show info.
 

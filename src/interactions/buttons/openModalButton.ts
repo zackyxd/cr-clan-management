@@ -1,4 +1,12 @@
-import { ButtonInteraction, ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
+import {
+  ButtonInteraction,
+  ModalBuilder,
+  ActionRowBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  LabelBuilder,
+  RoleSelectMenuBuilder,
+} from 'discord.js';
 import { makeCustomId, parseCustomId } from '../../utils/customId.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 
@@ -58,17 +66,21 @@ export default {
       });
       if (!allowed) return;
       const clantag = extra[1];
+
       const modal = new ModalBuilder()
+        .setTitle('Change Abbreviation')
         .setCustomId(makeCustomId('modal', action, guildId, { extra: [clantag] }))
-        .setTitle('Which abbreviation do you want to use?')
-        .addComponents(
-          new ActionRowBuilder<TextInputBuilder>().addComponents(
-            new TextInputBuilder()
-              .setCustomId('input')
-              .setLabel('Max 10 characters')
-              .setStyle(TextInputStyle.Short)
-              .setMaxLength(10)
-          )
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel('Select new abbreviation')
+            .setDescription('1-10 characters')
+            .setTextInputComponent(
+              new TextInputBuilder()
+                .setCustomId('input')
+                .setStyle(TextInputStyle.Short)
+                .setMinLength(1)
+                .setMaxLength(10)
+            )
         );
       return interaction.showModal(modal);
     }
@@ -83,14 +95,36 @@ export default {
 
       const modal = new ModalBuilder()
         .setCustomId(makeCustomId('modal', action, guildId))
-        .setTitle('Clan Invite.')
-        .addComponents(
-          new ActionRowBuilder<TextInputBuilder>().addComponents(
-            new TextInputBuilder()
-              .setLabel('Paste the clan invite.')
-              .setCustomId('input')
-              .setStyle(TextInputStyle.Short)
-          )
+        .setTitle('Update Clan Invite')
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel('Paste Clan Invite')
+            .setTextInputComponent(
+              new TextInputBuilder()
+                .setCustomId('input')
+                .setStyle(TextInputStyle.Short)
+                .setMinLength(1)
+                .setMaxLength(10)
+            )
+        );
+
+      return interaction.showModal(modal);
+    }
+
+    // Setting clan role
+    else if (action === 'clan_role_id') {
+      const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {
+        hideNoPerms: true,
+        skipDefer: true,
+      });
+      if (!allowed) return;
+      const modal = new ModalBuilder()
+        .setTitle('Set Clan Role')
+        .setCustomId(makeCustomId('modal', action, guildId, { extra: [extra[1], extra[2]] })) // clantag, clan name
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel('Role Select')
+            .setRoleSelectMenuComponent(new RoleSelectMenuBuilder().setCustomId('input').setMaxValues(1))
         );
       return interaction.showModal(modal);
     }
