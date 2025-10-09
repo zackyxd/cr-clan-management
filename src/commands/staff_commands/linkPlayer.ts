@@ -38,7 +38,7 @@ const command: Command = {
       return;
     }
 
-    const roleCheck = await checkValidRoles(interaction, guild, userId);
+    const roleCheck = await checkValidRoles(interaction, guild, userId, 'either', 'command');
     if (!roleCheck) {
       return;
     }

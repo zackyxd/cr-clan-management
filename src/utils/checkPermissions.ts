@@ -170,14 +170,20 @@ export async function checkPerms(
 export async function checkValidRoles(
   interaction: ChatInputCommandInteraction,
   guild: Guild,
-  userId: string
+  userId: string,
+  level: 'lower' | 'higher' | 'either' = 'either',
+  item: 'command' | 'select menu' | 'button' | 'modal'
 ): Promise<boolean> {
   const member = interaction.member instanceof GuildMember ? interaction.member : await guild.members.fetch(userId);
 
   const getRoles = await pool.query(buildCheckHasRoleQuery(guild.id));
-  const { lower_leader_role_id, higher_leader_role_id } = getRoles.rows[0] ?? [];
-  const requiredRoleIds = [lower_leader_role_id, higher_leader_role_id].filter(Boolean) as string[];
-  const hasPerms = await checkPermissions('command', member, requiredRoleIds);
+  const { lower_leader_role_id, higher_leader_role_id } = getRoles.rows[0] ?? {};
+  let requiredRoleIds: string[] = [];
+  if (level === 'lower') requiredRoleIds = lower_leader_role_id ? [lower_leader_role_id] : [];
+  else if (level === 'higher') requiredRoleIds = higher_leader_role_id ? [higher_leader_role_id] : [];
+  else requiredRoleIds = [lower_leader_role_id, higher_leader_role_id].filter(Boolean) as string[];
+
+  const hasPerms = await checkPermissions(item, member, requiredRoleIds);
   if (hasPerms && hasPerms.data) {
     await interaction.reply({ embeds: [hasPerms], flags: MessageFlags.Ephemeral });
     return false;
