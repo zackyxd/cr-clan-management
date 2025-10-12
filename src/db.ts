@@ -11,3 +11,5 @@ export const pool = new Pool({
   idleTimeoutMillis: 30_000, // close idle clients after 30 seconds
   connectionTimeoutMillis: 2_000, // return error if connection takes 2s or longer
 });
+
+// export default pool;

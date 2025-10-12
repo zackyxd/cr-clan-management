@@ -17,6 +17,8 @@
     "migrate:test:reset": "npm run migrate:test:down-all && npm run migrate:test:up",
     "start:dev": "npm run clean && tsc && NODE_ENV=dev node dist/bot.js",
     "start:prod": "npm run clean && tsc && NODE_ENV=prod node dist/bot.js",
+    "worker:dev": "NODE_ENV=dev npx tsx src/worker.ts",
+    "worker:prod": "npm run clean && tsc && NODE_ENV=prod node dist/worker.js",
     "test": "node --no-warnings --experimental-vm-modules $(npx --no-install which jest) --runInBand"
   },
   "keywords": [],
@@ -33,7 +35,8 @@
     "globals": "^16.3.0",
     "jest": "^30.0.4",
     "nsx": "^0.0.1",
-    "ts-jest": "^29.4.0",
+    "ts-jest": "^29.4.4",
+    "ts-node": "^10.9.2",
     "tsx": "^4.20.3",
     "typescript-eslint": "^8.37.0"
   },

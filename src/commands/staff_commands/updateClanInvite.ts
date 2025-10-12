@@ -17,11 +17,11 @@ import { checkPerms } from '../../utils/checkPermissions.js';
 import { pool } from '../../db.js';
 import { normalizeTag } from '../../api/CR_API.js';
 import { BOTCOLOR, EmbedColor } from '../../types/EmbedUtil.js';
-import { inviteQueue } from '../../queues/inviteQueue.js';
 import { Pool, PoolClient } from 'pg';
 import { makeCustomId } from '../../utils/customId.js';
 import logger from '../../logger.js';
 import { INVITE_EXPIRY_INTERVAL_SQL, INVITE_EXPIRY_MS, safeRemoveJob } from '../../config/clanInvitesConfig.js';
+import { inviteQueue } from '../../queues/queueManager.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()

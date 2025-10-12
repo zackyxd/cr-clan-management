@@ -9,12 +9,19 @@ import {
 } from 'discord.js';
 import { makeCustomId, parseCustomId } from '../../utils/customId.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
+import { getClanSettingsData } from '../../cache/clanSettingsDataCache.js';
 
 export default {
   customId: 'open_modal',
   async execute(interaction: ButtonInteraction) {
     const { guildId, extra } = parseCustomId(interaction.customId);
-    const action = extra[0];
+    const cacheKey = extra[0];
+
+    // Try to get data from cache (for clan settings)
+    const settingsData = getClanSettingsData(cacheKey);
+
+    // If we have cache data, use it; otherwise treat as legacy action
+    const action = settingsData?.settingKey || cacheKey;
     console.log(action);
     // Ticket settings change text
     if (action === 'opened_identifier' || action === 'closed_identifier') {
@@ -65,7 +72,9 @@ export default {
         skipDefer: true,
       });
       if (!allowed) return;
-      const clantag = extra[1];
+
+      // Get clantag from cache data or fallback to legacy extra[1]
+      const clantag = settingsData?.clantag || extra[1];
 
       const modal = new ModalBuilder()
         .setTitle('Change Abbreviation')
@@ -104,7 +113,7 @@ export default {
                 .setCustomId('input')
                 .setStyle(TextInputStyle.Short)
                 .setMinLength(1)
-                .setMaxLength(10)
+                .setMaxLength(150)
             )
         );
 
@@ -118,9 +127,14 @@ export default {
         skipDefer: true,
       });
       if (!allowed) return;
+
+      // Get data from cache or fallback to legacy extra
+      const clantag = settingsData?.clantag || extra[1];
+      const clanName = settingsData?.clanName || extra[2];
+
       const modal = new ModalBuilder()
         .setTitle('Set Clan Role')
-        .setCustomId(makeCustomId('modal', action, guildId, { extra: [extra[1], extra[2]] })) // clantag, clan name
+        .setCustomId(makeCustomId('modal', action, guildId, { extra: [clantag, clanName] }))
         .addLabelComponents(
           new LabelBuilder()
             .setLabel('Role Select')

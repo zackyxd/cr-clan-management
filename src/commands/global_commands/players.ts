@@ -15,7 +15,6 @@ import fastq from 'fastq';
 import { CR_API, FetchError, isFetchError, PlayerResult } from '../../api/CR_API.js';
 import { formatPlayerData } from '../../api/FORMAT_DATA.js';
 import { playerEmbedCache } from '../../cache/playerEmbedCache.js';
-import logger from '../../logger.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -126,7 +125,6 @@ const command: Command = {
       }
     }
     playerEmbedCache.set(interaction.id, embedMap);
-    setTimeout(() => playerEmbedCache.delete(interaction.id), 5 * 60 * 1000);
 
     const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
     // TODO fix needing firstEmbed to do this, it should always exist
@@ -139,13 +137,13 @@ const command: Command = {
     }
     await interaction.editReply({ embeds: [firstEmbed], components: [row] });
 
+    // Remove components after 5 minutes so select menu doesn't stay forever
     setTimeout(async () => {
       try {
-        // Remove components from the message
         await interaction.editReply({ components: [] });
       } catch (error) {
-        logger.warn(`Could not update /players to remove select menu: ${error}`);
-        // Optionally log error if message was deleted or already edited
+        // Message might have been deleted or interaction expired
+        console.warn(`Could not remove components from /players command: ${error}`);
       }
     }, 5 * 60 * 1000);
   },

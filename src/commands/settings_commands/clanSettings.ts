@@ -13,7 +13,6 @@ import logger from '../../logger.js';
 import { Command } from '../../types/Command.js';
 import { makeCustomId } from '../../utils/customId.js';
 import { BOTCOLOR, EmbedColor } from '../../types/EmbedUtil.js';
-import { clanEmbedCache } from '../../cache/clanEmbedCache.js';
 import { buildClanSettingsView } from '../../config/clanSettingsConfig.js';
 
 const command: Command = {
@@ -36,7 +35,7 @@ const command: Command = {
 
     await interaction.deferReply();
 
-    const clanArg = interaction.options.getString('clan');
+    const clanArg = interaction.options.getString('clan-abbreviation');
 
     let components;
     let embed;
@@ -60,7 +59,7 @@ const command: Command = {
         await interaction.editReply({ embeds: [embed] });
         return;
       }
-      const selectMenu = await buildClanSelectMenu(guild.id, interaction.user.id, interaction.id);
+      const selectMenu = await buildClanSelectMenu(guild.id, interaction.user.id);
       ({ embed, components } = await buildClanSettingsView(guild.id, row.clan_name, row.clantag, interaction.user.id));
 
       // Make sure selectMenu is wrapped inside an ActionRow
@@ -75,7 +74,7 @@ const command: Command = {
       });
     } else {
       // Show select menu
-      const selectMenu = await buildClanSelectMenu(guild.id, interaction.user.id, interaction.id);
+      const selectMenu = await buildClanSelectMenu(guild.id, interaction.user.id);
       embed = new EmbedBuilder()
         .setTitle('Select a clan to manage')
         .setColor(BOTCOLOR)
@@ -86,7 +85,7 @@ const command: Command = {
   },
 };
 
-export async function buildClanSelectMenu(guildId: string, ownerId: string, interactionId: string) {
+export async function buildClanSelectMenu(guildId: string, ownerId: string) {
   const res = await pool.query(
     `
     SELECT c.clantag, c.clan_name, c.family_clan, cs.settings
@@ -143,12 +142,6 @@ export async function buildClanSelectMenu(guildId: string, ownerId: string, inte
           .setColor(EmbedColor.FAIL)
       );
     }
-  }
-
-  // Store in cache if interactionId is provided
-  if (interactionId) {
-    clanEmbedCache.set(interactionId, embedMap);
-    setTimeout(() => clanEmbedCache.delete(interactionId), 5 * 60 * 1000);
   }
 
   const selectMenu = new StringSelectMenuBuilder()

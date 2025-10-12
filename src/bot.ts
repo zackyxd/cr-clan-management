@@ -34,7 +34,6 @@ function getCommandFiles(dir: string): string[] {
 // Load command modules
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = getCommandFiles(commandsPath);
-console.log('Command files:', commandFiles);
 
 for (const file of commandFiles) {
   const fileUrl = pathToFileURL(file).href;

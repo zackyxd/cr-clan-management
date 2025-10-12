@@ -12,6 +12,7 @@ import {
 import { pool } from '../db.js';
 import { BOTCOLOR } from '../types/EmbedUtil.js';
 import { makeCustomId } from '../utils/customId.js';
+import { storeClanSettingsData } from '../cache/clanSettingsDataCache.js';
 
 // The features that will show under /clan-settings
 export const CLAN_FEATURE_SETTINGS = [
@@ -96,23 +97,43 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
     // Build button if editable via button
     let button: ButtonBuilder | null = null;
     if (settingConfig.type === 'toggle') {
+      const cacheKey = storeClanSettingsData({
+        settingKey: settingConfig.key,
+        clantag,
+        clanName,
+        guildId,
+        ownerId,
+      });
+
       button = new ButtonBuilder()
         .setLabel(`${value ? 'Disable' : 'Enable'} ${settingConfig.label}`)
-        .setCustomId(
-          makeCustomId('button', 'clanSettings', guildId, { cooldown: 2, extra: [settingConfig.key, clantag], ownerId })
-        )
+        .setCustomId(makeCustomId('button', 'clanSettings', guildId, { cooldown: 2, extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Primary);
     } else if (settingConfig.type === 'modal' || settingConfig.type === 'text') {
+      const cacheKey = storeClanSettingsData({
+        settingKey: settingConfig.key,
+        clantag,
+        clanName,
+        guildId,
+        ownerId,
+      });
+
       button = new ButtonBuilder()
         .setLabel(`Edit ${settingConfig.label}`)
-        .setCustomId(makeCustomId('button', 'open_modal', guildId, { extra: [settingConfig.key, clantag], ownerId }))
+        .setCustomId(makeCustomId('button', 'open_modal', guildId, { extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Secondary);
     } else if (settingConfig.type === 'role') {
+      const cacheKey = storeClanSettingsData({
+        settingKey: settingConfig.key,
+        clantag,
+        clanName,
+        guildId,
+        ownerId,
+      });
+
       button = new ButtonBuilder()
         .setLabel(`Edit ${settingConfig.label}`)
-        .setCustomId(
-          makeCustomId('button', 'open_modal', guildId, { extra: [settingConfig.key, clantag, clanName], ownerId })
-        )
+        .setCustomId(makeCustomId('button', 'open_modal', guildId, { extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Secondary);
     }
     // For 'role', you might want to use a slash command or a select menu, so you can just show info.

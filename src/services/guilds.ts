@@ -49,6 +49,13 @@ const FEATURE_SETTINGS_DEFAULTS: Record<
 };
 
 export async function sync_default_features(client: PoolClient): Promise<void> {
+
+  await client.query(
+    `INSERT INTO server_settings (guild_id)
+   SELECT guild_id FROM guilds
+   WHERE guild_id NOT IN (SELECT guild_id FROM server_settings)`
+  );
+
   // Get all existing guild-features pairs
   const res = await client.query(
     `
@@ -164,6 +171,9 @@ export async function initialize_guild(client: PoolClient, guildId: string): Pro
   // Insert into 'guilds' table
   const insertGuildSQL = buildInsertGuildQuery(guildId);
   await client.query(insertGuildSQL);
+
+  // Insert into 'server_settings' table with defaults
+  await client.query(`INSERT INTO server_settings (guild_id) VALUES ($1) ON CONFLICT (guild_id) DO NOTHING`, [guildId]);
 
   // Insert default features
   await insert_default_features(client, [guildId]);

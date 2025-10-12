@@ -5,6 +5,7 @@ import { linkUser, unlinkUser } from '../../src/services/users.ts';
 import { normalizeTag } from '../../src/api/CR_API.ts';
 import { buildUpsertRelinkPlayertag } from '../../src/sql_queries/users.ts';
 import { expectUnlinked, expectLinked } from '../helpers/dbAssertions.ts';
+
 describe('Linking logic', () => {
   let client: PoolClient;
   const guildId = '555';

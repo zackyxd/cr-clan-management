@@ -1,14 +1,16 @@
-// jest.config.ts
+// jest.config.js
 export default {
   preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
   extensionsToTreatAsEsm: ['.ts'],
-  moduleNameMapper: {
-    '^(\\.{1,2}/.*)\\.js$': '$1', // makes .js imports work with .ts files
-  },
+  moduleFileExtensions: ['ts', 'js', 'json', 'node'],
   transform: {
-    '^.+\\.ts$': ['ts-jest', { useESM: true }],
+    '^.+\\.ts$': ['ts-jest', {
+      useESM: true
+    }],
   },
-  setupFiles: ['<rootDir>/jest.env-setup.ts'],
-  setupFilesAfterEnv: ['./jest.setup.ts'],
+  moduleNameMapper: {
+    '^(\\.{1,2}/.*)\\.js$': ['$1.ts', '$1.js'],
+  },
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
 };

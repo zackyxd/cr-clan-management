@@ -9,6 +9,9 @@ import { fetchClanName } from '../../services/clans.js';
 import logger from '../../logger.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { repostInviteMessage, updateInviteMessage } from '../../commands/staff_commands/updateClanInvite.js';
+import { EmbedBuilder, MessageFlags } from 'discord.js';
+import { EmbedColor } from '../../types/EmbedUtil.js';
+import { getClanSettingsData } from '../../cache/clanSettingsDataCache.js';
 
 // When a settings for a specific clan is clicked in /clan-settings
 // TOGGLES ONLY
@@ -16,9 +19,29 @@ const clanSettingsButton: ButtonHandler = {
   customId: 'clanSettings',
   async execute(interaction, parsed) {
     const { guildId, extra } = parsed;
-    const featureName = extra[0]; // 'nudges',
-    const clantag = extra[1];
-
+    const cacheKey = extra[0]; // Cache key containing all the data we need
+    // cachekey: cs_13
+    // {
+    //   data: {
+    //     settingKey: 'invites_enabled',
+    //     clantag: '#V2GQU',
+    //     clanName: 'Clash of Clams',
+    //     guildId: '1395124705639534614',
+    //     ownerId: '272201620446511104'
+    //   },
+    //   expiry: 1760132800927
+    // }
+    // Retrieve the data from cache
+    const settingsData = getClanSettingsData(cacheKey);
+    // Just reply because if not in settingsData, means cache was lost.
+    if (!settingsData) {
+      await interaction.reply({
+        content: 'Settings data not found. Please reselect the clan in the select menu, or run the command again.',
+        ephemeral: true,
+      });
+      return;
+    }
+    const { settingKey: featureName, clantag, clanName } = settingsData;
     const allowed = await checkPerms(interaction, guildId, 'button', 'either', { hideNoPerms: true });
     if (!allowed) return; // no perms
 
@@ -35,6 +58,32 @@ const clanSettingsButton: ButtonHandler = {
             clantag,
           ]);
           const currentSettings = { ...DEFAULT_CLAN_SETTINGS, ...(res.rows[0]?.settings ?? {}) };
+
+          if (!currentSettings.family_clan) {
+            const countRes = await client.query(
+              `
+              SELECT COUNT(*)::int FROM clan_settings 
+              WHERE guild_id = $1 AND (settings->>'family_clan')::boolean = true
+              `,
+              [guildId]
+            );
+            const maxFamilyClansRes = await client.query(
+              `
+              SELECT max_family_clans FROM server_settings
+              WHERE guild_id = $1
+              `,
+              [guildId]
+            );
+            if (countRes.rows[0].count >= maxFamilyClansRes.rows[0].max_family_clans) {
+              const embed = new EmbedBuilder()
+                .setDescription(
+                  `This server already has the maximum **${maxFamilyClansRes.rows[0].max_family_clans}** family clans allowed.`
+                )
+                .setColor(EmbedColor.FAIL);
+              await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
+              return;
+            }
+          }
 
           // 2️⃣ Toggle the setting
           currentSettings.family_clan = !currentSettings.family_clan;
@@ -155,6 +204,17 @@ const clanSettingsButton: ButtonHandler = {
         );
         if (rows.length) {
           const { channel_id, message_id, pin_message } = rows[0];
+
+          if (!channel_id || !message_id) {
+            const embed = new EmbedBuilder()
+              .setDescription(
+                `Could not find the channel or message for the clan invites.\nPlease have an admin set it up using the \`/set-clan-invite-channel\` command.`
+              )
+              .setColor(EmbedColor.FAIL);
+            await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
+            return;
+          }
+
           const { embeds, components } = await updateInviteMessage(pool, guildId);
 
           await repostInviteMessage({
