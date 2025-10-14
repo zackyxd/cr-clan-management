@@ -1,7 +1,7 @@
 import { MessageFlags } from 'discord.js';
 import { pool } from '../../db.js';
 import { ModalHandler } from '../../types/Handlers.js';
-import { buildServerFeatureEmbedAndComponents } from '../../config/serverSettingsConfig.js';
+import { buildFeatureEmbedAndComponents } from '../../config/serverSettingsBuilder.js';
 
 // When modal with action (column) of 'closed_identifier' is called,
 // run this code to set the text of the identifier for tickets
@@ -22,12 +22,7 @@ const ticketClosedIdentifier: ModalHandler = {
         `,
       [newValue, guildId]
     );
-    const { embed, components } = await buildServerFeatureEmbedAndComponents(
-      guildId,
-      interaction.user.id,
-      'tickets',
-      'Ticket features handles everything related to tickets and ensuring you can handle new members.'
-    );
+    const { embed, components } = await buildFeatureEmbedAndComponents(guildId, interaction.user.id, 'tickets');
     await message.edit({ embeds: [embed], components });
     await interaction.editReply({ content: '✅ Updated successfully', embeds: [] });
   },

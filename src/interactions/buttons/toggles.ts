@@ -3,13 +3,28 @@ import { checkPerms } from '../../utils/checkPermissions.js';
 import { ButtonHandler } from '../../types/Handlers.js';
 import { TextChannel, NewsChannel } from 'discord.js';
 import { updateInviteMessage, repostInviteMessage } from '../../commands/staff_commands/updateClanInvite.js';
-import EMBED_SERVER_FEATURE_CONFIG, {
-  buildServerFeatureEmbedAndComponents,
-} from '../../config/serverSettingsConfig.js';
+import { FeatureRegistry } from '../../config/featureRegistry.js';
+import { buildFeatureEmbedAndComponents } from '../../config/serverSettingsBuilder.js';
 
-export type FeatureTable = keyof typeof EMBED_SERVER_FEATURE_CONFIG;
-export function getFeatureConfig(tableName: FeatureTable) {
-  return EMBED_SERVER_FEATURE_CONFIG[tableName];
+// Use all features from the registry
+export type FeatureTable = keyof typeof FeatureRegistry;
+
+// Get feature by table name
+export function getFeatureByTableName(tableName: string) {
+  return Object.values(FeatureRegistry).find((feature) => feature.tableName === tableName);
+}
+
+// Get feature name by table name
+export function getFeatureNameFromTable(tableName: string): string | undefined {
+  // Use destructuring with renaming to avoid the unused variable lint error
+  const entry = Object.entries(FeatureRegistry).find(([, feature]) => feature.tableName === tableName);
+  return entry ? entry[0] : undefined;
+}
+
+// Get feature configuration by table name
+export function getFeatureConfig(tableName: string) {
+  const feature = getFeatureByTableName(tableName);
+  return feature ? { displayName: feature.displayName, description: feature.description } : null;
 }
 
 const toggleButton: ButtonHandler = {
@@ -22,11 +37,27 @@ const toggleButton: ButtonHandler = {
     const allowed = await checkPerms(interaction, interaction.guild.id, 'button', 'higher', { hideNoPerms: true });
     if (!allowed) return;
 
-    if (!(extra[1] in EMBED_SERVER_FEATURE_CONFIG)) {
-      throw new Error(`Unsupported table: ${extra[1]}`);
+    // Get the table name from extra[1]
+    const tableName = extra[1];
+
+    // Get feature config using the table name
+    const config = getFeatureConfig(tableName);
+
+    if (!config) {
+      throw new Error(`Unsupported table: ${tableName}`);
     }
 
-    const config = getFeatureConfig(extra[1] as FeatureTable);
+    // Helper function to update UI after a change
+    async function updateUI() {
+      const featureName = getFeatureNameFromTable(tableName);
+      if (!featureName) {
+        throw new Error(`Could not find feature for table: ${tableName}`);
+      }
+
+      const { embed, components } = await buildFeatureEmbedAndComponents(guildId, interaction.user.id, featureName);
+
+      await interaction.editReply({ embeds: [embed], components });
+    }
 
     // Enable linking feature
     if (toggleName === 'links_feature') {
@@ -44,13 +75,8 @@ const toggleButton: ButtonHandler = {
      ON CONFLICT (guild_id, feature_name) DO UPDATE SET is_enabled = EXCLUDED.is_enabled`,
         [guildId, 'links', newValue]
       );
-      const { embed, components } = await buildServerFeatureEmbedAndComponents(
-        guildId,
-        interaction.user.id,
-        config.displayName,
-        config.description
-      );
-      await interaction.editReply({ embeds: [embed], components });
+
+      await updateUI();
     }
 
     // Enable clan invites feature
@@ -69,13 +95,8 @@ const toggleButton: ButtonHandler = {
      ON CONFLICT (guild_id, feature_name) DO UPDATE SET is_enabled = EXCLUDED.is_enabled`,
         [guildId, 'clan_invites', newValue]
       );
-      const { embed, components } = await buildServerFeatureEmbedAndComponents(
-        guildId,
-        interaction.user.id,
-        config.displayName,
-        config.description
-      );
-      await interaction.editReply({ embeds: [embed], components });
+
+      await updateUI();
     }
 
     // Toggle if linking should rename players
@@ -90,13 +111,7 @@ const toggleButton: ButtonHandler = {
         [guildId]
       );
 
-      const { embed, components } = await buildServerFeatureEmbedAndComponents(
-        guildId,
-        interaction.user.id,
-        config.displayName,
-        config.description
-      );
-      await interaction.editReply({ embeds: [embed], components });
+      await updateUI();
     }
 
     // Enable tickets feature
@@ -115,13 +130,8 @@ const toggleButton: ButtonHandler = {
      ON CONFLICT (guild_id, feature_name) DO UPDATE SET is_enabled = EXCLUDED.is_enabled`,
         [guildId, 'tickets', newValue]
       );
-      const { embed, components } = await buildServerFeatureEmbedAndComponents(
-        guildId,
-        interaction.user.id,
-        config.displayName,
-        config.description
-      );
-      await interaction.editReply({ embeds: [embed], components });
+
+      await updateUI();
     }
 
     // Enable member channels feature
@@ -140,13 +150,8 @@ const toggleButton: ButtonHandler = {
      ON CONFLICT (guild_id, feature_name) DO UPDATE SET is_enabled = EXCLUDED.is_enabled`,
         [guildId, 'member_channels', newValue]
       );
-      const { embed, components } = await buildServerFeatureEmbedAndComponents(
-        guildId,
-        interaction.user.id,
-        config.displayName,
-        config.description
-      );
-      await interaction.editReply({ embeds: [embed], components });
+
+      await updateUI();
     }
 
     // Toggle enabling appending name
@@ -161,13 +166,7 @@ const toggleButton: ButtonHandler = {
         [guildId]
       );
 
-      const { embed, components } = await buildServerFeatureEmbedAndComponents(
-        guildId,
-        interaction.user.id,
-        config.displayName,
-        config.description
-      );
-      await interaction.editReply({ embeds: [embed], components });
+      await updateUI();
     }
 
     // Show expired clan invites
@@ -213,13 +212,7 @@ const toggleButton: ButtonHandler = {
           guildId,
         });
 
-        const { embed, components } = await buildServerFeatureEmbedAndComponents(
-          guildId,
-          interaction.user.id,
-          config.displayName,
-          config.description
-        );
-        await interaction.editReply({ embeds: [embed], components });
+        await updateUI();
       }
     }
 
@@ -234,13 +227,7 @@ const toggleButton: ButtonHandler = {
         [guildId]
       );
 
-      const { embed, components } = await buildServerFeatureEmbedAndComponents(
-        guildId,
-        interaction.user.id,
-        config.displayName,
-        config.description
-      );
-      await interaction.editReply({ embeds: [embed], components });
+      await updateUI();
     }
 
     if (toggleName === 'pin_message') {
@@ -328,13 +315,7 @@ const toggleButton: ButtonHandler = {
         }
       }
 
-      const { embed, components } = await buildServerFeatureEmbedAndComponents(
-        guildId,
-        interaction.user.id,
-        config.displayName,
-        config.description
-      );
-      await interaction.editReply({ embeds: [embed], components });
+      await updateUI();
     }
 
     // Toggle enabling logs
@@ -350,13 +331,7 @@ const toggleButton: ButtonHandler = {
         [guildId]
       );
 
-      const { embed, components } = await buildServerFeatureEmbedAndComponents(
-        guildId,
-        interaction.user.id,
-        config.displayName,
-        config.description
-      );
-      await interaction.editReply({ embeds: [embed], components });
+      await updateUI();
     }
   },
 };

@@ -1,10 +1,9 @@
-import EMBED_SERVER_FEATURE_CONFIG, {
-  buildServerFeatureEmbedAndComponents,
-} from '../../config/serverSettingsConfig.js';
 import { pool } from '../../db.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { ButtonHandler } from '../handleButtonInteraction.js';
-import { FeatureTable, getFeatureConfig } from './toggles.js';
+import { FeatureRegistry } from '../../config/featureRegistry.js';
+import { buildFeatureEmbedAndComponents } from '../../config/serverSettingsBuilder.js';
+import { getFeatureNameFromTable } from './toggles.js';
 
 const swapButton: ButtonHandler = {
   customId: 'swap',
@@ -15,11 +14,13 @@ const swapButton: ButtonHandler = {
     const allowed = await checkPerms(interaction, interaction.guild.id, 'button', 'higher', { hideNoPerms: true });
     if (!allowed) return;
 
-    if (!(extra[1] in EMBED_SERVER_FEATURE_CONFIG)) {
-      throw new Error(`Unsupported table: ${extra[1]}`);
-    }
+    const tableName = extra[1];
 
-    const config = getFeatureConfig(extra[1] as FeatureTable);
+    // Check if the table is valid
+    const feature = Object.values(FeatureRegistry).find((feature) => feature.tableName === tableName);
+    if (!feature) {
+      throw new Error(`Unsupported table: ${tableName}`);
+    }
 
     if (swapName === 'delete_method') {
       await pool.query(
@@ -35,12 +36,13 @@ const swapButton: ButtonHandler = {
         [guildId]
       );
 
-      const { embed, components } = await buildServerFeatureEmbedAndComponents(
-        guildId,
-        interaction.user.id,
-        config.displayName,
-        config.description
-      );
+      const featureName = getFeatureNameFromTable(tableName);
+      if (!featureName) {
+        throw new Error(`Could not find feature for table: ${tableName}`);
+      }
+
+      const { embed, components } = await buildFeatureEmbedAndComponents(guildId, interaction.user.id, featureName);
+
       await interaction.editReply({ embeds: [embed], components });
     }
   },
