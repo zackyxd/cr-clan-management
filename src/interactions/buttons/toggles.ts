@@ -17,6 +17,7 @@ const toggleButton: ButtonHandler = {
   async execute(interaction, parsed) {
     const { guildId, extra } = parsed;
     const toggleName = extra[0]; // db name for the column
+    console.log(toggleName);
     if (!interaction || !interaction?.guild) return;
     const allowed = await checkPerms(interaction, interaction.guild.id, 'button', 'higher', { hideNoPerms: true });
     if (!allowed) return;
@@ -113,6 +114,31 @@ const toggleButton: ButtonHandler = {
      VALUES ($1, $2, $3)
      ON CONFLICT (guild_id, feature_name) DO UPDATE SET is_enabled = EXCLUDED.is_enabled`,
         [guildId, 'tickets', newValue]
+      );
+      const { embed, components } = await buildServerFeatureEmbedAndComponents(
+        guildId,
+        interaction.user.id,
+        config.displayName,
+        config.description
+      );
+      await interaction.editReply({ embeds: [embed], components });
+    }
+
+    // Enable member channels feature
+    if (toggleName === 'member_channels_feature') {
+      const res = await pool.query(`SELECT is_enabled FROM guild_features WHERE guild_id = $1 AND feature_name = $2`, [
+        guildId,
+        'member_channels',
+      ]);
+
+      const isCurrentlyEnabled = res.rows[0]?.is_enabled ?? false;
+      const newValue = !isCurrentlyEnabled;
+
+      await pool.query(
+        `INSERT INTO guild_features (guild_id, feature_name, is_enabled)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (guild_id, feature_name) DO UPDATE SET is_enabled = EXCLUDED.is_enabled`,
+        [guildId, 'member_channels', newValue]
       );
       const { embed, components } = await buildServerFeatureEmbedAndComponents(
         guildId,

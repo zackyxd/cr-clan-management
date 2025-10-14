@@ -12,6 +12,7 @@
     "migrate:dev:up": "dotenv -e .env.dev npx node-pg-migrate up",
     "migrate:dev:down": "dotenv -e .env.dev -- npx node-pg-migrate down 1",
     "migrate:dev:down-all": "dotenv -e .env.dev -- npx node-pg-migrate down $(ls migrations | wc -l)",
+    "migrate:dev:reset": "dotenv -e .env.dev -- npx node-pg-migrate down $(ls migrations | wc -l) && dotenv -e .env.dev -- npx node-pg-migrate up $(ls migrations | wc -l)",
     "migrate:test:up": "dotenv -e .env.test --quiet -- npx node-pg-migrate up",
     "migrate:test:down-all": "dotenv -e .env.test --quiet -- npx node-pg-migrate down $(ls migrations | wc -l)",
     "migrate:test:reset": "npm run migrate:test:down-all && npm run migrate:test:up",

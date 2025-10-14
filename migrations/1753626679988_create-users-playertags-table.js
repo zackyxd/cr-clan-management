@@ -15,7 +15,8 @@ export const up = (pgm) => {
     ping_user: { type: 'boolean', default: true },
     is_replace_me: { type: 'boolean', default: false, },
     is_replace_me_message_id: { type: 'varchar(30)', default: null, unique: true },
-    is_attacking_late: { type: 'boolean', default: false }
+    is_attacking_late: { type: 'boolean', default: false },
+    player_settings: { type: 'jsonb', notNull: true, default: pgm.func("'{}'::jsonb") }
   }, {
     constraints: {
       primaryKey: ['guild_id', 'discord_id']

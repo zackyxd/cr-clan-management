@@ -2,54 +2,26 @@ import { Collection, Guild } from 'discord.js';
 import logger from '../logger.js';
 import { PoolClient } from 'pg';
 import {
-  buildInsertDefaultFeaturesQuery,
   buildInsertGuildQuery,
   buildInsertGuildsQuery,
   buildRemoveGuildQuery,
   buildRemoveGuildsQuery,
 } from '../sql_queries/guilds.js';
 
-// TODO add new features here
-const DEFAULT_FEATURES: Record<string, boolean> = {
-  tickets: false,
-  links: true,
-  clan_invites: true,
-};
+// Import from centralized feature registry
+import {
+  getDefaultFeaturesState,
+  getFeatureSettingsDefaults,
+  generateInsertDefaultFeaturesSQL,
+} from '../config/featureRegistry.js';
 
-// TODO Add all feature tables here
-const FEATURE_SETTINGS_DEFAULTS: Record<
-  string,
-  { table: string; defaults: Record<string, boolean | string | number> }
-> = {
-  links: {
-    table: 'link_settings',
-    defaults: {
-      rename_players: false,
-    },
-  },
-  tickets: {
-    table: 'ticket_settings',
-    defaults: {
-      opened_identifier: 'ticket',
-      closed_identifier: 'closed',
-      allow_append: 'false',
-      send_logs: 'false',
-    },
-  },
-  clan_invites: {
-    table: 'clan_invite_settings',
-    defaults: {
-      pin_message: 'false',
-      delete_method: 'update',
-      show_inactive: 'false',
-      ping_expired: 'false',
-      send_logs: 'false',
-    },
-  },
-};
+// Get default features state from registry
+const DEFAULT_FEATURES = getDefaultFeaturesState();
+
+// Get feature settings defaults from registry
+const FEATURE_SETTINGS_DEFAULTS = getFeatureSettingsDefaults();
 
 export async function sync_default_features(client: PoolClient): Promise<void> {
-
   await client.query(
     `INSERT INTO server_settings (guild_id)
    SELECT guild_id FROM guilds
@@ -254,9 +226,9 @@ export async function remove_guilds_on_startup(client: PoolClient, guilds: Colle
 export async function insert_default_features(client: PoolClient, guildIds: string[]) {
   if (!guildIds.length) return;
 
-  const insertSql = buildInsertDefaultFeaturesQuery(guildIds, DEFAULT_FEATURES);
-
-  await client.query(insertSql);
+  // Use helper function from registry to generate SQL
+  const { query, params } = generateInsertDefaultFeaturesSQL(guildIds);
+  await client.query(query, params);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
