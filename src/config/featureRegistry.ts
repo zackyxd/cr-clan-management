@@ -90,8 +90,7 @@ export const FeatureRegistry: Record<string, Feature> = {
       {
         key: 'logs_channel_id',
         label: 'Logs Channel',
-        description:
-          'Which channel do you want to send logs to? Use `/set-ticket-log-channel` command to set the channel.',
+        description: 'Which channel do you want to send logs to?',
         type: 'channel',
         defaultValue: '',
       },
@@ -142,8 +141,7 @@ export const FeatureRegistry: Record<string, Feature> = {
       {
         key: 'logs_channel_id',
         label: 'Logs Channel',
-        description:
-          'Which channel do you want to send logs to? Use `/set-invites-log-channel` command to set the channel.',
+        description: 'Which channel do you want to send logs to?',
         type: 'channel',
         defaultValue: '',
       },
@@ -173,8 +171,7 @@ export const FeatureRegistry: Record<string, Feature> = {
       {
         key: 'logs_channel_id',
         label: 'Logs Channel',
-        description:
-          'Which channel do you want to send logs to? Use `/set-member-channel-log-channel` command to set the channel.',
+        description: 'Which channel do you want to send logs to?',
         type: 'channel',
         defaultValue: '',
       },

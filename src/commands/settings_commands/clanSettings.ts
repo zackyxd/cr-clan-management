@@ -100,7 +100,7 @@ export async function buildClanSelectMenu(guildId: string, ownerId: string) {
   if (!res || !res.rows || res.rows.length === 0) {
     logger.warn(`clanSettings.ts: No clans found for this guild: ${guildId}`);
     return new StringSelectMenuBuilder()
-      .setCustomId(makeCustomId('select', 'clan', guildId, { ownerId }))
+      .setCustomId(makeCustomId('s', 'clan', guildId, { ownerId }))
       .setPlaceholder('No clans linked! Use /add-clans')
       .setDisabled(true)
       .addOptions([
@@ -145,7 +145,7 @@ export async function buildClanSelectMenu(guildId: string, ownerId: string) {
   }
 
   const selectMenu = new StringSelectMenuBuilder()
-    .setCustomId(makeCustomId('select', 'clan', guildId, { ownerId }))
+    .setCustomId(makeCustomId('s', 'clan', guildId, { ownerId }))
     .setPlaceholder('Select a clan')
     .addOptions(options);
 

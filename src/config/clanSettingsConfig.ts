@@ -107,7 +107,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
 
       button = new ButtonBuilder()
         .setLabel(`${value ? 'Disable' : 'Enable'} ${settingConfig.label}`)
-        .setCustomId(makeCustomId('button', 'clanSettings', guildId, { cooldown: 2, extra: [cacheKey], ownerId }))
+        .setCustomId(makeCustomId('b', 'clanSettings', guildId, { cooldown: 2, extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Primary);
     } else if (settingConfig.type === 'modal' || settingConfig.type === 'text') {
       const cacheKey = storeClanSettingsData({
@@ -120,7 +120,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
 
       button = new ButtonBuilder()
         .setLabel(`Edit ${settingConfig.label}`)
-        .setCustomId(makeCustomId('button', 'open_modal', guildId, { extra: [cacheKey], ownerId }))
+        .setCustomId(makeCustomId('b', 'open_modal', guildId, { extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Secondary);
     } else if (settingConfig.type === 'role') {
       const cacheKey = storeClanSettingsData({
@@ -133,7 +133,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
 
       button = new ButtonBuilder()
         .setLabel(`Edit ${settingConfig.label}`)
-        .setCustomId(makeCustomId('button', 'open_modal', guildId, { extra: [cacheKey], ownerId }))
+        .setCustomId(makeCustomId('b', 'open_modal', guildId, { extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Secondary);
     }
     // For 'role', you might want to use a slash command or a select menu, so you can just show info.

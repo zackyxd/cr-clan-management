@@ -26,7 +26,7 @@ export async function handleTicketCreate(textChannel: TextChannel, guildId: stri
   if (textChannel.name.includes(ticketData.opened_identifier)) {
     const button = new ButtonBuilder()
       .setLabel(`Enter Clash Royale Playertags`)
-      .setCustomId(makeCustomId('button', 'open_modal', guildId, { cooldown: 1, extra: ['ticket_channel'] }))
+      .setCustomId(makeCustomId('b', 'open_modal', guildId, { cooldown: 1, extra: ['ticket_channel'] }))
       .setStyle(ButtonStyle.Primary);
     const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
 

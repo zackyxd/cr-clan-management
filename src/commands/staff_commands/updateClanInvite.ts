@@ -295,7 +295,7 @@ export async function updateInviteMessage(
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setLabel('Update Link')
-        .setCustomId(makeCustomId('button', 'open_modal', guildId, { cooldown: 1, extra: ['update_invite'] }))
+        .setCustomId(makeCustomId('b', 'open_modal', guildId, { cooldown: 1, extra: ['update_invite'] }))
         .setStyle(ButtonStyle.Primary)
     ),
   ];

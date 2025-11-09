@@ -6,6 +6,7 @@ import {
   TextInputStyle,
   LabelBuilder,
   RoleSelectMenuBuilder,
+  ChannelSelectMenuBuilder,
 } from 'discord.js';
 import { makeCustomId, parseCustomId } from '../../utils/customId.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
@@ -19,6 +20,7 @@ export default {
 
     // Try to get data from cache (for clan settings)
     const settingsData = getClanSettingsData(cacheKey);
+    console.log(cacheKey, settingsData);
 
     // If we have cache data, use it; otherwise treat as legacy action
     const action = settingsData?.settingKey || cacheKey;
@@ -31,7 +33,7 @@ export default {
       });
       if (!allowed) return;
       const modal = new ModalBuilder()
-        .setCustomId(makeCustomId('modal', action, guildId))
+        .setCustomId(makeCustomId('m', action, guildId))
         .setTitle(`Edit ${action}`)
         .addComponents(
           new ActionRowBuilder<TextInputBuilder>().addComponents(
@@ -50,7 +52,7 @@ export default {
       });
       if (!allowed) return;
       const modal = new ModalBuilder()
-        .setCustomId(makeCustomId('modal', action, guildId))
+        .setCustomId(makeCustomId('m', action, guildId))
         .setTitle('Paste your CR tags.')
         .addComponents(
           new ActionRowBuilder<TextInputBuilder>().addComponents(
@@ -78,7 +80,7 @@ export default {
 
       const modal = new ModalBuilder()
         .setTitle('Change Abbreviation')
-        .setCustomId(makeCustomId('modal', action, guildId, { extra: [clantag] }))
+        .setCustomId(makeCustomId('m', action, guildId, { extra: [clantag] }))
         .addLabelComponents(
           new LabelBuilder()
             .setLabel('Select new abbreviation')
@@ -103,7 +105,7 @@ export default {
       if (!allowed) return;
 
       const modal = new ModalBuilder()
-        .setCustomId(makeCustomId('modal', action, guildId))
+        .setCustomId(makeCustomId('m', action, guildId))
         .setTitle('Update Clan Invite')
         .addLabelComponents(
           new LabelBuilder()
@@ -134,11 +136,30 @@ export default {
 
       const modal = new ModalBuilder()
         .setTitle('Set Clan Role')
-        .setCustomId(makeCustomId('modal', action, guildId, { extra: [clantag, clanName] }))
+        .setCustomId(makeCustomId('m', action, guildId, { extra: [clantag, clanName] }))
         .addLabelComponents(
           new LabelBuilder()
             .setLabel('Role Select')
             .setRoleSelectMenuComponent(new RoleSelectMenuBuilder().setCustomId('input').setMaxValues(1))
+        );
+      return interaction.showModal(modal);
+    }
+    // Logs channel setting
+    else if (action === 'logs_channel_id') {
+      const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {
+        hideNoPerms: true,
+        skipDefer: true,
+      });
+      if (!allowed) return;
+      console.log('table type for logs', extra[1]);
+
+      const modal = new ModalBuilder()
+        .setTitle('Set Logs Channel')
+        .setCustomId(makeCustomId('m', action, guildId, { extra: [extra[1]] })) // extra 1 sending table name
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel('Channel Select')
+            .setChannelSelectMenuComponent(new ChannelSelectMenuBuilder().setCustomId('input').setMaxValues(1))
         );
       return interaction.showModal(modal);
     }

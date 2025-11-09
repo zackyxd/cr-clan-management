@@ -1,4 +1,5 @@
-export type CustomIdType = 'button' | 'modal' | 'select';
+export type CustomIdType = 'b' | 'm' | 's';
+// Button | Modal | Select
 
 interface CustomIdOpts {
   cooldown?: number;
@@ -18,7 +19,7 @@ export function makeCustomId(type: CustomIdType, action: string, guildId: string
   const parts = [type, action, guildId, String(cooldown)];
 
   if (opts.ownerId) {
-    parts.push(`owner=${opts.ownerId}`);
+    parts.push(`o=${opts.ownerId}`);
   }
 
   if (opts.extra) {
@@ -36,8 +37,8 @@ export function parseCustomId(customId: string) {
   const extra: string[] = [];
 
   for (const r of rest) {
-    if (r.startsWith('owner=')) {
-      ownerId = r.replace('owner=', '');
+    if (r.startsWith('o=')) {
+      ownerId = r.replace('o=', '');
     } else {
       extra.push(r);
     }

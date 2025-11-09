@@ -39,14 +39,14 @@ export async function buildFeatureEmbedAndComponents(
   const toggleFeature = new ButtonBuilder()
     .setLabel(`${isEnabled ? 'Disable Feature' : 'Enable Feature'}`)
     .setCustomId(
-      makeCustomId('button', `toggle`, guildId, { cooldown: 1, extra: [`${featureName}_feature`, feature.tableName] })
+      makeCustomId('b', `toggle`, guildId, { cooldown: 1, extra: [`${featureName}_feature`, feature.tableName] })
     )
     .setStyle(ButtonStyle.Primary);
 
   const returnToSettings = new ButtonBuilder()
     .setEmoji('↩')
     .setStyle(ButtonStyle.Primary)
-    .setCustomId(makeCustomId(`button`, 'settings', guildId, { cooldown: 1, extra: ['return'] }));
+    .setCustomId(makeCustomId(`b`, 'settings', guildId, { cooldown: 1, extra: ['return'] }));
 
   currentRow.addComponents(returnToSettings, toggleFeature);
 
@@ -82,20 +82,20 @@ export async function buildFeatureEmbedAndComponents(
       button = new ButtonBuilder()
         .setLabel(`${value ? 'Disable' : 'Enable'} ${setting.label}`)
         .setCustomId(
-          makeCustomId('button', `toggle`, guildId, {
+          makeCustomId('b', `toggle`, guildId, {
             cooldown: 1,
             extra: [setting.key, feature.tableName],
             ownerId: ownerId,
           })
         )
         .setStyle(ButtonStyle.Primary);
-    } else if (setting.type === 'modal') {
+    } else if (setting.type === 'modal' || setting.type === 'channel') {
       button = new ButtonBuilder()
         .setLabel(`Change ${setting.label}`)
         .setCustomId(
-          makeCustomId('button', 'open_modal', guildId, {
+          makeCustomId('b', 'open_modal', guildId, {
             cooldown: 1,
-            extra: [setting.key],
+            extra: [setting.key, `${feature.tableName}`],
             ownerId: ownerId,
           })
         )
@@ -104,9 +104,9 @@ export async function buildFeatureEmbedAndComponents(
       button = new ButtonBuilder()
         .setLabel(`Swap ${setting.label}`)
         .setCustomId(
-          makeCustomId('button', 'swap', guildId, {
+          makeCustomId('b', 'swap', guildId, {
             cooldown: 1,
-            extra: [setting.key, feature.tableName],
+            extra: [setting.key],
             ownerId: ownerId,
           })
         )
@@ -115,7 +115,7 @@ export async function buildFeatureEmbedAndComponents(
       button = new ButtonBuilder()
         .setLabel(`${setting.label}`)
         .setCustomId(
-          makeCustomId('button', 'action', guildId, {
+          makeCustomId('b', 'action', guildId, {
             cooldown: 1,
             extra: [setting.key, feature.tableName],
             ownerId: ownerId,
@@ -185,9 +185,7 @@ export async function buildSettingsOverview(
 
     // Create button
     const button = new ButtonBuilder()
-      .setCustomId(
-        makeCustomId('button', 'settings', guildId, { cooldown: 1, extra: [feature_name], ownerId: ownerId })
-      )
+      .setCustomId(makeCustomId('b', 'settings', guildId, { cooldown: 1, extra: [feature_name], ownerId: ownerId }))
       .setLabel(`${formatted_name}`)
       .setStyle(ButtonStyle.Primary);
 

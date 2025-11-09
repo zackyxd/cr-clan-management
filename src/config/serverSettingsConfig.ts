@@ -201,7 +201,7 @@
 //     const toggleFeature = new ButtonBuilder()
 //       .setLabel(`${isFeatureEnabled ? 'Disable Feature' : 'Enable Feature'}`)
 //       .setCustomId(
-//         makeCustomId('button', `toggle`, guildId, { cooldown: 1, extra: [`${featureKey}_feature`, tableName] })
+//         makeCustomId('b', `toggle`, guildId, { cooldown: 1, extra: [`${featureKey}_feature`, tableName] })
 //       )
 //       .setStyle(ButtonStyle.Primary);
 
@@ -234,7 +234,7 @@
 //         button = new ButtonBuilder()
 //           .setLabel(`${value ? 'Disable' : 'Enable'} ${setting.label}`)
 //           .setCustomId(
-//             makeCustomId('button', `toggle`, guildId, {
+//             makeCustomId('b', `toggle`, guildId, {
 //               cooldown: 1,
 //               extra: [setting.key, tableName],
 //               ownerId: ownerId,
@@ -245,7 +245,7 @@
 //         button = new ButtonBuilder()
 //           .setLabel(`Change ${setting.label}`)
 //           .setCustomId(
-//             makeCustomId('button', 'open_modal', guildId, {
+//             makeCustomId('b', 'open_modal', guildId, {
 //               cooldown: 1,
 //               extra: [setting.key],
 //               ownerId: ownerId,
@@ -256,7 +256,7 @@
 //         button = new ButtonBuilder()
 //           .setLabel(`Swap ${setting.label}`)
 //           .setCustomId(
-//             makeCustomId('button', 'swap', guildId, { cooldown: 1, extra: [setting.key, tableName], ownerId: ownerId })
+//             makeCustomId('b', 'swap', guildId, { cooldown: 1, extra: [setting.key, tableName], ownerId: ownerId })
 //           )
 //           .setStyle(ButtonStyle.Primary);
 //       }

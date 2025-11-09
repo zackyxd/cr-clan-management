@@ -73,7 +73,7 @@ export async function linkUser(
       const cooldown = 5000; // ms
       const relink = new ButtonBuilder()
         .setCustomId(
-          makeCustomId('button', 'relinkUser', guildId, {
+          makeCustomId('b', 'relinkUser', guildId, {
             cooldown: cooldown,
             extra: [originalDiscordId, playertag],
           })

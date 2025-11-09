@@ -36,9 +36,10 @@ export interface ButtonHandler {
 export async function handleButtonInteraction(interaction: ButtonInteraction) {
   const parsed = parseCustomId(interaction.customId);
   const { category, action, cooldown } = parsed;
-  if (category !== 'button') {
+  if (category !== 'b') {
     return interaction.reply({ content: 'Invalid interaction type for button.', flags: MessageFlags.Ephemeral });
   }
+  console.log('button action:', action);
   const handler = buttons.get(action); // <-- use action ("relinkUser", "toggle", "settings")
   if (!handler) {
     return interaction.reply({ content: 'Unknown button.', flags: MessageFlags.Ephemeral });
