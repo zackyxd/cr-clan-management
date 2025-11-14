@@ -4,6 +4,12 @@ import { ParsedCustomId } from '../../types/ParsedCustomId.js';
 import { ButtonHandler } from '../handleButtonInteraction.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { pool } from '../../db.js';
+import {
+  buildPermissionOverwrites,
+  convertToMemberData,
+  getAllPlayersSorted,
+  insertMemberChannel,
+} from '../../utils/memberChannelHelpers.js';
 
 const memberChannelCreationButton: ButtonHandler = {
   customId: 'member_channel',
@@ -72,63 +78,43 @@ const memberChannelCreationButton: ButtonHandler = {
         }
       }
 
-      // Build permission overwrites for all selected users
-      const permissionOverwrites = [];
-
-      // IMPORTANT: Deny @everyone first to make channel private
-      permissionOverwrites.push({
-        id: interaction.guild!.roles.everyone.id,
-        type: 0, // 0 = Role
-        deny: [
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.SendMessages,
-          PermissionFlagsBits.ReadMessageHistory,
-        ],
-      });
-
-      // Get all unique Discord IDs from the final account selection
+      // Convert finalAccountSelection to member data structure
       const finalAccounts = data?.finalAccountSelection;
-      if (finalAccounts) {
-        const uniqueDiscordIds = new Set(finalAccounts.keys());
-
-        console.log(`Adding permissions for ${uniqueDiscordIds.size} users`);
-
-        // Add permissions for each user
-        uniqueDiscordIds.forEach((discordId) => {
-          permissionOverwrites.push({
-            id: discordId,
-            type: 1, // 1 = User, 0 = Role
-            allow: [
-              PermissionFlagsBits.ViewChannel,
-              PermissionFlagsBits.SendMessages,
-              PermissionFlagsBits.ReadMessageHistory,
-            ],
-          });
-        });
+      if (!finalAccounts) {
+        throw new Error('No accounts selected');
       }
+
+      const { members, discordIds } = convertToMemberData(finalAccounts);
+      console.log(`Processing ${discordIds.length} users with ${members.length} member entries`);
 
       // Add creator if not already included
-      if (data?.creatorId && !finalAccounts?.has(data.creatorId)) {
+      const allDiscordIds = [...discordIds];
+      if (data?.creatorId && !discordIds.includes(data.creatorId)) {
         console.log('Adding creator permissions');
-        permissionOverwrites.push({
-          id: data.creatorId,
-          type: 1, // 1 = User, 0 = Role
-          allow: [
-            PermissionFlagsBits.ViewChannel,
-            PermissionFlagsBits.SendMessages,
-            PermissionFlagsBits.ReadMessageHistory,
-          ],
-        });
+        allDiscordIds.push(data.creatorId);
       }
 
-      console.log(`Creating channel with ${permissionOverwrites.length} permission overwrites`);
+      // Build permission overwrites (category + users)
+      const permissionOverwrites = await buildPermissionOverwrites(
+        interaction.guild!,
+        res?.category_id || null,
+        allDiscordIds
+      );
 
+      // Create the channel with all permissions set at once (single audit log entry)
+      console.log(`Creating channel with ${permissionOverwrites.length} permission overwrites`);
       const channel = await interaction.guild?.channels.create({
         name: `members-${currentCount}-` + data?.channelName.trim() || 'movements',
         type: 0, // GuildText
         parent: res?.category_id || null,
         permissionOverwrites: permissionOverwrites,
       });
+
+      if (!channel) {
+        throw new Error('Channel creation returned undefined');
+      }
+
+      console.log(`✅ Channel created: ${channel.name}`);
 
       // Increment the channel count
       await pool.query(
@@ -140,42 +126,20 @@ const memberChannelCreationButton: ButtonHandler = {
         [interaction.guild?.id]
       );
 
-      console.log(`✅ Channel created: ${channel?.name} (Total channel count: ${currentCount + 1})`);
-
-      if (!channel) {
-        throw new Error('Channel creation returned undefined');
-      }
-
-      // Prepare data for database insertion
-      const playertags: string[] = [];
-      const discordIds: string[] = [];
-
-      if (finalAccounts) {
-        finalAccounts.forEach((players, discordId) => {
-          discordIds.push(discordId);
-          players.forEach((player) => {
-            playertags.push(player.tag);
-          });
-        });
-      }
+      console.log(`✅ Channel permissions set (Total channel count: ${currentCount + 1})`);
 
       // Insert channel data into database
-      await pool.query(
-        `
-        INSERT INTO member_channels (guild_id, category_id, channel_id, created_by, playertags, discord_ids)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        `,
-        [interaction.guild!.id, res?.category_id || null, channel.id, data.creatorId, playertags, discordIds]
-      );
-
+      await insertMemberChannel(interaction.guild!.id, res?.category_id || null, channel.id, data.creatorId, members);
       console.log(`✅ Channel data saved to database`);
 
       // Try to send welcome message to the new channel
       try {
+        const allPlayers = getAllPlayersSorted(members);
+
         const welcomeEmbed = new EmbedBuilder()
           .setTitle(`Players Added`)
           .setDescription(
-            `${playertags.map((tag) => `* ${tag}`).join('\n')}\n\n` + `Use this channel to coordinate and communicate.`
+            `${allPlayers.map((p) => `* ${p.name}`).join('\n')}\n\n` + `Use this channel to coordinate and communicate.`
           )
           .setColor(EmbedColor.SUCCESS)
           .setTimestamp();
@@ -208,7 +172,7 @@ const memberChannelCreationButton: ButtonHandler = {
         )
         .setColor(EmbedColor.FAIL);
 
-      await interaction.followUp({ content: '', components: [], embeds: [errorEmbed] });
+      await interaction.followUp({ content: '', components: [], embeds: [errorEmbed], flags: MessageFlags.Ephemeral });
       return;
     }
   },

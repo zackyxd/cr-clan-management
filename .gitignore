@@ -12,3 +12,5 @@ src/services/workers/notificationWorker.ts
 src/services/workers/apiWorker.ts
 src/logs
 removeQueues.ts
+MEMBER_CHANNEL_REFACTOR.md
+src/utils/memberChannelHelpers.examples.ts

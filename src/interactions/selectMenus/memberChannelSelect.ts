@@ -1,6 +1,7 @@
 import {
   StringSelectMenuInteraction,
   ModalSubmitInteraction,
+  ButtonInteraction,
   MessageFlags,
   EmbedBuilder,
   ActionRowBuilder,
@@ -18,7 +19,6 @@ const memberChannelSelect: SelectMenuHandler = {
   customId: 'member_channel_select',
   async execute(interaction: StringSelectMenuInteraction) {
     if (!interaction || !interaction.guild) return;
-    console.log('came in here?');
     const data = memberChannelCache.get(interaction.message.interactionMetadata?.id || '');
     if (!data) {
       await interaction.reply({ content: '❌ Session expired. Please try again.', flags: MessageFlags.Ephemeral });
@@ -59,7 +59,9 @@ const memberChannelSelect: SelectMenuHandler = {
 //   // TODO: Implement this or refactor to share code
 // }
 
-export async function showFinalConfirmation(interaction: StringSelectMenuInteraction | ModalSubmitInteraction) {
+export async function showFinalConfirmation(
+  interaction: StringSelectMenuInteraction | ModalSubmitInteraction | ButtonInteraction
+) {
   const data = memberChannelCache.get(
     interaction instanceof ModalSubmitInteraction ? interaction.id : interaction.message.interactionMetadata?.id || ''
   );

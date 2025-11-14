@@ -6,6 +6,8 @@ import {
   EmbedBuilder,
   ModalSubmitInteraction,
   StringSelectMenuInteraction,
+  ButtonBuilder,
+  ButtonStyle,
 } from 'discord.js';
 import { ModalHandler } from '../../types/Handlers.js';
 import { CR_API, FetchError, isFetchError, Player, PlayerResult } from '../../api/CR_API.js';
@@ -45,18 +47,8 @@ const createMemberChannelIndentifier: ModalHandler = {
     const resTags = await getDiscordIdsFromPlayertags(guildId, validPlayertags);
     const resIds = await getPlayertagsFromDiscordIds(guildId, discordIdArray);
 
-    console.log('=== DEBUG: DB Results ===');
-    console.log('From playertags to Discord IDs:', resTags);
-    console.log('From Discord IDs to playertags:', resIds);
-
-    const allPlayertagDiscordPairs = [...resTags, ...resIds];
-    console.log('Combined pairs:', allPlayertagDiscordPairs);
-
-    const discordIdToPlayertags = groupPlayertagsByDiscordId(allPlayertagDiscordPairs);
-    console.log('Grouped by Discord ID:', discordIdToPlayertags);
-
-    console.log('=== DEBUG: Initial Classification ===');
-    console.log('All Discord ID to Playertags:', discordIdToPlayertags);
+    // const allPlayertagDiscordPairs = [...resTags, ...resIds];
+    // const discordIdToPlayertags = groupPlayertagsByDiscordId(allPlayertagDiscordPairs);
 
     // Simplified Logic:
     // 1. Separate accounts from playertags (explicitly chosen) vs Discord IDs (need selection)
@@ -79,10 +71,6 @@ const createMemberChannelIndentifier: ModalHandler = {
       }
       accountsFromDiscordIds.get(discord_id)!.push(playertag);
     });
-
-    console.log('=== DEBUG: Separated by Input Type ===');
-    console.log('Accounts from playertags (auto-selected):', accountsFromPlayertags);
-    console.log('Accounts from Discord IDs (might need selection):', accountsFromDiscordIds);
 
     // Build final single/multiple account users
     const finalSingleAccountUsers = new Map<string, string>();
@@ -107,9 +95,26 @@ const createMemberChannelIndentifier: ModalHandler = {
       // Remove duplicates
       const uniqueTags = [...new Set(playertags)];
 
-      // Skip if this Discord ID was already handled by playertag input
+      // Check if this Discord ID was already handled by playertag input
       if (accountsFromPlayertags.has(discordId)) {
-        return; // Don't double-add
+        const explicitlySelectedTags = accountsFromPlayertags.get(discordId)!;
+
+        // If user specified playertags AND Discord ID, merge them
+        // Combine explicit tags with all available tags for this user
+        const allTagsForUser = [...new Set([...explicitlySelectedTags, ...uniqueTags])];
+
+        if (allTagsForUser.length === 1) {
+          // Still only one tag total, keep as single
+          finalSingleAccountUsers.set(discordId, allTagsForUser[0]);
+        } else if (allTagsForUser.length >= 2) {
+          // Multiple tags - need selection
+          // Remove from single account users if it was added there
+          finalSingleAccountUsers.delete(discordId);
+          finalMultipleAccountUsers.set(discordId, allTagsForUser);
+          // Pre-select the explicitly specified playertags
+          preSelectedAccounts.set(discordId, explicitlySelectedTags);
+        }
+        return;
       }
 
       if (uniqueTags.length === 1) {
@@ -119,11 +124,6 @@ const createMemberChannelIndentifier: ModalHandler = {
         finalMultipleAccountUsers.set(discordId, uniqueTags);
       }
     });
-
-    console.log('=== DEBUG: Final Classification ===');
-    console.log('Final single account users:', finalSingleAccountUsers);
-    console.log('Final multiple account users (need selection):', finalMultipleAccountUsers);
-    console.log('Pre-selected accounts:', preSelectedAccounts);
 
     // Check if we found any linked accounts
     const totalLinkedAccounts = finalSingleAccountUsers.size + finalMultipleAccountUsers.size;
@@ -225,22 +225,43 @@ export async function showAccountSelectionForUser(
     .setMinValues(1)
     .setMaxValues(playertags.length);
 
-  // Add options for each account
+  // Check if there are pre-selected accounts for this user
+  const preSelectedTags = data.selectedAccounts.get(discordId) || [];
+
+  // Add options for each account (pre-select if in preSelectedAccounts)
   validPlayers.forEach((player) => {
-    select.addOptions(
-      new StringSelectMenuOptionBuilder()
-        .setLabel(player.name)
-        .setDescription(`${player.tag} • Level ${player.expLevel}`)
-        .setValue(player.tag)
-    );
+    const option = new StringSelectMenuOptionBuilder()
+      .setLabel(player.name)
+      .setDescription(`${player.tag} • Level ${player.expLevel}`)
+      .setValue(player.tag);
+
+    // Pre-select if this was explicitly chosen via playertag input
+    if (preSelectedTags.includes(player.tag)) {
+      option.setDefault(true);
+    }
+
+    select.addOptions(option);
   });
 
-  const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+  const selectRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+
+  // Add a continue button to proceed with pre-selected values
+  const continueButton = new ButtonBuilder()
+    .setCustomId(
+      makeCustomId('b', 'member_channel_continue', interaction.guild.id, {
+        ownerId: data.creatorId,
+        extra: [userIndex.toString()],
+      })
+    )
+    .setLabel('Continue with Selected Accounts')
+    .setStyle(ButtonStyle.Primary);
+
+  const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(continueButton);
 
   const updateData = {
     content: '',
     embeds: [embed],
-    components: [row],
+    components: [selectRow, buttonRow],
   };
 
   if (interaction instanceof ModalSubmitInteraction) {
