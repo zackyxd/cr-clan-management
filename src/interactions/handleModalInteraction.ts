@@ -35,6 +35,7 @@ export async function handleModalInteraction(interaction: ModalSubmitInteraction
   const parsed = parseCustomId(interaction.customId);
   const { action } = parsed;
   const handler = modals.get(action);
+  console.log('modal handler', action, handler);
   if (!handler) {
     return interaction.reply({ content: 'Unknown modal.', flags: MessageFlags.Ephemeral });
   }

@@ -155,6 +155,13 @@ export const FeatureRegistry: Record<string, Feature> = {
     defaultEnabled: false,
     settings: [
       {
+        key: 'category_id',
+        label: 'Category',
+        description: 'The category where member channels will be created.',
+        type: 'channel',
+        defaultValue: '',
+      },
+      {
         key: 'pin_invite',
         label: 'Pin Invite',
         description: 'Pin the invite message in the member channel. Refresh when invite is regenerated.',

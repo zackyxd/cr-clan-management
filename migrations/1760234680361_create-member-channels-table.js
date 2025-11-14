@@ -14,7 +14,7 @@ export const up = (pgm) => {
     guild_id: { type: 'varchar(30)', notNull: true },
     category_id: { type: 'varchar(30)', notNull: true },
     channel_id: { type: 'varchar(30)', notNull: true },
-    created_by: { type: 'text[]', notNull: true },
+    created_by: { type: 'varchar(30)', notNull: true },
     playertags: { type: 'text[]' },
     discord_ids: { type: 'text[]' },
     last_ping: { type: 'timestamptz', default: null }

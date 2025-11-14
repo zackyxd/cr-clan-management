@@ -1,4 +1,5 @@
 import format from 'pg-format';
+import { CR_API } from '../api/CR_API.js';
 
 export function buildInsertPlayerLinkQuery(guildId: string, discordId: string, playertag: string): string {
   return format(
@@ -98,5 +99,31 @@ export function buildFindMember(guildId: string, playertag: string): string {
     `,
     guildId,
     playertag
+  );
+}
+
+export function buildGetLinkedDiscordIds(guildId: string, playertags: string[]): string {
+  const formattedTags = playertags.map((tag) => CR_API.normalizeTag(tag.toUpperCase()));
+  return format(
+    `
+    SELECT discord_id, playertag
+    FROM user_playertags
+    WHERE guild_id = (%L) AND playertag IN (%L)
+    `,
+    guildId,
+    formattedTags
+  );
+}
+
+export function buildGetLinkedPlayertags(guildId: string, discordIds: string[]): string {
+  const formattedIds = discordIds.map((id) => id.trim());
+  return format(
+    `
+    SELECT discord_id, playertag
+    FROM user_playertags
+    WHERE guild_id = (%L) AND discord_id IN (%L)
+    `,
+    guildId,
+    formattedIds
   );
 }

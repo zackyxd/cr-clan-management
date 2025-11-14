@@ -66,6 +66,7 @@ const command: Command = {
     }
 
     // Set concurrency to x at a time
+    // TODO Fix since api client handles limits
     const queue = fastq.promise(fetchPlayerWorker, 5);
 
     // Add all playertags to queue and collect results

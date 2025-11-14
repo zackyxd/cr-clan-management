@@ -17,7 +17,6 @@ export default {
   async execute(interaction: ButtonInteraction) {
     const { guildId, extra } = parseCustomId(interaction.customId);
     const cacheKey = extra[0];
-
     // Try to get data from cache (for clan settings)
     const settingsData = getClanSettingsData(cacheKey);
     console.log(cacheKey, settingsData);
@@ -144,6 +143,25 @@ export default {
         );
       return interaction.showModal(modal);
     }
+    // Category Ids Select
+    else if (action === 'category_id') {
+      const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {
+        hideNoPerms: true,
+        skipDefer: true,
+      });
+      if (!allowed) return;
+
+      const modal = new ModalBuilder()
+        .setTitle('Set Category')
+        .setCustomId(makeCustomId('m', action, guildId, { extra: [extra[1]] })) // extra 1 sending table name
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel('Category Select')
+            .setChannelSelectMenuComponent(new ChannelSelectMenuBuilder().setCustomId('input').setMaxValues(1))
+        );
+      return interaction.showModal(modal);
+    }
+
     // Logs channel setting
     else if (action === 'logs_channel_id') {
       const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {

@@ -38,6 +38,7 @@ const command: Command = {
       return;
     }
 
+    // TODO figure out if possible to not ephemeral if successful link, but still show
     const allowed = await checkPerms(interaction, guild.id, 'command', 'either', {
       hideNoPerms: true,
       deferEphemeral: true,
@@ -58,7 +59,7 @@ const command: Command = {
     }
     const playertag = interaction.options.getString('playertag') as string;
 
-    await interaction.deferReply();
+    // await interaction.deferReply();
     const discordId = user.id;
     const client = await pool.connect();
     await client.query('BEGIN');

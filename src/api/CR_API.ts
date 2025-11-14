@@ -6,6 +6,9 @@ import { limitedGet } from './crApiClient.js';
 
 export function normalizeTag(rawTag: string): string {
   const tag = rawTag.trim().toUpperCase().replace(/O/gi, '0').replace(/\s+/g, '');
+  if (tag.length === 0) {
+    return '';
+  }
   return tag.startsWith('#') ? tag : `#${tag}`;
 }
 

@@ -34,7 +34,7 @@ export interface SelectMenuHandler {
 export async function handleSelectMenuInteraction(interaction: StringSelectMenuInteraction) {
   const parsed = parseCustomId(interaction.customId);
   const { category, action } = parsed;
-  if (category !== 'select') {
+  if (category !== 's') {
     return interaction.reply({ content: 'Invalid interaction type for select menus.', flags: MessageFlags.Ephemeral });
   }
 
