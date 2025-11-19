@@ -24,7 +24,7 @@ const memberChannelCreationButton: ButtonHandler = {
     }
 
     if (action !== 'confirm' && action !== 'cancel') {
-      await interaction.update({ content: 'Not sure how you got this, contact Zacky' });
+      await interaction.update({ content: 'Not sure how you got this, contact Zacky. Member channel creation button' });
       return;
     }
 
@@ -106,7 +106,7 @@ const memberChannelCreationButton: ButtonHandler = {
       const channel = await interaction.guild?.channels.create({
         name: `members-${currentCount}-` + data?.channelName.trim() || 'movements',
         type: 0, // GuildText
-        parent: res?.category_id || null,
+        parent: res.category_id,
         permissionOverwrites: permissionOverwrites,
       });
 
@@ -128,8 +128,18 @@ const memberChannelCreationButton: ButtonHandler = {
 
       console.log(`✅ Channel permissions set (Total channel count: ${currentCount + 1})`);
 
+      console.log(data);
       // Insert channel data into database
-      await insertMemberChannel(interaction.guild!.id, res?.category_id || null, channel.id, data.creatorId, members);
+      await insertMemberChannel(
+        interaction.guild!.id,
+        res.category_id,
+        channel.id,
+        data.creatorId,
+        data.channelName.trim(),
+        data.clantagFocus || null,
+        data.clanNameFocus || null,
+        members
+      );
       console.log(`✅ Channel data saved to database`);
 
       // Try to send welcome message to the new channel

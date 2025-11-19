@@ -12,7 +12,7 @@ export const up = (pgm) => {
   pgm.createTable('member_channel_settings',
     {
       guild_id: { type: 'varchar(30)', notNull: true, references: 'guilds(guild_id)', onDelete: 'CASCADE', primaryKey: true, },
-      channel_count: { type: 'integer', default: 0, notNull: true },
+      channel_count: { type: 'integer', default: 1, notNull: true },
       category_id: { type: 'varchar(30)' },
       pin_invite: { type: 'boolean', default: false },
       auto_ping: { type: 'boolean', default: false },

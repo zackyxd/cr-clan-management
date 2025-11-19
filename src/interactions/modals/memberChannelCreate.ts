@@ -19,7 +19,7 @@ import type { MemberChannelData, PlayerInfo } from '../../cache/memberChannelCac
 import { makeCustomId } from '../../utils/customId.js';
 import { showFinalConfirmation } from '../selectMenus/memberChannelSelect.js';
 
-const createMemberChannelIndentifier: ModalHandler = {
+const createMemberChannelIdentifier: ModalHandler = {
   customId: 'create_member_channel',
   async execute(interaction, parsed) {
     const { guildId, action, extra } = parsed;
@@ -35,6 +35,22 @@ const createMemberChannelIndentifier: ModalHandler = {
     console.log('Playertags:', playertags);
     console.log('Discord IDs:', discordIds);
 
+    const abbrevs = await getClanAbbreviations(guildId);
+    const channelNameKeys = channelName.toLowerCase().split(/[\s\-_]+/);
+    console.log(channelNameKeys, channelName);
+    const matchingClan = abbrevs.filter((abbrev) => channelNameKeys.includes(abbrev.abbreviation.toLowerCase()));
+    console.log(`Matching clan found:`, matchingClan);
+    let clanNameFocus: string | null = null;
+    let clantagFocus: string | null = null;
+    if (matchingClan.length === 1) {
+      clanNameFocus = matchingClan[0].clan_name;
+      clantagFocus = matchingClan[0].clantag;
+    } else {
+      clanNameFocus = null; // No match or multiple matches
+      clantagFocus = null;
+    }
+
+    console.log(`Clan focus found: ${clanNameFocus}`);
     // Separate playertags and discord Ids into arrays (removes duplicates)
     const playertagArray = parsePlayertags(playertags);
     const discordIdArray = parseDiscordIds(discordIds);
@@ -140,6 +156,8 @@ const createMemberChannelIndentifier: ModalHandler = {
       // Store data in cache for the final confirmation function
       memberChannelCache.set(interaction.id, {
         channelName,
+        clantagFocus: clantagFocus,
+        clanNameFocus: clanNameFocus,
         singleAccountUsers: finalSingleAccountUsers,
         multipleAccountUsers: finalMultipleAccountUsers,
         selectedAccounts: preSelectedAccounts, // Include pre-selected accounts from playertag input
@@ -161,6 +179,8 @@ const createMemberChannelIndentifier: ModalHandler = {
     const multipleAccountUserIds = Array.from(finalMultipleAccountUsers.keys());
     memberChannelCache.set(interaction.id, {
       channelName,
+      clanNameFocus: clanNameFocus,
+      clantagFocus: clantagFocus,
       singleAccountUsers: finalSingleAccountUsers,
       multipleAccountUsers: finalMultipleAccountUsers,
       selectedAccounts: preSelectedAccounts, // Include any pre-selected accounts
@@ -415,4 +435,9 @@ export async function getCombinedFinalAccountsWithNames(data: MemberChannelData)
 // TODO: Create handler for member_channel_select select menu interaction
 // TODO: Move to next user or finish channel creation
 
-export default createMemberChannelIndentifier;
+async function getClanAbbreviations(guildId: string) {
+  const res = await pool.query(`SELECT clan_name, clantag, abbreviation FROM clans WHERE guild_id = $1`, [guildId]);
+  return res.rows; // [{ clan_name, clantag, abbreviation }]
+}
+
+export default createMemberChannelIdentifier;

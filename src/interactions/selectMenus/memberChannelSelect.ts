@@ -124,6 +124,7 @@ export async function showFinalConfirmation(
     .setDescription(
       `**Channel Name:** *${data.channelName}*\n**${totalUsers} Users** with **${totalAccounts} Player Accounts**`
     )
+    .addFields({ name: 'Clan Focus', value: data.clanNameFocus ? data.clanNameFocus : 'None', inline: true })
     .addFields({ name: 'Members', value: membersList })
     .setColor(EmbedColor.SUCCESS);
 

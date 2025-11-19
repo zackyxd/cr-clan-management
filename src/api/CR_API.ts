@@ -156,27 +156,53 @@ export async function getPlayer(playertag: string): Promise<PlayerResult> {
 //   return parsed.data;
 // }
 
-const ClanSchema = z.looseObject({
-  tag: z.string(),
-  name: z.string(),
-  description: z.string(),
-  members: z.number(),
-  memberList: z.array(z.object({}).loose()),
-  clanWarTrophies: z.number(),
-});
+const ClanMemberSchema = z
+  .object({
+    tag: z.string(),
+    name: z.string(),
+  })
+  .passthrough(); // Allow other properties but ensure tag and name exist
+
+const ClanSchema = z
+  .object({
+    tag: z.string(),
+    name: z.string(),
+    description: z.string(),
+    members: z.number(),
+    memberList: z.array(ClanMemberSchema),
+    clanWarTrophies: z.number(),
+  })
+  .passthrough(); // Allow other clan properties
 
 type Clan = z.infer<typeof ClanSchema>;
 type ClanResult = Clan | FetchError;
 export async function getClan(clantag: string): Promise<ClanResult> {
   const normalizedTag = normalizeTag(clantag);
   const url = `https://proxy.royaleapi.dev/v1/clans/${encodeURIComponent(clantag)}`;
-  const data = await fetchData<z.infer<typeof ClanSchema>>(url, normalizedTag, 'clan');
+  const rawData = await fetchData<{ [key: string]: unknown }>(url, normalizedTag, 'clan');
 
-  if ('error' in data) {
-    return data; // already a FetchError with embed + tag
+  if ('error' in rawData) {
+    return rawData as FetchError; // already a FetchError with embed + tag
   }
 
-  const parsed = ClanSchema.safeParse(data);
+  // Transform memberList to ensure proper typing
+  if (rawData.memberList && Array.isArray(rawData.memberList)) {
+    rawData.memberList = rawData.memberList
+      .filter((member: unknown) => {
+        const m = member as { [key: string]: unknown };
+        return m?.tag && m?.name;
+      })
+      .map((member: unknown) => {
+        const m = member as { [key: string]: unknown };
+        return {
+          tag: m.tag as string,
+          name: m.name as string,
+          ...m, // Keep any other properties
+        };
+      });
+  }
+
+  const parsed = ClanSchema.safeParse(rawData);
   if (!parsed.success) {
     return {
       error: true,
@@ -281,9 +307,9 @@ export async function getClan(clantag: string): Promise<ClanResult> {
 //   // console.log(apiTest);
 // }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
-}
+// if (import.meta.url === `file://${process.argv[1]}`) {
+//   main();
+// }
 
 export const CR_API = {
   getPlayer,

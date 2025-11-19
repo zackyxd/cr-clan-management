@@ -8,6 +8,8 @@ export interface PlayerInfo {
 
 export interface MemberChannelData {
   channelName: string;
+  clantagFocus: string | null;
+  clanNameFocus: string | null;
   singleAccountUsers: Map<string, string>; // discordId -> playertag
   multipleAccountUsers: Map<string, string[]>; // discordId -> playertags[]
   selectedAccounts: Map<string, string[]>; // discordId -> selected playertags
