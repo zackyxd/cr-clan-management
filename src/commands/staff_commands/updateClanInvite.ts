@@ -49,15 +49,15 @@ const command: Command = {
     });
     if (!allowed) return;
 
-    const inviteLink = interaction.options.getString('invite-link')?.trim();
+    const inviteLink = interaction.options.getString('invite-link')?.trim().toLowerCase();
     if (!inviteLink) return;
     const regex = /\/invite\/.*tag=([^&]*)/;
     const regexLink =
-      /https:\/\/link\.clashroyale\.com\/invite\/clan\/[a-z]{2}\?tag=[^&]*&token=[^&]*&platform=(android|iOS)/;
+      /https:\/\/link\.clashroyale\.com\/invite\/clan\/[a-z]{2}\?tag=[^&]*&token=[^&]*&platform=(android|ios)/;
     const match = inviteLink.match(regex); // gets the clantag
     const apiLink = inviteLink.match(regexLink); // gets the entire link
     if (match === null || match[1] === undefined || apiLink === null) {
-      console.log('not valid invite updateclaninvie.ts');
+      console.log('not valid invite updateclaninvite.ts');
       return;
     }
     // match

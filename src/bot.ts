@@ -69,15 +69,16 @@ client.once(Events.ClientReady, async (c) => {
   }
 });
 
-client.on('interactionCreate', async (interaction) => {
-  if (interaction.isButton()) {
-    return handleButtonInteraction(interaction);
-  } else if (interaction.isModalSubmit()) {
-    return handleModalInteraction(interaction);
-  } else if (interaction.isStringSelectMenu()) {
-    return handleSelectMenuInteraction(interaction);
-  }
-});
+// NOTE: Old interaction handling moved to events/interactionCreate.ts with new feature-based dispatcher
+// client.on('interactionCreate', async (interaction) => {
+//   if (interaction.isButton()) {
+//     return handleButtonInteraction(interaction);
+//   } else if (interaction.isModalSubmit()) {
+//     return handleModalInteraction(interaction);
+//   } else if (interaction.isStringSelectMenu()) {
+//     return handleSelectMenuInteraction(interaction);
+//   }
+// });
 
 // Register events
 const eventsPath = path.join(__dirname, 'events');
@@ -105,9 +106,9 @@ import 'dotenv-flow/config';
 import { insert_guilds_on_startup, remove_guilds_on_startup, sync_default_features } from './services/guilds.js';
 import logger from './logger.js';
 import { pool } from './db.js';
-import { handleButtonInteraction, loadButtons } from './interactions/handleButtonInteraction.js';
-import { handleModalInteraction, loadModals } from './interactions/handleModalInteraction.js';
-import { handleSelectMenuInteraction, loadSelectMenus } from './interactions/handleSelectMenuInteraction.js';
+import { loadButtons } from './interactions/handleButtonInteraction.js';
+import { loadModals } from './interactions/handleModalInteraction.js';
+import { loadSelectMenus } from './interactions/handleSelectMenuInteraction.js';
 
 // import { pool } from './dbConfig.js';
 logger.info(`🌱 Environment: ${process.env.NODE_ENV || 'development (default)'}`);

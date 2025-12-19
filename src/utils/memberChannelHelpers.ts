@@ -261,7 +261,7 @@ export function findMissingMembers(channelMembers: MemberData[], clanMembers: Ar
 }
 
 /**
- * Get member channel info with cached clan data
+ * Get member channel info from database
  */
 export async function getMemberChannelInfo(guildId: string, channelId: string) {
   const result = await pool.query(

@@ -1,3 +1,15 @@
+/*
+ * LEGACY FILE - COMMENTED OUT
+ * This file has been replaced by the new feature-based architecture:
+ * /src/features/clan-settings/interactions/router.ts
+ * /src/features/clan-settings/service.ts
+ *
+ * Can be deleted once the new implementation is confirmed working.
+ *
+ * The entire file content is commented out below:
+ */
+
+/*
 import { pool } from '../../db.js';
 import { ButtonHandler } from '../../types/Handlers.js';
 import {
@@ -256,3 +268,4 @@ const clanSettingsButton: ButtonHandler = {
 };
 
 export default clanSettingsButton;
+*/

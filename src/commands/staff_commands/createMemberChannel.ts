@@ -7,7 +7,6 @@ import {
   LabelBuilder,
   TextInputBuilder,
   TextInputStyle,
-  RoleSelectMenuBuilder,
 } from 'discord.js';
 import { checkFeature } from '../../utils/checkFeatureEnabled.js';
 import { Command } from '../../types/Command.js';
@@ -102,7 +101,7 @@ const command: Command = {
     }
 
     const modal = new ModalBuilder()
-      .setCustomId(makeCustomId('m', 'create_member_channel', guild.id))
+      .setCustomId(makeCustomId('m', 'member_channel', guild.id))
       .setTitle('Create Member Channel')
       .addLabelComponents(
         new LabelBuilder()

@@ -1,8 +1,7 @@
 import { Collection, EmbedBuilder, Events, MessageFlags } from 'discord.js';
 import type { Interaction } from 'discord.js';
 import { Command } from '../types/Command.js';
-import * as selectMenuHandlers from '../interactions/selectMenus/players.js';
-import { parseCustomId } from '../utils/customId.js';
+import { InteractionDispatcher } from '../infrastructure/handlers/interaction-dispatcher.js';
 
 // import buttonHandler from "../interactions/buttonHandler";
 // import modalHandler from "../interactions/modalHandler";
@@ -67,6 +66,31 @@ export const event = {
           (err as { code?: number }).code !== 10062
         ) {
           await interaction.reply(reply);
+        }
+      }
+    } else if (interaction.isButton() || interaction.isModalSubmit() || interaction.isStringSelectMenu()) {
+      // NEW: Route all interactions through the feature-based dispatcher
+      try {
+        await InteractionDispatcher.dispatch(interaction);
+      } catch (err: unknown) {
+        console.error('💥 Error in interaction dispatcher:', err);
+
+        // Try to respond if we haven't already
+        const errorReply = {
+          content: 'There was an error while processing this interaction.',
+          ephemeral: true,
+        };
+
+        try {
+          if (interaction.isRepliable()) {
+            if (interaction.replied || interaction.deferred) {
+              await interaction.followUp(errorReply);
+            } else {
+              await interaction.reply(errorReply);
+            }
+          }
+        } catch (replyError) {
+          console.error('Failed to send error reply:', replyError);
         }
       }
       // } else if (interaction.isStringSelectMenu()) {

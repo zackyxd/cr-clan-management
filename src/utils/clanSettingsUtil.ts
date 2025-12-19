@@ -1,3 +1,12 @@
+/*
+ * LEGACY FILE - COMMENTED OUT
+ * This utility was used by the old scattered clan settings handlers.
+ * The new feature-based service handles database operations directly.
+ *
+ * Can be deleted once the new implementation is confirmed working.
+ */
+
+/*
 import { PoolClient } from 'pg';
 
 export async function updateClanSetting(
@@ -21,3 +30,4 @@ export async function updateClanSetting(
   const res = await client.query(sql, [key, JSON.stringify(value), guildId, clantag]);
   return res.rows[0]?.settings ?? null;
 }
+*/

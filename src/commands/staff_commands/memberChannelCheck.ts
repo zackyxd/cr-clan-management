@@ -59,47 +59,47 @@ const command: Command = {
     const checkMemberButton = new ButtonBuilder()
       .setLabel('Check Members')
       .setCustomId(
-        makeCustomId('b', 'check_members', guild.id, { cooldown: 5, extra: ['checkMembers', res.channel_id] })
+        makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['checkMembers', res.channel_id] })
       )
       .setStyle(ButtonStyle.Primary);
 
     const pingMemberButton = new ButtonBuilder()
       .setLabel('Ping Missing Members')
       .setCustomId(
-        makeCustomId('b', 'check_members', guild.id, { cooldown: 5, extra: ['pingMembers', res.channel_id] })
+        makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['pingMembers', res.channel_id] })
       )
       .setStyle(ButtonStyle.Primary);
 
     const addMemberToChannel = new ButtonBuilder()
       .setLabel('Add Member')
-      .setCustomId(makeCustomId('b', 'check_members', guild.id, { cooldown: 5, extra: ['addMember', res.channel_id] }))
+      .setCustomId(makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['addMember', res.channel_id] }))
       .setStyle(ButtonStyle.Primary);
 
     const removeMemberToChannel = new ButtonBuilder()
       .setLabel('Remove Member')
       .setCustomId(
-        makeCustomId('b', 'check_members', guild.id, { cooldown: 5, extra: ['removeMember', res.channel_id] })
+        makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['removeMember', res.channel_id] })
       )
       .setStyle(ButtonStyle.Primary);
 
     const deleteChannelButton = new ButtonBuilder()
       .setLabel('Delete Channel')
       .setCustomId(
-        makeCustomId('b', 'check_members', guild.id, { cooldown: 5, extra: ['deleteChannel', res.channel_id] })
+        makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['deleteChannel', res.channel_id] })
       )
       .setStyle(ButtonStyle.Danger);
 
     const renameChannelButton = new ButtonBuilder()
       .setLabel('Rename Channel')
       .setCustomId(
-        makeCustomId('b', 'check_members', guild.id, { cooldown: 5, extra: ['renameMember', res.channel_id] })
+        makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['renameMember', res.channel_id] })
       )
       .setStyle(ButtonStyle.Primary);
 
     const changeFocusButton = new ButtonBuilder()
       .setLabel('Change Clan Focus')
       .setCustomId(
-        makeCustomId('b', 'check_members', guild.id, { cooldown: 5, extra: ['changeFocus', res.channel_id] })
+        makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['changeFocus', res.channel_id] })
       )
       .setStyle(ButtonStyle.Primary);
 

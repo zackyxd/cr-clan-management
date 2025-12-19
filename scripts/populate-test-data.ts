@@ -31,7 +31,13 @@ async function populateTestData() {
 
     console.log('🚀 Starting test data population for existing guild...');
 
-    // Note: Guild should already exist, but we'll ensure features are enabled
+    // Ensure guild exists first
+    await client.query(
+      `INSERT INTO guilds (guild_id, guild_name) 
+       VALUES ($1, $2) 
+       ON CONFLICT (guild_id) DO NOTHING`,
+      [TEST_GUILD_ID, 'Test Guild']
+    );
 
     // Enable features for the guild (update existing or insert new)
     const features = ['links', 'tickets', 'clan_invites', 'member_channels'];
@@ -112,18 +118,29 @@ async function populateTestData() {
       const clanName = clanNames[i];
 
       await client.query(
-        `INSERT INTO clans (guild_id, clantag, clan_name, clan_trophies, abbreviation) 
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (guild_id, clantag) DO NOTHING`,
-        [TEST_GUILD_ID, clanTag, clanName, 10000, clanName.substring(0, 3).toUpperCase()]
-      );
-
-      // Create clan settings
-      await client.query(
-        `INSERT INTO clan_settings (guild_id, clantag) 
-         VALUES ($1, $2)
-         ON CONFLICT (guild_id, clantag) DO NOTHING`,
-        [TEST_GUILD_ID, clanTag]
+        `INSERT INTO clans (
+          guild_id, clantag, clan_name, clan_trophies, abbreviation,
+          family_clan, nudge_enabled, invites_enabled, clan_role_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (guild_id, clantag) DO UPDATE SET
+          clan_name = $3,
+          clan_trophies = $4,
+          abbreviation = $5,
+          family_clan = $6,
+          nudge_enabled = $7,
+          invites_enabled = $8,
+          clan_role_id = $9`,
+        [
+          TEST_GUILD_ID,
+          clanTag,
+          clanName,
+          10000 + i * 1000, // Different trophy counts
+          clanName.substring(0, 3).toUpperCase(),
+          i === 0, // First clan is family clan
+          i < 2, // First two clans have nudges enabled
+          true, // All clans have invites enabled
+          null, // No role ID for test data
+        ]
       );
     }
 
@@ -165,7 +182,6 @@ async function clearTestData() {
     // Delete test data (keeping guild and core settings)
     await client.query('DELETE FROM user_playertags WHERE guild_id = $1', [TEST_GUILD_ID]);
     await client.query('DELETE FROM users WHERE guild_id = $1', [TEST_GUILD_ID]);
-    await client.query("DELETE FROM clan_settings WHERE guild_id = $1 AND clantag LIKE '#TESTCLAN%'", [TEST_GUILD_ID]);
     await client.query("DELETE FROM clans WHERE guild_id = $1 AND clantag LIKE '#TESTCLAN%'", [TEST_GUILD_ID]);
 
     await client.query('COMMIT');

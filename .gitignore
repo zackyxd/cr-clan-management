@@ -14,3 +14,6 @@ src/logs
 removeQueues.ts
 MEMBER_CHANNEL_REFACTOR.md
 src/utils/memberChannelHelpers.examples.ts
+FILE_STRUCTURE_PROPOSAL.md
+MEMBER_CHANNEL_MIGRATION.md
+REFACTOR_GUIDE.md

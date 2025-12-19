@@ -67,12 +67,22 @@ export const DEFAULT_CLAN_SETTINGS = {
 
 // Build the clan settings view when a clan is selected in /clan-settings
 export async function buildClanSettingsView(guildId: string, clanName: string, clantag: string, ownerId: string) {
-  const res = await pool.query(`SELECT settings FROM clan_settings WHERE guild_id = $1 AND clantag = $2`, [
-    guildId,
-    clantag,
-  ]);
+  const res = await pool.query(
+    `SELECT family_clan, nudge_enabled, invites_enabled, clan_role_id, abbreviation 
+     FROM clans WHERE guild_id = $1 AND clantag = $2`,
+    [guildId, clantag]
+  );
   if (!res.rowCount) throw new Error('Clan not found');
-  const settings = { ...DEFAULT_CLAN_SETTINGS, ...(res.rows[0].settings ?? {}) };
+
+  // Map database columns to settings object
+  const dbRow = res.rows[0];
+  const settings: Record<string, boolean | string> = {
+    family_clan: dbRow.family_clan || false,
+    nudge_enabled: dbRow.nudge_enabled || false,
+    invites_enabled: dbRow.invites_enabled || false,
+    clan_role_id: dbRow.clan_role_id || '',
+    abbreviation: dbRow.abbreviation || '',
+  };
   const embed = new EmbedBuilder().setTitle(`Clan Settings: ${clanName}`).setColor(BOTCOLOR);
 
   let description = '';
@@ -120,7 +130,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
 
       button = new ButtonBuilder()
         .setLabel(`Edit ${settingConfig.label}`)
-        .setCustomId(makeCustomId('b', 'open_modal', guildId, { extra: [cacheKey], ownerId }))
+        .setCustomId(makeCustomId('b', 'clanSettingsOpenModal', guildId, { extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Secondary);
     } else if (settingConfig.type === 'role') {
       const cacheKey = storeClanSettingsData({
@@ -133,7 +143,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
 
       button = new ButtonBuilder()
         .setLabel(`Edit ${settingConfig.label}`)
-        .setCustomId(makeCustomId('b', 'open_modal', guildId, { extra: [cacheKey], ownerId }))
+        .setCustomId(makeCustomId('b', 'clanSettingsOpenModal', guildId, { extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Secondary);
     }
     // For 'role', you might want to use a slash command or a select menu, so you can just show info.
