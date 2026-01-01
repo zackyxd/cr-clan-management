@@ -176,6 +176,13 @@ export const FeatureRegistry: Record<string, Feature> = {
         defaultValue: false,
       },
       {
+        key: 'send_logs',
+        label: 'Send Logs',
+        description: 'Allow the bot to send log information about tickets.',
+        type: 'toggle',
+        defaultValue: false,
+      },
+      {
         key: 'logs_channel_id',
         label: 'Logs Channel',
         description: 'Which channel do you want to send logs to?',

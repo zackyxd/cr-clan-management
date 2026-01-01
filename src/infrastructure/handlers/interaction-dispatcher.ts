@@ -8,6 +8,7 @@ import { parseCustomId } from '../../utils/customId.js';
 import type { ParsedCustomId } from '../../types/ParsedCustomId.js';
 import { MemberChannelInteractionRouter } from '../../features/member-channels/interactions/router.js';
 import { ClanSettingsInteractionRouter } from '../../features/clan-settings/interactions/router.js';
+import { ServerSettingsInteractionRouter } from '../../features/server-settings/interactions/router.js';
 import logger from '../../logger.js';
 
 // Define router interface
@@ -32,9 +33,21 @@ export class InteractionDispatcher {
 
     // Clan Settings actions
     ['clanSettings', ClanSettingsInteractionRouter],
-    ['open_modal', ClanSettingsInteractionRouter], // For opening clan settings modals
+    ['clanSettingsOpenModal', ClanSettingsInteractionRouter], // For opening clan settings modals
     ['abbreviation', ClanSettingsInteractionRouter], // For abbreviation modal
     ['clan_role_id', ClanSettingsInteractionRouter], // For clan role modal
+
+    // Server Settings actions
+    ['serverSettings', ServerSettingsInteractionRouter],
+    ['serverSettingsReturn', ServerSettingsInteractionRouter], // For "return" type actions
+    ['serverSettingToggle', ServerSettingsInteractionRouter], // For toggle buttons
+    ['serverSettingToggleFeature', ServerSettingsInteractionRouter], // For feature toggle buttons
+    ['serverSettingOpenModal', ServerSettingsInteractionRouter], // For modal buttons (unless it conflicts with other features)
+    ['serverSettingModal', ServerSettingsInteractionRouter], // For modal submissions
+    ['serverSettingSwap', ServerSettingsInteractionRouter], // For swap buttons
+    ['serverSettingAction', ServerSettingsInteractionRouter], // For custom action buttons
+    ['logs_channel_id', ServerSettingsInteractionRouter], // For logs channel modal
+    ['category_id', ServerSettingsInteractionRouter], // For category modal
 
     // Add other features here as they're migrated:
     // ['player_link', PlayerLinkingInteractionRouter],

@@ -3,6 +3,7 @@ import { pool } from '../db.js';
 import { BOTCOLOR } from '../types/EmbedUtil.js';
 import { makeCustomId } from '../utils/customId.js';
 import { Feature, FeatureRegistry, isFeatureEnabled } from './featureRegistry.js';
+import { storeServerSettingsData } from '../cache/serverSettingsDataCache.js';
 
 /**
  * Builds the server settings embed and components for a feature
@@ -39,14 +40,17 @@ export async function buildFeatureEmbedAndComponents(
   const toggleFeature = new ButtonBuilder()
     .setLabel(`${isEnabled ? 'Disable Feature' : 'Enable Feature'}`)
     .setCustomId(
-      makeCustomId('b', `toggle`, guildId, { cooldown: 1, extra: [`${featureName}_feature`, feature.tableName] })
+      makeCustomId('b', `serverSettingToggleFeature`, guildId, {
+        cooldown: 1,
+        extra: [`${featureName}_feature`, feature.tableName],
+      })
     )
     .setStyle(ButtonStyle.Primary);
 
   const returnToSettings = new ButtonBuilder()
     .setEmoji('↩')
     .setStyle(ButtonStyle.Primary)
-    .setCustomId(makeCustomId(`b`, 'settings', guildId, { cooldown: 1, extra: ['return'] }));
+    .setCustomId(makeCustomId(`b`, 'serverSettingsReturn', guildId, { cooldown: 1, extra: ['return'] }));
 
   currentRow.addComponents(returnToSettings, toggleFeature);
 
@@ -79,48 +83,60 @@ export async function buildFeatureEmbedAndComponents(
     let button: ButtonBuilder | null = null;
 
     if (setting.type === 'toggle') {
+      const cacheKey = storeServerSettingsData({
+        settingKey: setting.key,
+        featureName: featureName,
+        tableName: feature.tableName,
+        guildId: guildId,
+        ownerId: ownerId,
+        settingType: 'toggle',
+      });
+
       button = new ButtonBuilder()
         .setLabel(`${value ? 'Disable' : 'Enable'} ${setting.label}`)
-        .setCustomId(
-          makeCustomId('b', `toggle`, guildId, {
-            cooldown: 1,
-            extra: [setting.key, feature.tableName],
-            ownerId: ownerId,
-          })
-        )
+        .setCustomId(makeCustomId('b', 'serverSettingToggle', guildId, { cooldown: 1, extra: [cacheKey] }))
         .setStyle(ButtonStyle.Primary);
     } else if (setting.type === 'modal' || setting.type === 'channel') {
+      const cacheKey = storeServerSettingsData({
+        settingKey: setting.key,
+        featureName: featureName,
+        tableName: feature.tableName,
+        guildId: guildId,
+        ownerId: ownerId,
+        settingType: setting.type,
+      });
+
       button = new ButtonBuilder()
         .setLabel(`Change ${setting.label}`)
-        .setCustomId(
-          makeCustomId('b', 'open_modal', guildId, {
-            cooldown: 1,
-            extra: [setting.key, `${feature.tableName}`],
-            ownerId: ownerId,
-          })
-        )
+        .setCustomId(makeCustomId('b', 'serverSettingOpenModal', guildId, { cooldown: 1, extra: [cacheKey] }))
         .setStyle(ButtonStyle.Primary);
     } else if (setting.type === 'swap') {
+      const cacheKey = storeServerSettingsData({
+        settingKey: setting.key,
+        featureName: featureName,
+        tableName: feature.tableName,
+        guildId: guildId,
+        ownerId: ownerId,
+        settingType: 'swap',
+      });
+
       button = new ButtonBuilder()
         .setLabel(`Swap ${setting.label}`)
-        .setCustomId(
-          makeCustomId('b', 'swap', guildId, {
-            cooldown: 1,
-            extra: [setting.key],
-            ownerId: ownerId,
-          })
-        )
+        .setCustomId(makeCustomId('b', 'serverSettingSwap', guildId, { cooldown: 1, extra: [cacheKey] }))
         .setStyle(ButtonStyle.Primary);
     } else if (setting.type === 'action') {
+      const cacheKey = storeServerSettingsData({
+        settingKey: setting.key,
+        featureName: featureName,
+        tableName: feature.tableName,
+        guildId: guildId,
+        ownerId: ownerId,
+        settingType: 'action',
+      });
+
       button = new ButtonBuilder()
         .setLabel(`${setting.label}`)
-        .setCustomId(
-          makeCustomId('b', 'action', guildId, {
-            cooldown: 1,
-            extra: [setting.key, feature.tableName],
-            ownerId: ownerId,
-          })
-        )
+        .setCustomId(makeCustomId('b', 'serverSettingAction', guildId, { cooldown: 1, extra: [cacheKey] }))
         .setStyle(ButtonStyle.Danger); // Actions are usually destructive
     }
 
@@ -184,8 +200,15 @@ export async function buildSettingsOverview(
     description += `${formatted_name} ${is_enabled ? '✅' : '❌'}\n`;
 
     // Create button
+    const cacheKey = storeServerSettingsData({
+      featureName: feature_name,
+      guildId: guildId,
+      ownerId: ownerId,
+      settingType: 'feature',
+    });
+
     const button = new ButtonBuilder()
-      .setCustomId(makeCustomId('b', 'settings', guildId, { cooldown: 1, extra: [feature_name], ownerId: ownerId }))
+      .setCustomId(makeCustomId('b', 'serverSettings', guildId, { cooldown: 1, extra: [cacheKey] }))
       .setLabel(`${formatted_name}`)
       .setStyle(ButtonStyle.Primary);
 

@@ -81,7 +81,9 @@ export async function buildSettingsView(guildId: string, ownerId: string) {
 
       // Goes to buttons/serverSettings
       const button = new ButtonBuilder()
-        .setCustomId(makeCustomId('b', 'settings', guildId, { cooldown: 1, extra: [feature_name], ownerId: ownerId }))
+        .setCustomId(
+          makeCustomId('b', 'serverSettings', guildId, { cooldown: 1, extra: [feature_name], ownerId: ownerId })
+        )
         .setLabel(`${formatted_name}`)
         .setStyle(ButtonStyle.Primary);
       currentRow.addComponents(button);
