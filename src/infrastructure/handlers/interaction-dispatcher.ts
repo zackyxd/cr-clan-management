@@ -9,6 +9,7 @@ import type { ParsedCustomId } from '../../types/ParsedCustomId.js';
 import { MemberChannelInteractionRouter } from '../../features/member-channels/interactions/router.js';
 import { ClanSettingsInteractionRouter } from '../../features/clan-settings/interactions/router.js';
 import { ServerSettingsInteractionRouter } from '../../features/server-settings/interactions/router.js';
+import { TicketInteractionRouter } from '../../features/tickets/interactions/router.js';
 import logger from '../../logger.js';
 
 // Define router interface
@@ -48,6 +49,12 @@ export class InteractionDispatcher {
     ['serverSettingAction', ServerSettingsInteractionRouter], // For custom action buttons
     ['logs_channel_id', ServerSettingsInteractionRouter], // For logs channel modal
     ['category_id', ServerSettingsInteractionRouter], // For category modal
+
+    // Ticket actions
+    ['ticket', TicketInteractionRouter],
+    ['ticketPlayertagsOpenModal', TicketInteractionRouter], // For adding playertags modal
+    // ['opened_identifier', TicketInteractionRouter], // For opened identifier modal
+    // ['closed_identifier', TicketInteractionRouter], // For closed identifier modal
 
     // Add other features here as they're migrated:
     // ['player_link', PlayerLinkingInteractionRouter],
