@@ -10,7 +10,7 @@ export async function linkClan(
   client: PoolClient,
   guildId: string,
   clantag: string,
-  abbreviation: string
+  abbreviation: string,
 ): Promise<{ embed: EmbedBuilder }> {
   clantag = normalizeTag(clantag);
   const confirmClanExists = await CR_API.getClan(clantag);
@@ -27,7 +27,7 @@ export async function linkClan(
     `SELECT max_clans
     FROM server_settings
     WHERE guild_id = $1`,
-    [guildId]
+    [guildId],
   );
   const maxLinks = maxClansRes.rows[0]?.max_clans ?? 15;
 
@@ -36,7 +36,7 @@ export async function linkClan(
     `SELECT COUNT(*)::int AS link_count
     FROM clans
     WHERE guild_id = $1`,
-    [guildId]
+    [guildId],
   );
   const currentClanLinkCount = clanLinkCountRes.rows[0]?.link_count ?? 0;
 
@@ -53,7 +53,7 @@ export async function linkClan(
       clantag,
       confirmClanExists.name,
       confirmClanExists.clanWarTrophies,
-      abbreviation
+      abbreviation.toLowerCase(),
     );
     await client.query(insertClanSQL);
 
@@ -64,7 +64,7 @@ export async function linkClan(
     VALUES ($1, $2, $3::json)
     ON CONFLICT (guild_id, clantag) DO NOTHING
     `,
-      [guildId, clantag, JSON.stringify({ abbreviation })]
+      [guildId, clantag, JSON.stringify({ abbreviation: abbreviation.toLowerCase() })],
     );
     return {
       embed: new EmbedBuilder()
@@ -97,7 +97,7 @@ export async function fetchClanName(guildId: string, clantag: string) {
     `
     SELECT clan_name FROM clans WHERE guild_id = $1 AND clantag = $2
     `,
-    [guildId, clantag]
+    [guildId, clantag],
   );
   return res.rows[0].clan_name ?? 'Failed to get clan name';
 }

@@ -184,7 +184,8 @@ export class ServerSettingsInteractionRouter {
 
     // Extract data from extra: [tableName, featureName]
     const [tableName, featureName] = extra;
-    const settingKey = action; // action is the settingKey (e.g., 'logs_channel_id')
+    // Extract settingKey from action (remove 'serverSetting_' prefix if present)
+    const settingKey = action.startsWith('serverSetting_') ? action.replace('serverSetting_', '') : action;
 
     await this.handleModalSubmit(interaction, guildId, settingKey, tableName, featureName, interaction.user.id);
   }
@@ -201,7 +202,7 @@ export class ServerSettingsInteractionRouter {
     interaction: ButtonInteraction,
     guildId: string,
     ownerId: string,
-    featureName: string
+    featureName: string,
   ): Promise<void> {
     try {
       if (FeatureRegistry[featureName]) {
@@ -226,7 +227,7 @@ export class ServerSettingsInteractionRouter {
     interaction: ButtonInteraction,
     guildId: string,
     ownerId: string,
-    action: string
+    action: string,
   ): Promise<void> {
     if (action === 'return') {
       try {
@@ -251,7 +252,7 @@ export class ServerSettingsInteractionRouter {
     ownerId: string,
     featureName: string,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _tableName: string
+    _tableName: string,
   ): Promise<void> {
     const result = await serverSettingsService.toggleFeature(guildId, featureName);
 
@@ -272,7 +273,7 @@ export class ServerSettingsInteractionRouter {
   private static async handleToggleAction(
     interaction: ButtonInteraction,
     guildId: string,
-    cacheData: ServerSettingsData
+    cacheData: ServerSettingsData,
   ): Promise<void> {
     const { settingKey, tableName, featureName, ownerId } = cacheData;
 
@@ -317,7 +318,7 @@ export class ServerSettingsInteractionRouter {
   private static async handleOpenModal(
     interaction: ButtonInteraction,
     guildId: string,
-    cacheData: ServerSettingsData
+    cacheData: ServerSettingsData,
   ): Promise<void> {
     const { settingKey, tableName, featureName } = cacheData;
 
@@ -326,22 +327,26 @@ export class ServerSettingsInteractionRouter {
       if (settingKey === 'logs_channel_id') {
         const modal = new ModalBuilder()
           .setTitle('Set Logs Channel')
-          .setCustomId(makeCustomId('m', settingKey, guildId, { extra: [tableName || '', featureName || ''] }))
+          .setCustomId(
+            makeCustomId('m', `serverSetting_${settingKey}`, guildId, { extra: [tableName || '', featureName || ''] }),
+          )
           .addLabelComponents(
             new LabelBuilder()
               .setLabel('Channel Select')
-              .setChannelSelectMenuComponent(new ChannelSelectMenuBuilder().setCustomId('input').setMaxValues(1))
+              .setChannelSelectMenuComponent(new ChannelSelectMenuBuilder().setCustomId('input').setMaxValues(1)),
           );
 
         return interaction.showModal(modal);
       } else if (settingKey === 'category_id') {
         const modal = new ModalBuilder()
           .setTitle('Set Category')
-          .setCustomId(makeCustomId('m', settingKey, guildId, { extra: [tableName || '', featureName || ''] }))
+          .setCustomId(
+            makeCustomId('m', `serverSetting_${settingKey}`, guildId, { extra: [tableName || '', featureName || ''] }),
+          )
           .addLabelComponents(
             new LabelBuilder()
               .setLabel('Category Select')
-              .setChannelSelectMenuComponent(new ChannelSelectMenuBuilder().setCustomId('input').setMaxValues(1))
+              .setChannelSelectMenuComponent(new ChannelSelectMenuBuilder().setCustomId('input').setMaxValues(1)),
           );
         return interaction.showModal(modal);
       }
@@ -371,7 +376,7 @@ export class ServerSettingsInteractionRouter {
   private static async handleSwapAction(
     interaction: ButtonInteraction,
     guildId: string,
-    cacheData: ServerSettingsData
+    cacheData: ServerSettingsData,
   ): Promise<void> {
     const { settingKey, tableName, featureName, ownerId } = cacheData;
 
@@ -404,7 +409,7 @@ export class ServerSettingsInteractionRouter {
   private static async handleCustomAction(
     _interaction: ButtonInteraction,
     _guildId: string,
-    cacheData: ServerSettingsData
+    cacheData: ServerSettingsData,
   ): Promise<void> {
     const { settingKey, tableName } = cacheData;
     console.log('Custom action:', settingKey, 'in table:', tableName);
@@ -420,7 +425,7 @@ export class ServerSettingsInteractionRouter {
     settingKey: string,
     tableName: string,
     featureName: string,
-    ownerId: string
+    ownerId: string,
   ): Promise<void> {
     const messageId = interaction.message?.id;
     if (!messageId) {

@@ -2,7 +2,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'disc
 import { pool } from '../db.js';
 import { BOTCOLOR } from '../types/EmbedUtil.js';
 import { makeCustomId } from '../utils/customId.js';
-import { Feature, FeatureRegistry, isFeatureEnabled } from './featureRegistry.js';
+import { Feature, FeatureRegistry, isFeatureEnabled, fetchInfoValue } from './featureRegistry.js';
 import { storeServerSettingsData } from '../cache/serverSettingsDataCache.js';
 
 /**
@@ -12,7 +12,7 @@ import { storeServerSettingsData } from '../cache/serverSettingsDataCache.js';
 export async function buildFeatureEmbedAndComponents(
   guildId: string,
   ownerId: string,
-  featureName: string
+  featureName: string,
 ): Promise<{ embed: EmbedBuilder; components: ActionRowBuilder<ButtonBuilder>[] }> {
   // Validate feature exists
   const feature = FeatureRegistry[featureName];
@@ -28,31 +28,37 @@ export async function buildFeatureEmbedAndComponents(
   const settings = settingRes.rows[0] ?? {};
 
   // Build the embed
-  const embed = new EmbedBuilder()
-    .setTitle(`${feature.displayName} Features: ${isEnabled ? '✅ Enabled' : '❌ Disabled'}`)
-    .setColor(BOTCOLOR);
+  const title =
+    featureName === 'global'
+      ? `${feature.displayName} Settings`
+      : `${feature.displayName} Features: ${isEnabled ? '✅ Enabled' : '❌ Disabled'}`;
+  const embed = new EmbedBuilder().setTitle(title).setColor(BOTCOLOR);
 
   // Build action rows for buttons
   const actionRows: ActionRowBuilder<ButtonBuilder>[] = [];
   let currentRow = new ActionRowBuilder<ButtonBuilder>();
 
-  // Add main control buttons
-  const toggleFeature = new ButtonBuilder()
-    .setLabel(`${isEnabled ? 'Disable Feature' : 'Enable Feature'}`)
-    .setCustomId(
-      makeCustomId('b', `serverSettingToggleFeature`, guildId, {
-        cooldown: 1,
-        extra: [`${featureName}_feature`, feature.tableName],
-      })
-    )
-    .setStyle(ButtonStyle.Primary);
-
+  // Add return button
   const returnToSettings = new ButtonBuilder()
     .setEmoji('↩')
     .setStyle(ButtonStyle.Primary)
     .setCustomId(makeCustomId(`b`, 'serverSettingsReturn', guildId, { cooldown: 1, extra: ['return'] }));
 
-  currentRow.addComponents(returnToSettings, toggleFeature);
+  currentRow.addComponents(returnToSettings);
+
+  // Add toggle button only if not the global feature
+  if (featureName !== 'global') {
+    const toggleFeature = new ButtonBuilder()
+      .setLabel(`${isEnabled ? 'Disable Feature' : 'Enable Feature'}`)
+      .setCustomId(
+        makeCustomId('b', `serverSettingToggleFeature`, guildId, {
+          cooldown: 1,
+          extra: [`${featureName}_feature`, feature.tableName],
+        }),
+      )
+      .setStyle(ButtonStyle.Primary);
+    currentRow.addComponents(toggleFeature);
+  }
 
   // Build description with settings
   let description = `*${feature.description}*\n\n\n`;
@@ -70,19 +76,32 @@ export async function buildFeatureEmbedAndComponents(
     } else if (setting.type === 'channel') {
       displayValue = value ? `<#${value}>` : '*None*';
     } else if (setting.type === 'number') {
-      displayValue = String(value);
+      displayValue = String(value || setting.defaultValue || '*None*');
     } else if (setting.type === 'role') {
       displayValue = value ? `<@&${value}>` : '*None*';
+    } else if (setting.type === 'info') {
+      // Fetch dynamic info value
+      const infoValue = await fetchInfoValue(guildId, setting.key);
+
+      // If maxValue is specified, format as "current/max"
+      if (setting.maxValue !== undefined) {
+        displayValue = `${infoValue}/${setting.maxValue}`;
+      } else {
+        displayValue = String(infoValue);
+      }
     }
 
     // Add setting to description
     description += `* **${setting.label}: ${displayValue}**\n`;
     description += `  * ${setting.description}\n\n`;
 
-    // Create button based on setting type
+    // Create button based on setting type (skip for 'info' type)
     let button: ButtonBuilder | null = null;
 
-    if (setting.type === 'toggle') {
+    if (setting.type === 'info') {
+      // No button for info-only settings
+      button = null;
+    } else if (setting.type === 'toggle') {
       const cacheKey = storeServerSettingsData({
         settingKey: setting.key,
         featureName: featureName,
@@ -163,18 +182,23 @@ export async function buildFeatureEmbedAndComponents(
  */
 export async function buildSettingsOverview(
   guildId: string,
-  ownerId: string
+  ownerId: string,
 ): Promise<{ embed: EmbedBuilder; components: ActionRowBuilder<ButtonBuilder>[] }> {
   // Get all features and their enabled status for this guild
   const settingsRes = await pool.query(
     `SELECT feature_name, is_enabled
      FROM guild_features
      WHERE guild_id = $1`,
-    [guildId]
+    [guildId],
   );
 
   const guildFeatures = settingsRes.rows;
-  guildFeatures.sort((a, b) => a.feature_name.localeCompare(b.feature_name));
+  // Sort features with 'global' first, then alphabetically
+  guildFeatures.sort((a, b) => {
+    if (a.feature_name === 'global') return -1;
+    if (b.feature_name === 'global') return 1;
+    return a.feature_name.localeCompare(b.feature_name);
+  });
 
   // Build embed
   const embed = new EmbedBuilder().setTitle('Features List').setColor(BOTCOLOR);
@@ -196,8 +220,12 @@ export async function buildSettingsOverview(
         .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
 
-    // Add to description
-    description += `${formatted_name} ${is_enabled ? '✅' : '❌'}\n`;
+    // Add to description (global feature doesn't show enabled/disabled)
+    if (feature_name === 'global') {
+      description += `${formatted_name}\n`;
+    } else {
+      description += `${formatted_name} ${is_enabled ? '✅' : '❌'}\n`;
+    }
 
     // Create button
     const cacheKey = storeServerSettingsData({

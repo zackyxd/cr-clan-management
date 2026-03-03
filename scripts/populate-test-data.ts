@@ -32,12 +32,12 @@ async function populateTestData() {
     console.log('🚀 Starting test data population for existing guild...');
 
     // Ensure guild exists first
-    await client.query(
-      `INSERT INTO guilds (guild_id, guild_name) 
-       VALUES ($1, $2) 
-       ON CONFLICT (guild_id) DO NOTHING`,
-      [TEST_GUILD_ID, 'Test Guild']
-    );
+    // await client.query(
+    //   `INSERT INTO guilds (guild_id, guild_name)
+    //    VALUES ($1, $2)
+    //    ON CONFLICT (guild_id) DO NOTHING`,
+    //   [TEST_GUILD_ID, 'Test Guild']
+    // );
 
     // Enable features for the guild (update existing or insert new)
     const features = ['links', 'tickets', 'clan_invites', 'member_channels'];
@@ -46,7 +46,7 @@ async function populateTestData() {
         `INSERT INTO guild_features (guild_id, feature_name, is_enabled) 
          VALUES ($1, $2, true) 
          ON CONFLICT (guild_id, feature_name) DO UPDATE SET is_enabled = true`,
-        [TEST_GUILD_ID, feature]
+        [TEST_GUILD_ID, feature],
       );
     }
 
@@ -55,7 +55,7 @@ async function populateTestData() {
       `INSERT INTO link_settings (guild_id, max_player_links, rename_players) 
        VALUES ($1, 5, true) 
        ON CONFLICT (guild_id) DO UPDATE SET max_player_links = 5, rename_players = true`,
-      [TEST_GUILD_ID]
+      [TEST_GUILD_ID],
     );
 
     console.log('📊 Creating test users and playertags...');
@@ -81,7 +81,7 @@ async function populateTestData() {
           Math.random() > 0.8, // 20% chance is_replace_me is true
           Math.random() > 0.9, // 10% chance is_attacking_late is true
           JSON.stringify({}), // empty player_settings
-        ]
+        ],
       );
 
       // Insert playertags for this user
@@ -102,7 +102,7 @@ async function populateTestData() {
             `INSERT INTO user_playertags (guild_id, discord_id, playertag) 
              VALUES ($1, $2, $3)
              ON CONFLICT (guild_id, playertag) DO NOTHING`,
-            [TEST_GUILD_ID, discordId, playertag]
+            [TEST_GUILD_ID, discordId, playertag],
           );
         }
       }
@@ -140,7 +140,7 @@ async function populateTestData() {
           i < 2, // First two clans have nudges enabled
           true, // All clans have invites enabled
           null, // No role ID for test data
-        ]
+        ],
       );
     }
 

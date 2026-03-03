@@ -14,6 +14,7 @@ import { Command } from '../../types/Command.js';
 import { makeCustomId } from '../../utils/customId.js';
 import { CR_API, FetchError } from '../../api/CR_API.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
+import { MemberData } from '../../utils/memberChannelHelpers.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -45,10 +46,10 @@ const command: Command = {
       FROM member_channels
       WHERE guild_id = $1 AND channel_id = $2
       `,
-      [guild.id, interaction.channelId]
+      [guild.id, interaction.channelId],
     );
     const res = validChannelSQL.rows[0];
-
+    console.log(res);
     if (!res) {
       await interaction.editReply({
         content: '❌ This command can only be used inside of a member channel.',
@@ -59,80 +60,122 @@ const command: Command = {
     const checkMemberButton = new ButtonBuilder()
       .setLabel('Check Members')
       .setCustomId(
-        makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['checkMembers', res.channel_id] })
+        makeCustomId('b', 'memberChannel_checkMembers', guild.id, {
+          cooldown: 2,
+        }),
       )
       .setStyle(ButtonStyle.Primary);
 
     const pingMemberButton = new ButtonBuilder()
       .setLabel('Ping Missing Members')
       .setCustomId(
-        makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['pingMembers', res.channel_id] })
+        makeCustomId('b', 'memberChannel_pingMembers', guild.id, {
+          cooldown: 2,
+        }),
       )
       .setStyle(ButtonStyle.Primary);
 
     const addMemberToChannel = new ButtonBuilder()
-      .setLabel('Add Member')
-      .setCustomId(makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['addMember', res.channel_id] }))
+      .setLabel('Add Members')
+      .setCustomId(makeCustomId('b', 'memberChannel_addMembers', guild.id, { cooldown: 2 }))
       .setStyle(ButtonStyle.Primary);
 
     const removeMemberToChannel = new ButtonBuilder()
       .setLabel('Remove Member')
       .setCustomId(
-        makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['removeMember', res.channel_id] })
+        makeCustomId('b', 'memberChannel_removeMember', guild.id, {
+          cooldown: 2,
+        }),
       )
       .setStyle(ButtonStyle.Primary);
 
     const deleteChannelButton = new ButtonBuilder()
       .setLabel('Delete Channel')
       .setCustomId(
-        makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['deleteChannel', res.channel_id] })
+        makeCustomId('b', 'memberChannel_deleteChannel', guild.id, {
+          cooldown: 2,
+        }),
       )
       .setStyle(ButtonStyle.Danger);
 
     const renameChannelButton = new ButtonBuilder()
       .setLabel('Rename Channel')
       .setCustomId(
-        makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['renameMember', res.channel_id] })
+        makeCustomId('b', 'memberChannel_renameChannel', guild.id, {
+          cooldown: 2,
+        }),
       )
       .setStyle(ButtonStyle.Primary);
 
     const changeFocusButton = new ButtonBuilder()
       .setLabel('Change Clan Focus')
       .setCustomId(
-        makeCustomId('b', 'check_members', guild.id, { cooldown: 2, extra: ['changeFocus', res.channel_id] })
+        makeCustomId('b', 'memberChannel_changeFocus', guild.id, {
+          cooldown: 2,
+        }),
       )
       .setStyle(ButtonStyle.Primary);
 
-    const clanData = await CR_API.getClan(res.clantag_focus);
+    let clanInfo: EmbedBuilder;
 
-    if ('error' in clanData) {
-      const fetchError = clanData as FetchError;
+    // Calculate total accounts from members
+    const totalMembers = res.members.length;
+    const totalAccounts = res.members.reduce((sum: number, member: MemberData) => {
+      if (Array.isArray(member.players)) {
+        return sum + member.players.length;
+      } else if (member.players && typeof member.players === 'object' && 'count' in member.players) {
+        return sum + member.players.count;
+      }
+      return sum;
+    }, 0);
 
-      const embed =
-        fetchError.embed ??
-        new EmbedBuilder().setDescription(`Failed to fetch ${res.clantag_focus}`).setColor(EmbedColor.FAIL);
-      await interaction.editReply({ embeds: [embed] });
-      return;
+    // Check if channel has a clan focus
+    if (res.clantag_focus) {
+      const clanData = await CR_API.getClan(res.clantag_focus);
+
+      if ('error' in clanData) {
+        const fetchError = clanData as FetchError;
+
+        const embed =
+          fetchError.embed ??
+          new EmbedBuilder().setDescription(`Failed to fetch ${res.clantag_focus}`).setColor(EmbedColor.FAIL);
+        await interaction.editReply({ embeds: [embed] });
+        return;
+      }
+
+      clanInfo = new EmbedBuilder()
+        .setTitle(`${res.clan_name_focus || 'Member Channel'} Info`)
+        .setDescription(
+          `**Clan:** ${res.clan_name_focus} (${res.clantag_focus})\n` +
+            `**Clan Members:** ${clanData.members}/50\n` +
+            `**Channel Members:** ${totalMembers}\n` +
+            `**Accounts Selected:** ${totalAccounts}\n` +
+            `**Last Ping:** ${res.last_ping ? new Date(res.last_ping).toLocaleString() : 'N/A'}`,
+        )
+        .setColor('Blue');
+    } else {
+      // No clan focus - show basic channel info
+      clanInfo = new EmbedBuilder()
+        .setTitle('Member Channel Info')
+        .setDescription(
+          `**Clan Focus:** None\n` +
+            `**Channel Members:** ${totalMembers}\n` +
+            `**Accounts Selected:** ${totalAccounts}\n` +
+            `**Last Ping:** ${res.last_ping ? new Date(res.last_ping).toLocaleString() : 'N/A'}`,
+        )
+        .setColor('Blue');
     }
-
-    const clanInfo = new EmbedBuilder()
-      .setTitle(`${res.clan_focus ? res.clan_focus : 'Member Channel'} Info`)
-      .setDescription(
-        `Current Members: ${clanData.members}/50\nLast Ping: ${
-          res.last_ping ? new Date(res.last_ping).toLocaleString() : 'N/A'
-        }`
-      );
 
     const memberActionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       checkMemberButton,
       pingMemberButton,
       addMemberToChannel,
-      removeMemberToChannel
+      removeMemberToChannel,
     );
     const channelActionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       renameChannelButton,
       changeFocusButton,
-      deleteChannelButton
+      deleteChannelButton,
     );
 
     await interaction.editReply({

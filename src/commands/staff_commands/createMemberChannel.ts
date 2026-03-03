@@ -46,7 +46,7 @@ const command: Command = {
         FROM member_channel_settings
         WHERE guild_id = $1
         `,
-        [guild.id]
+        [guild.id],
       );
 
       if (settingsCheck.rows.length === 0) {
@@ -86,7 +86,7 @@ const command: Command = {
         console.log(error);
         await interaction.reply({
           content:
-            '❌ Unable to access the configured member channel category. Please contact an administrator to check the settings.',
+            '❌ The configured member channel category no longer exists or is invalid. Please contact an administrator to check the settings.',
           flags: MessageFlags.Ephemeral,
         });
         return;
@@ -101,43 +101,43 @@ const command: Command = {
     }
 
     const modal = new ModalBuilder()
-      .setCustomId(makeCustomId('m', 'member_channel', guild.id))
+      .setCustomId(makeCustomId('m', 'memberChannel_create', guild.id))
       .setTitle('Create Member Channel')
       .addLabelComponents(
         new LabelBuilder()
           .setLabel('Channel Name')
           .setTextInputComponent(
             new TextInputBuilder()
-              .setCustomId('channel_name_input')
+              .setCustomId('createMemberChannelNameInput')
               .setStyle(TextInputStyle.Short)
               .setMinLength(1)
-              .setMaxLength(25)
-          )
+              .setMaxLength(25),
+          ),
       )
       .addLabelComponents(
         new LabelBuilder()
           .setLabel('Playertags (space separated)')
           .setTextInputComponent(
             new TextInputBuilder()
-              .setCustomId('playertags_input')
+              .setCustomId('createMemberChannelPlayertagsInput')
               .setStyle(TextInputStyle.Paragraph)
               .setMinLength(0)
               .setMaxLength(1000)
               .setPlaceholder('#111 #222')
-              .setRequired(false)
-          )
+              .setRequired(false),
+          ),
       )
       .addLabelComponents(
         new LabelBuilder()
           .setLabel('Discord Ids (space separated)')
           .setTextInputComponent(
             new TextInputBuilder()
-              .setCustomId('discord_ids_input')
+              .setCustomId('createMemberChannelDiscordIdsInput')
               .setStyle(TextInputStyle.Paragraph)
               .setMinLength(0)
               .setMaxLength(3000)
-              .setRequired(false)
-          )
+              .setRequired(false),
+          ),
       );
     // .addLabelComponents(
     //   new LabelBuilder()

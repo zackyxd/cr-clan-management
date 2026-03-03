@@ -2,9 +2,18 @@ import { pool } from '../db.js';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import { EmbedColor, BOTCOLOR } from '../types/EmbedUtil.js';
 import { makeCustomId } from '../utils/customId.js';
+import {
+  MAX_CLANS_PER_GUILD,
+  MAX_PLAYER_LINKS_PER_USER,
+  DEFAULT_TICKET_OPENED_IDENTIFIER,
+  DEFAULT_TICKET_CLOSED_IDENTIFIER,
+  DEFAULT_DELETE_METHOD,
+  MAX_CLANS_PER_GUILD,
+  MAX_FAMILY_CLANS_PER_GUILD,
+} from './constants.js';
 
 // Define all possible setting types in one place
-export type SettingType = 'toggle' | 'modal' | 'swap' | 'channel' | 'number' | 'role' | 'text' | 'action';
+export type SettingType = 'toggle' | 'modal' | 'swap' | 'channel' | 'number' | 'role' | 'text' | 'action' | 'info';
 
 // Define the structure of a feature setting
 export interface FeatureSetting {
@@ -13,6 +22,7 @@ export interface FeatureSetting {
   description: string;
   type: SettingType;
   defaultValue?: boolean | string | number; // Default value for the setting
+  maxValue?: number; // For 'info' type: reference another setting's key to show "current/max" format
 }
 
 // Define the structure of a feature
@@ -27,6 +37,42 @@ export interface Feature {
 
 // Central registry of all features
 export const FeatureRegistry: Record<string, Feature> = {
+  global: {
+    name: 'global',
+    displayName: 'Global',
+    description: 'Global settings that affect the entire bot functionality.',
+    tableName: 'server_settings',
+    defaultEnabled: true,
+    settings: [
+      {
+        key: 'logs_channel_id',
+        label: 'Global Logs Channel',
+        description: 'The channel where all bot logs are sent.',
+        type: 'channel',
+        defaultValue: '',
+      },
+      {
+        key: 'linked_clans_count',
+        label: 'Linked Clans',
+        description: 'Number of clans currently linked to this server.',
+        type: 'info',
+        maxValue: MAX_CLANS_PER_GUILD,
+      },
+      {
+        key: 'linked_family_clans_count',
+        label: 'Linked Family Clans',
+        description: 'Number of family clans currently linked to this server.',
+        type: 'info',
+        maxValue: MAX_FAMILY_CLANS_PER_GUILD,
+      },
+      {
+        key: 'linked_players_count',
+        label: 'Linked Players',
+        description: 'Number of players currently linked to this server.',
+        type: 'info',
+      },
+    ],
+  },
   links: {
     name: 'links',
     displayName: 'Links',
@@ -47,7 +93,7 @@ export const FeatureRegistry: Record<string, Feature> = {
         label: 'Max Links',
         description: 'Max amount of playertags linked to each @user',
         type: 'number',
-        defaultValue: 10,
+        defaultValue: MAX_PLAYER_LINKS_PER_USER,
       },
     ],
   },
@@ -63,14 +109,14 @@ export const FeatureRegistry: Record<string, Feature> = {
         label: 'Ticket Created Text',
         description: 'The text that will appear in created channels used for tickets.',
         type: 'modal',
-        defaultValue: 'ticket',
+        defaultValue: DEFAULT_TICKET_OPENED_IDENTIFIER,
       },
       {
         key: 'closed_identifier',
         label: 'Ticket Closed Text',
         description: 'The text that will appear in closed channels used for tickets.',
         type: 'modal',
-        defaultValue: 'closed',
+        defaultValue: DEFAULT_TICKET_CLOSED_IDENTIFIER,
       },
       {
         key: 'allow_append',
@@ -86,13 +132,6 @@ export const FeatureRegistry: Record<string, Feature> = {
         description: 'Allow the bot to send log information about tickets.',
         type: 'toggle',
         defaultValue: false,
-      },
-      {
-        key: 'logs_channel_id',
-        label: 'Logs Channel',
-        description: 'Which channel do you want to send logs to?',
-        type: 'channel',
-        defaultValue: '',
       },
     ],
   },
@@ -115,7 +154,7 @@ export const FeatureRegistry: Record<string, Feature> = {
         label: 'Expiry method',
         description: 'Switch how expire generated links are handled. Delete the messages or edit them.',
         type: 'swap',
-        defaultValue: 'update',
+        defaultValue: DEFAULT_DELETE_METHOD,
       },
       {
         key: 'show_inactive',
@@ -137,13 +176,6 @@ export const FeatureRegistry: Record<string, Feature> = {
         description: 'Allow the bot to send log information about clan invites.',
         type: 'toggle',
         defaultValue: false,
-      },
-      {
-        key: 'logs_channel_id',
-        label: 'Logs Channel',
-        description: 'Which channel do you want to send logs to?',
-        type: 'channel',
-        defaultValue: '',
       },
     ],
   },
@@ -182,13 +214,6 @@ export const FeatureRegistry: Record<string, Feature> = {
         type: 'toggle',
         defaultValue: false,
       },
-      {
-        key: 'logs_channel_id',
-        label: 'Logs Channel',
-        description: 'Which channel do you want to send logs to?',
-        type: 'channel',
-        defaultValue: '',
-      },
     ],
   },
 };
@@ -206,10 +231,13 @@ export function getAllFeatureNames(): string[] {
  * Get all features as an object with default enabled values
  */
 export function getDefaultFeaturesState(): Record<string, boolean> {
-  return Object.entries(FeatureRegistry).reduce((acc, [name, feature]) => {
-    acc[name] = feature.defaultEnabled;
-    return acc;
-  }, {} as Record<string, boolean>);
+  return Object.entries(FeatureRegistry).reduce(
+    (acc, [name, feature]) => {
+      acc[name] = feature.defaultEnabled;
+      return acc;
+    },
+    {} as Record<string, boolean>,
+  );
 }
 
 /**
@@ -219,12 +247,15 @@ export function getFeatureDefaultSettings(featureName: string): Record<string, b
   const feature = FeatureRegistry[featureName];
   if (!feature) return {};
 
-  return feature.settings.reduce((acc, setting) => {
-    if (setting.defaultValue !== undefined) {
-      acc[setting.key] = setting.defaultValue;
-    }
-    return acc;
-  }, {} as Record<string, boolean | string | number>);
+  return feature.settings.reduce(
+    (acc, setting) => {
+      if (setting.defaultValue !== undefined) {
+        acc[setting.key] = setting.defaultValue;
+      }
+      return acc;
+    },
+    {} as Record<string, boolean | string | number>,
+  );
 }
 
 /**
@@ -234,13 +265,16 @@ export function getFeatureSettingsDefaults(): Record<
   string,
   { table: string; defaults: Record<string, boolean | string | number> }
 > {
-  return Object.entries(FeatureRegistry).reduce((acc, [name, feature]) => {
-    acc[name] = {
-      table: feature.tableName,
-      defaults: getFeatureDefaultSettings(name),
-    };
-    return acc;
-  }, {} as Record<string, { table: string; defaults: Record<string, boolean | string | number> }>);
+  return Object.entries(FeatureRegistry).reduce(
+    (acc, [name, feature]) => {
+      acc[name] = {
+        table: feature.tableName,
+        defaults: getFeatureDefaultSettings(name),
+      };
+      return acc;
+    },
+    {} as Record<string, { table: string; defaults: Record<string, boolean | string | number> }>,
+  );
 }
 
 /**
@@ -260,7 +294,7 @@ export async function isFeatureEnabled(guildId: string, featureName: string): Pr
 export async function checkFeatureSetting(
   guildId: string,
   featureName: string,
-  settingKey: string
+  settingKey: string,
 ): Promise<{ enabled: boolean; embed?: EmbedBuilder }> {
   const feature = FeatureRegistry[featureName];
   if (!feature) {
@@ -274,7 +308,7 @@ export async function checkFeatureSetting(
   if (!value) {
     const embed = new EmbedBuilder()
       .setDescription(
-        `**The \`${settingKey}\` feature for ${feature.displayName} has not been enabled for this guild.**\nPlease ask one of the server admins to enable it in \`/server-settings\``
+        `**The \`${settingKey}\` feature for ${feature.displayName} has not been enabled for this guild.**\nPlease ask one of the server admins to enable it in \`/server-settings\``,
       )
       .setColor(EmbedColor.FAIL);
     return { enabled: false, embed: embed };
@@ -307,4 +341,31 @@ export function generateInsertDefaultFeaturesSQL(guildIds: string[]): { query: s
   `;
 
   return { query, params: values };
+}
+
+/**
+ * Fetch dynamic info values for a guild (for 'info' type settings)
+ */
+export async function fetchInfoValue(guildId: string, settingKey: string): Promise<string | number> {
+  switch (settingKey) {
+    case 'linked_clans_count': {
+      const result = await pool.query('SELECT COUNT(*) FROM clans WHERE guild_id = $1', [guildId]);
+      return parseInt(result.rows[0]?.count || '0', 10);
+    }
+    case 'linked_players_count': {
+      const result = await pool.query('SELECT COUNT(DISTINCT discord_id) FROM user_playertags WHERE guild_id = $1', [
+        guildId,
+      ]);
+      return parseInt(result.rows[0]?.count || '0', 10);
+    }
+    case 'linked_family_clans_count': {
+      const result = await pool.query(
+        `SELECT COUNT(DISTINCT clantag) FROM clans WHERE guild_id = $1 AND family_clan = true`,
+        [guildId],
+      );
+      return parseInt(result.rows[0]?.count || '0', 10);
+    }
+    default:
+      return 'N/A';
+  }
 }

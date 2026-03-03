@@ -1,31 +1,564 @@
-import type { Player, PlayerResult, FetchError } from '../../api/CR_API.js';
-import { CR_API, isFetchError } from '../../api/CR_API.js';
-import { buildGetLinkedDiscordIds, buildGetLinkedPlayertags } from '../../sql_queries/users.js';
+import { ChannelType, Guild, PermissionFlagsBits } from 'discord.js';
+import { CR_API, FetchError, isFetchError, normalizeTag, Player, PlayerResult } from '../../api/CR_API.js';
 import { pool } from '../../db.js';
-import type { MemberChannelConfig, MemberChannelSession, AccountSelectionContext, PlayerInfo } from './types.js';
+import { buildGetLinkedDiscordIds, buildGetLinkedPlayertags } from '../../sql_queries/users.js';
+import {
+  buildPermissionOverwrites,
+  convertToMemberData,
+  insertMemberChannel,
+} from '../../utils/memberChannelHelpers.js';
+import type {
+  ChannelCreationInput,
+  ParsedChannelInput,
+  DatabaseLookupResult,
+  CategorizedAccounts,
+  AccountSelection,
+  FinalChannelData,
+  MemberChannelSession,
+  PlayerInfo,
+  ClanInfo,
+} from './types.js';
+import { SESSION_CLEANUP_INTERVAL_MINUTES, SESSION_EXPIRY_MINUTES } from '../../config/constants.js';
 
 /**
- * Core service class for managing member channel functionality
- * Handles the complete lifecycle of member channel creation
+ * Service for managing member channel creation workflow
  */
 export class MemberChannelService {
   private sessions = new Map<string, MemberChannelSession>();
 
+  // ============================================================================
+  // STEP 3: Receive and validate initial input
+  // ============================================================================
+
   /**
    * Start a new member channel creation session
+   * This is called when the user submits the initial modal
    */
-  async startChannelCreation(guildId: string, userId: string, config: Partial<MemberChannelConfig>): Promise<string> {
-    const sessionId = `${guildId}_${userId}_${Date.now()}`;
+  async startChannelCreation(guildId: string, creatorId: string, input: ChannelCreationInput): Promise<string> {
+    const sessionId = `${guildId}_${creatorId}_${Date.now()}`;
+    const { channelName } = input;
+    // Validate channel name (max 25 chars)
+    if (!channelName || channelName.length > 25 || channelName.length < 1) {
+      throw new Error('Channel name must be 1-25 characters.');
+    }
+    // Parse playertags and discord ids
+    const parsed = this.parseInput(input);
 
+    // Lookup database for linked accounts (Step 5-6)
+    const dbResults = await this.lookupDatabase(guildId, parsed);
+
+    // Categorize accounts (Step 7-8)
+    const categorized = this.categorizeAccounts(dbResults, parsed);
+
+    // Create session
     const session: MemberChannelSession = {
       id: sessionId,
-      config: {
-        selectedPlayers: [],
-        guildId,
-        userId,
-        ...config,
-      },
+      guildId,
+      creatorId,
       step: 'account_selection',
+      input: parsed,
+      invalidPlayertags: dbResults.invalidPlayertags,
+      invalidDiscordIds: dbResults.invalidDiscordIds,
+      categorized,
+      selections: new Map(),
+      multipleAccountUserIds: Array.from(categorized.multipleAccountUsers.keys()),
+      currentUserIndex: 0,
+      createdAt: new Date(),
+      lastActivity: new Date(),
+    };
+
+    this.sessions.set(sessionId, session);
+    // console.log(`Session created!:`, session);
+    return sessionId;
+  }
+
+  // ============================================================================
+  // STEP 4: Parse and normalize input
+  // ============================================================================
+
+  /**
+   * Parse raw input strings into clean arrays
+   */
+  private parseInput(input: ChannelCreationInput): ParsedChannelInput {
+    // Split playertags by whitespace/commas
+    const playertagArray = Array.from(
+      new Set(
+        input.playertags
+          .split(/[\s,]+/)
+          .map((tag) => normalizeTag(tag.trim()))
+          .filter((tag) => tag.length > 0),
+      ),
+    );
+
+    // Split discord ids by whitespace
+    // Handle mention format <@123> and extract just the ID
+    // Remove duplicates
+    const discordIdArray = Array.from(
+      new Set(
+        input.discordIds
+          .split(/\s+/)
+          .map((id) => {
+            // Remove mention formatting: <@123>, <@!123>
+            const match = id.match(/^<@!?(\d+)>$/);
+            return match ? match[1] : id.trim();
+          })
+          .filter((id) => id.length > 0),
+      ),
+    );
+
+    console.log(playertagArray, discordIdArray);
+
+    return {
+      channelName: input.channelName.trim(),
+      playertagArray,
+      discordIdArray,
+    };
+  }
+
+  // ============================================================================
+  // STEP 5-6: Database lookups
+  // ============================================================================
+
+  /**
+   * Query database to find:
+   * - Which discord IDs own the inputted playertags
+   * - Which playertags are linked to the inputted discord IDs
+   */
+  private async lookupDatabase(guildId: string, parsed: ParsedChannelInput): Promise<DatabaseLookupResult> {
+    const playertagToDiscordId = new Map<string, string>();
+    const discordIdToPlayertags = new Map<string, string[]>();
+
+    // Query database for playertag -> discord_id mapping (only if playertags provided)
+    if (parsed.playertagArray.length > 0) {
+      const sql = buildGetLinkedDiscordIds(guildId, parsed.playertagArray);
+      const res = await pool.query(sql);
+      res.rows.forEach((row: { discord_id: string; playertag: string }) => {
+        playertagToDiscordId.set(row.playertag, row.discord_id);
+      });
+    }
+
+    // Query database for discord_id -> playertag[] mapping (only if discord IDs provided)
+    if (parsed.discordIdArray.length > 0) {
+      const sql = buildGetLinkedPlayertags(guildId, parsed.discordIdArray);
+      const res = await pool.query(sql);
+      res.rows.forEach((row: { discord_id: string; playertag: string }) => {
+        if (!discordIdToPlayertags.has(row.discord_id)) {
+          discordIdToPlayertags.set(row.discord_id, []);
+        }
+        discordIdToPlayertags.get(row.discord_id)!.push(row.playertag);
+      });
+    }
+
+    // Identify invalid entries by comparing input vs found entries
+    const invalidPlayertags = parsed.playertagArray.filter((tag) => !playertagToDiscordId.has(tag));
+    const invalidDiscordIds = parsed.discordIdArray.filter((discordId) => !discordIdToPlayertags.has(discordId));
+
+    return {
+      playertagToDiscordId,
+      discordIdToPlayertags,
+      invalidPlayertags,
+      invalidDiscordIds,
+    };
+  }
+
+  // ============================================================================
+  // STEP 7-8: Categorize accounts
+  // ============================================================================
+
+  /**
+   * Categorize accounts into:
+   * - finalAccounts: From playertag input (no selection needed)
+   * - singleAccountUsers: Discord IDs with only 1 account
+   * - multipleAccountUsers: Discord IDs with 2+ accounts (need selection)
+   */
+  private categorizeAccounts(dbResults: DatabaseLookupResult, parsed: ParsedChannelInput): CategorizedAccounts {
+    const finalAccounts = new Map<string, string[]>();
+    const singleAccountUsers = new Map<string, string>();
+    const multipleAccountUsers = new Map<string, string[]>();
+
+    // Step 1: Add all playertags explicitly chosen via playertag input
+    if (dbResults.playertagToDiscordId.size > 0) {
+      dbResults.playertagToDiscordId.forEach((discordId, playertag) => {
+        if (!finalAccounts.has(discordId)) {
+          finalAccounts.set(discordId, []);
+        }
+        finalAccounts.get(discordId)!.push(playertag);
+      });
+    }
+
+    // Step 2: Process discord IDs from discord ID input
+    if (dbResults.discordIdToPlayertags.size > 0) {
+      dbResults.discordIdToPlayertags.forEach((playertags, discordId) => {
+        // Check if this user already has some tags selected from playertag input
+        const alreadySelectedTags = finalAccounts.get(discordId) || [];
+
+        if (playertags.length === 1) {
+          // Single account user - auto-add if not already selected
+          if (!alreadySelectedTags.includes(playertags[0])) {
+            singleAccountUsers.set(discordId, playertags[0]);
+          }
+        } else if (playertags.length > 1) {
+          // Multiple account user - filter out already selected tags
+          const remainingTags = playertags.filter((tag) => !alreadySelectedTags.includes(tag));
+
+          if (remainingTags.length === 0) {
+            // All tags already selected, no need for selection
+            console.log(`[categorizeAccounts] User ${discordId} - all tags already selected`);
+          } else if (remainingTags.length === 1) {
+            // Only one tag left, auto-add it
+            if (!finalAccounts.has(discordId)) {
+              finalAccounts.set(discordId, []);
+            }
+            finalAccounts.get(discordId)!.push(remainingTags[0]);
+            console.log(
+              `[categorizeAccounts] User ${discordId} - auto-selected last remaining tag: ${remainingTags[0]}`,
+            );
+          } else {
+            // Multiple remaining tags, need user selection
+            multipleAccountUsers.set(discordId, remainingTags);
+            console.log(
+              `[categorizeAccounts] User ${discordId} - needs selection for ${remainingTags.length} remaining tags`,
+            );
+          }
+        }
+      });
+    }
+
+    console.log(
+      `[categorizeAccounts] Final: ${finalAccounts.size}, Single: ${singleAccountUsers.size}, Multiple: ${multipleAccountUsers.size}`,
+    );
+
+    return {
+      finalAccounts,
+      singleAccountUsers,
+      multipleAccountUsers,
+    };
+  }
+
+  // ============================================================================
+  // STEP 9: Handle account selection for multiple account users
+  // ============================================================================
+
+  /**
+   * Get data needed to show account selection UI for a specific user
+   */
+  async getAccountSelectionData(
+    sessionId: string,
+    userIndex: number,
+  ): Promise<{
+    discordId: string;
+    players: { tag: string; name: string; expLevel: number }[];
+    userIndex: number;
+    totalUsers: number;
+  } | null> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+
+    // Get the discord ID for this user index
+    const discordId = session.multipleAccountUserIds[userIndex];
+
+    // Get their playertags from categorized.multipleAccountUsers Map
+    const playertags = session.categorized.multipleAccountUsers.get(discordId);
+    if (!playertags) {
+      return null;
+    }
+
+    // Fetch player data from CR API for each playertag
+    const playerResults = await Promise.all(playertags.map((tag) => CR_API.getPlayer(tag)));
+
+    // Filter out errors and extract player info
+    const players = playerResults
+      .filter((result): result is Player => !isFetchError(result))
+      .map((player) => ({
+        tag: player.tag,
+        name: player.name,
+        expLevel: player.expLevel,
+      }))
+      .sort((a, b) => b.expLevel - a.expLevel);
+
+    return {
+      discordId,
+      players,
+      userIndex,
+      totalUsers: session.multipleAccountUserIds.length,
+    };
+  }
+
+  /**
+   * Save user's account selection
+   */
+  saveAccountSelection(sessionId: string, selection: AccountSelection): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+
+    // Store the selection in session.selections Map
+    session.selections.set(selection.discordId, selection);
+    console.log(`[saveAccountSelection] Saved selection for ${selection.discordId}, type: ${selection.type}`);
+
+    // Move to next user (currentUserIndex++)
+    session.currentUserIndex++;
+    console.log(
+      `[saveAccountSelection] Moved to user index ${session.currentUserIndex} of ${session.multipleAccountUserIds.length}`,
+    );
+
+    // If all users done, change step to 'confirmation'
+    if (session.currentUserIndex >= session.multipleAccountUserIds.length) {
+      session.step = 'confirmation';
+      console.log(`[saveAccountSelection] All users processed, moving to confirmation step`);
+    }
+
+    // Update last activity
+    session.lastActivity = new Date();
+
+    return true;
+  }
+
+  // ============================================================================
+  // STEP 10: Final confirmation
+  // ============================================================================
+
+  /**
+   * Build final data for confirmation embed
+   */
+  async getFinalConfirmationData(sessionId: string): Promise<FinalChannelData | null> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return null;
+
+    console.log('[getFinalConfirmationData] Session:', {
+      finalAccounts: Array.from(session.categorized.finalAccounts.entries()),
+      singleAccountUsers: Array.from(session.categorized.singleAccountUsers.entries()),
+      selections: Array.from(session.selections.entries()),
+    });
+
+    // Combine all accounts:
+    // 1. finalAccounts (from playertag input)
+    // 2. singleAccountUsers (auto-selected)
+    // 3. Accounts from selections (user chose for multiple account users)
+    const allPlayertags = new Map<string, string[]>();
+
+    // Add finalAccounts
+    session.categorized.finalAccounts.forEach((playertags, discordId) => {
+      if (!allPlayertags.has(discordId)) {
+        allPlayertags.set(discordId, []);
+      }
+      allPlayertags.get(discordId)!.push(...playertags);
+    });
+
+    // Add singleAccountUsers
+    session.categorized.singleAccountUsers.forEach((playertag, discordId) => {
+      if (!allPlayertags.has(discordId)) {
+        allPlayertags.set(discordId, []);
+      }
+      allPlayertags.get(discordId)!.push(playertag);
+    });
+
+    // Add selections from multiple account users
+    session.selections.forEach((selection, discordId) => {
+      if (selection.type === 'specific' && selection.selectedTags) {
+        if (!allPlayertags.has(discordId)) {
+          allPlayertags.set(discordId, []);
+        }
+        allPlayertags.get(discordId)!.push(...selection.selectedTags);
+      }
+      // For 'any' and 'skip' types, don't add playertags here
+      // We'll handle 'any' type during channel creation
+    });
+
+    console.log('[getFinalConfirmationData] Combined playertags:', Array.from(allPlayertags.entries()));
+
+    // Fetch player names for all playertags
+    const accounts = new Map<string, PlayerInfo[] | { type: 'any'; count: number }>();
+
+    for (const [discordId, playertags] of allPlayertags.entries()) {
+      const playerResults = await Promise.all(playertags.map((tag) => CR_API.getPlayer(tag)));
+
+      const players = playerResults
+        .filter((result): result is Player => !isFetchError(result))
+        .map((player) => ({
+          tag: player.tag,
+          name: player.name,
+        }));
+
+      if (players.length > 0) {
+        accounts.set(discordId, players);
+      }
+    }
+
+    // Add 'any' type selections as placeholders
+    session.selections.forEach((selection, discordId) => {
+      if (selection.type === 'any' && selection.accountCount) {
+        accounts.set(discordId, { type: 'any', count: selection.accountCount });
+      }
+    });
+
+    console.log('[getFinalConfirmationData] Final accounts with names:', Array.from(accounts.entries()));
+
+    // Get clan info - either from matching channel name or from existing channel (for add mode)
+    let clanInfo: ClanInfo | undefined;
+
+    if (session.mode === 'add_member' && session.targetChannelId) {
+      // Fetch clan info from existing channel
+      const existingChannelRes = await pool.query(
+        `SELECT clantag_focus, clan_name_focus FROM member_channels WHERE guild_id = $1 AND channel_id = $2`,
+        [session.guildId, session.targetChannelId],
+      );
+
+      if (existingChannelRes.rows.length > 0 && existingChannelRes.rows[0].clantag_focus) {
+        clanInfo = {
+          clantag: existingChannelRes.rows[0].clantag_focus,
+          clanName: existingChannelRes.rows[0].clan_name_focus,
+          abbreviation: '', // Not needed for display
+        };
+      }
+    } else {
+      // For channel creation, try to match clan from channel name
+      clanInfo = await this.findMatchingClan(session.guildId, session.input.channelName);
+    }
+
+    console.log(`find matching clan: ${clanInfo}`);
+    return {
+      channelName: session.input.channelName,
+      accounts,
+      clanInfo,
+    };
+  }
+
+  /**
+   * Create the actual Discord channel
+   */
+  async createChannel(sessionId: string, guild: Guild): Promise<{ success: boolean; error?: string }> {
+    console.log('Should be creating channel with:', sessionId);
+    const session = this.sessions.get(sessionId);
+    if (!session) return { success: false, error: 'Session not found' };
+
+    try {
+      // Get final data
+      const finalData = await this.getFinalConfirmationData(sessionId);
+      if (!finalData) return { success: false, error: 'Failed to get final confirmation data' };
+
+      // Get parent category from settings
+      const parentIdResult = await pool.query(`SELECT category_id FROM member_channel_settings WHERE guild_id = $1`, [
+        session.guildId,
+      ]);
+      const parentId = parentIdResult.rows[0]?.category_id;
+      if (!parentId) {
+        return { success: false, error: 'Parent category not configured' };
+      }
+
+      // Get Discord IDs from all accounts (including 'any' types)
+      const discordIds = Array.from(finalData.accounts.keys());
+      console.log('Discord IDs for permission overwrites:', discordIds);
+
+      // Build permission overwrites (inherits category permissions + adds user permissions)
+      const permissionOverwrites = await buildPermissionOverwrites(guild, parentId, discordIds);
+
+      // Create Discord channel
+      const channel = await guild.channels.create({
+        name: session.input.channelName,
+        type: ChannelType.GuildText,
+        parent: parentId,
+        permissionOverwrites,
+      });
+
+      console.log(`✅ Channel created: ${channel.name} (${channel.id})`);
+
+      // Convert accounts to MemberData format for database (keeping 'any' types as-is)
+      const { members } = convertToMemberData(finalData.accounts);
+
+      // Store in database
+      await insertMemberChannel(
+        guild.id,
+        parentId,
+        channel.id,
+        session.creatorId,
+        session.input.channelName,
+        finalData.clanInfo?.clantag ?? null,
+        finalData.clanInfo?.clanName ?? null,
+        members,
+      );
+
+      // TODO: Send initial message
+      await channel.send('Welcome to your member channel!');
+
+      this.sessions.delete(sessionId);
+      return { success: true };
+    } catch (error) {
+      console.error('Error creating channel:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  // ============================================================================
+  // Utility methods
+  // ============================================================================
+
+  private async findMatchingClan(guildId: string, channelName: string): Promise<ClanInfo | undefined> {
+    const findClanRes = await pool.query('SELECT clan_name, clantag, abbreviation FROM clans WHERE guild_id = $1', [
+      guildId,
+    ]);
+    const clans: { clan_name: string; clantag: string; abbreviation: string }[] = findClanRes.rows;
+
+    console.log('[findMatchingClan] Channel name:', channelName);
+    console.log('[findMatchingClan] Clans found:', clans);
+
+    const matchingClan = clans.find(
+      (clan) =>
+        channelName.toLowerCase().includes(clan.clan_name.toLowerCase()) ||
+        channelName.toLowerCase().includes(clan.abbreviation.toLowerCase()),
+    );
+
+    console.log('[findMatchingClan] Matching clan:', matchingClan);
+
+    if (matchingClan) {
+      return {
+        clanName: matchingClan.clan_name,
+        clantag: matchingClan.clantag,
+        abbreviation: matchingClan.abbreviation,
+      };
+    }
+    return undefined;
+  }
+
+  /**
+   * Start adding members to an existing channel
+   * Similar to startChannelCreation but for adding to existing channel
+   */
+  async startAddingMembers(
+    guildId: string,
+    channelId: string,
+    creatorId: string,
+    input: { playertags: string; discordIds: string },
+  ): Promise<string> {
+    const sessionId = `${guildId}_${creatorId}_${Date.now()}_add`;
+
+    // Parse playertags and discord ids (reuse existing logic)
+    const parsed = this.parseInput({
+      channelName: '', // Not needed for adding members
+      playertags: input.playertags,
+      discordIds: input.discordIds,
+    });
+
+    // Lookup database for linked accounts
+    const dbResults = await this.lookupDatabase(guildId, parsed);
+
+    // Categorize accounts
+    const categorized = this.categorizeAccounts(dbResults, parsed);
+
+    // Create session with 'add_member' mode
+    const session: MemberChannelSession = {
+      id: sessionId,
+      guildId,
+      creatorId,
+      step: 'account_selection',
+      input: parsed,
+      invalidPlayertags: dbResults.invalidPlayertags,
+      invalidDiscordIds: dbResults.invalidDiscordIds,
+      categorized,
+      selections: new Map(),
+      multipleAccountUserIds: Array.from(categorized.multipleAccountUsers.keys()),
+      currentUserIndex: 0,
+      mode: 'add_member',
+      targetChannelId: channelId,
       createdAt: new Date(),
       lastActivity: new Date(),
     };
@@ -35,595 +568,127 @@ export class MemberChannelService {
   }
 
   /**
-   * Get an active session
+   * Add members to an existing channel (called after confirmation)
    */
-  getSession(sessionId: string): MemberChannelSession | null {
-    const session = this.sessions.get(sessionId);
-    if (!session) return null;
-
-    // Update last activity
-    session.lastActivity = new Date();
-    return session;
-  }
-
-  /**
-   * Update session configuration
-   */
-  updateSession(sessionId: string, updates: Partial<MemberChannelConfig>): boolean {
-    const session = this.sessions.get(sessionId);
-    if (!session) return false;
-
-    session.config = { ...session.config, ...updates };
-    session.lastActivity = new Date();
-    return true;
-  }
-
-  /**
-   * Move session to next step
-   */
-  advanceSession(sessionId: string, step: MemberChannelSession['step']): boolean {
-    const session = this.sessions.get(sessionId);
-    if (!session) return false;
-
-    session.step = step;
-    session.lastActivity = new Date();
-    return true;
-  }
-
-  /**
-   * Clean up expired sessions (older than 30 minutes)
-   */
-  cleanupExpiredSessions(): void {
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
-
-    for (const [sessionId, session] of this.sessions) {
-      if (session.lastActivity < thirtyMinutesAgo) {
-        this.sessions.delete(sessionId);
-      }
-    }
-  }
-
-  /**
-   * End a session (successful completion or cancellation)
-   */
-  endSession(sessionId: string): boolean {
-    return this.sessions.delete(sessionId);
-  }
-
-  /**
-   * Get account selection context for a user
-   */
-  createAccountSelectionContext(userId: string, guildId: string, players: Player[]): AccountSelectionContext {
-    return {
-      userId,
-      guildId,
-      players,
-      maxAccounts: Math.min(players.length, 10), // Discord select menu limit
-    };
-  }
-
-  /**
-   * Process account count selection (when user chooses "any X accounts")
-   */
-  async processAccountCountSelection(sessionId: string, accountCount: number, players: Player[]): Promise<boolean> {
-    const session = this.getSession(sessionId);
-    if (!session) return false;
-
-    // Select the top N players by trophies
-    const selectedPlayers = players
-      .sort((a, b) => (b.trophies as number) - (a.trophies as number))
-      .slice(0, accountCount);
-
-    return this.updateSession(sessionId, {
-      selectedPlayers,
-      accountCount,
-    });
-  }
-
-  /**
-   * Process specific account selection (when user chooses specific accounts)
-   */
-  async processSpecificAccountSelection(
+  async addMembersToChannel(
     sessionId: string,
-    selectedPlayerTags: string[],
-    allPlayers: Player[]
-  ): Promise<boolean> {
-    const session = this.getSession(sessionId);
-    if (!session) return false;
-
-    const selectedPlayers = allPlayers.filter((p) => selectedPlayerTags.includes(p.tag));
-
-    return this.updateSession(sessionId, {
-      selectedPlayers,
-    });
-  }
-
-  /**
-   * Get session statistics
-   */
-  getStats(): {
-    activeSessions: number;
-    sessionsByStep: Record<string, number>;
-  } {
-    const stats = {
-      activeSessions: this.sessions.size,
-      sessionsByStep: {} as Record<string, number>,
-    };
-
-    for (const session of this.sessions.values()) {
-      stats.sessionsByStep[session.step] = (stats.sessionsByStep[session.step] || 0) + 1;
-    }
-
-    return stats;
-  }
-
-  /**
-   * Main business logic for processing channel creation request
-   * This replicates the logic from your original memberChannelCreate.delete.later.ts
-   */
-  async processChannelCreationRequest(request: {
-    channelName: string;
-    playertags: string[];
-    discordIds: string[];
-    guildId: string;
-    creatorId: string;
-  }) {
-    // 1. Validate input
-    if (!request.channelName || request.channelName.length > 25) {
-      throw new Error('Invalid channel name');
-    }
-
-    // 2. Parse and clean input arrays
-    const playertagArray = this.parsePlayertags(request.playertags.join(' '));
-    const discordIdArray = this.parseDiscordIds(request.discordIds.join(' '));
-
-    // 3. Fetch valid players for the playertags
-    const validPlayers = await this.fetchValidPlayers(playertagArray);
-    const validPlayertags = validPlayers.map((player) => player.tag);
-
-    // 4. Get linked account data from database
-    const resTags = await this.getDiscordIdsFromPlayertags(request.guildId, validPlayertags);
-    const resIds = await this.getPlayertagsFromDiscordIds(request.guildId, discordIdArray);
-
-    // 5. Separate accounts from playertags (explicitly chosen) vs Discord IDs (need selection)
-    const accountsFromPlayertags = new Map<string, string[]>();
-    resTags.forEach(({ discord_id, playertag }) => {
-      if (!accountsFromPlayertags.has(discord_id)) {
-        accountsFromPlayertags.set(discord_id, []);
-      }
-      accountsFromPlayertags.get(discord_id)!.push(playertag);
-    });
-
-    // Accounts from Discord ID input (might need selection if 2+ accounts)
-    const accountsFromDiscordIds = new Map<string, string[]>();
-    resIds.forEach(({ discord_id, playertag }) => {
-      if (!accountsFromDiscordIds.has(discord_id)) {
-        accountsFromDiscordIds.set(discord_id, []);
-      }
-      accountsFromDiscordIds.get(discord_id)!.push(playertag);
-    });
-
-    // 6. Build final single/multiple account users
-    const finalSingleAccountUsers = new Map<string, string>();
-    const finalMultipleAccountUsers = new Map<string, string[]>();
-    const preSelectedAccounts = new Map<string, string[]>();
-
-    // Process playertag accounts (all are pre-selected, no selection needed)
-    accountsFromPlayertags.forEach((playertags, discordId) => {
-      const uniqueTags = [...new Set(playertags)];
-      if (uniqueTags.length === 1) {
-        finalSingleAccountUsers.set(discordId, uniqueTags[0]);
-      } else {
-        finalSingleAccountUsers.set(discordId, uniqueTags[0]); // Representative
-        preSelectedAccounts.set(discordId, uniqueTags); // All of them
-      }
-    });
-
-    // Process Discord ID accounts (only ask for selection if 2+ accounts)
-    accountsFromDiscordIds.forEach((playertags, discordId) => {
-      const uniqueTags = [...new Set(playertags)];
-
-      // Check if this Discord ID was already handled by playertag input
-      if (accountsFromPlayertags.has(discordId)) {
-        const explicitlySelectedTags = accountsFromPlayertags.get(discordId)!;
-        const allTagsForUser = [...new Set([...explicitlySelectedTags, ...uniqueTags])];
-
-        if (allTagsForUser.length === 1) {
-          finalSingleAccountUsers.set(discordId, allTagsForUser[0]);
-        } else if (allTagsForUser.length >= 2) {
-          finalSingleAccountUsers.delete(discordId);
-          finalMultipleAccountUsers.set(discordId, allTagsForUser);
-          preSelectedAccounts.set(discordId, explicitlySelectedTags);
-        }
-        return;
-      }
-
-      if (uniqueTags.length === 1) {
-        finalSingleAccountUsers.set(discordId, uniqueTags[0]);
-      } else if (uniqueTags.length >= 2) {
-        finalMultipleAccountUsers.set(discordId, uniqueTags);
-      }
-    });
-
-    // 7. Check if we found any linked accounts
-    const totalLinkedAccounts = finalSingleAccountUsers.size + finalMultipleAccountUsers.size;
-    if (totalLinkedAccounts === 0) {
-      throw new Error('No linked accounts found for the provided playertags/Discord IDs');
-    }
-
-    // 8. Start session with processed data
-    const sessionId = await this.startChannelCreation(request.guildId, request.creatorId, {
-      selectedPlayers: [],
-      guildId: request.guildId,
-      userId: request.creatorId,
-    });
-
-    // Store the processed account data in the service session
-    this.updateSession(sessionId, {
-      selectedPlayers: [], // Will be populated during account selection
-    });
-
-    // Store account selection data for later retrieval
-    this.storeAccountSelectionData(sessionId, {
-      finalSingleAccountUsers,
-      finalMultipleAccountUsers,
-      preSelectedAccounts,
-      channelName: request.channelName,
-    });
-
-    return {
-      sessionId,
-      needsAccountSelection: finalMultipleAccountUsers.size > 0,
-      finalSingleAccountUsers,
-      finalMultipleAccountUsers,
-      preSelectedAccounts,
-      channelName: request.channelName,
-      totalLinkedAccounts,
-      // Add these for the router to use:
-      multipleAccountUserIds: Array.from(finalMultipleAccountUsers.keys()),
-    };
-  }
-
-  /**
-   * Parse playertags input string into clean array
-   * From your original parsePlayertags function
-   */
-  private parsePlayertags(input: string): string[] {
-    const arr = Array.from(
-      new Set(
-        input
-          .split(/[\s,]+/)
-          .map((tag) => tag.trim())
-          .filter((tag) => tag.length > 0)
-      )
-    );
-    return arr;
-  }
-
-  /**
-   * Parse Discord IDs input string into clean array
-   * From your original parseDiscordIds function
-   */
-  private parseDiscordIds(input: string): string[] {
-    const arr = Array.from(
-      new Set(
-        input
-          .split(/\s+/)
-          .map((id) => {
-            // Remove mention formatting: <@123>, <@!123>
-            const match = id.match(/^<@!?(\d+)>$/);
-            return match ? match[1] : id.trim();
-          })
-          .filter((id) => id.length > 0)
-      )
-    );
-    return arr;
-  }
-
-  /**
-   * Fetch valid players from Clash Royale API
-   * From your original fetchValidPlayers function
-   */
-  private async fetchValidPlayers(playertags: string[]): Promise<Player[]> {
-    const playerResults: (PlayerResult | FetchError)[] = await Promise.all(
-      playertags.map((tag) => CR_API.getPlayer(tag))
-    );
-    return playerResults
-      .filter((result): result is Player => !isFetchError(result))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  /**
-   * Get Discord IDs linked to specific playertags
-   * From your original getDiscordIdsFromPlayertags function
-   */
-  private async getDiscordIdsFromPlayertags(
-    guildId: string,
-    playertags: string[]
-  ): Promise<{ discord_id: string; playertag: string }[]> {
-    if (playertags.length === 0) return [];
-    const sql = buildGetLinkedDiscordIds(guildId, playertags);
-    const res = await pool.query(sql);
-    return res.rows; // [{ discord_id, playertag }]
-  }
-
-  /**
-   * Get playertags linked to specific Discord IDs
-   * From your original getPlayertagsFromDiscordIds function
-   */
-  private async getPlayertagsFromDiscordIds(
-    guildId: string,
-    discordIds: string[]
-  ): Promise<{ discord_id: string; playertag: string }[]> {
-    if (discordIds.length === 0) return [];
-    const sql = buildGetLinkedPlayertags(guildId, discordIds);
-    const res = await pool.query(sql);
-    return res.rows; // [{ discord_id, playertag }]
-  }
-
-  /**
-   * Group playertags by discord_id
-   * From your original groupPlayertagsByDiscordId function
-   */
-  public groupPlayertagsByDiscordId(rows: { discord_id: string; playertag: string }[]) {
-    const map = new Map<string, string[]>();
-    rows.forEach(({ discord_id, playertag }) => {
-      if (!map.has(discord_id)) map.set(discord_id, []);
-      map.get(discord_id)!.push(playertag);
-    });
-    // Remove duplicates
-    map.forEach((tags, discordId) => map.set(discordId, [...new Set(tags)]));
-    return map;
-  }
-
-  /**
-   * Get combined final accounts with player names
-   * From your original getCombinedFinalAccountsWithNames function
-   */
-  public async getCombinedFinalAccountsWithNames(data: {
-    singleAccountUsers: Map<string, string>;
-    selectedAccounts: Map<string, string[]>;
-  }): Promise<Map<string, PlayerInfo[]>> {
-    const allFinalAccounts = new Map<string, PlayerInfo[]>();
-
-    // Collect all playertags that need name lookup
-    const allPlayertags = new Set<string>();
-
-    // Add single account users playertags
-    data.singleAccountUsers.forEach((playertag) => {
-      allPlayertags.add(playertag);
-    });
-
-    // Add selected accounts playertags
-    data.selectedAccounts.forEach((selectedPlayertags) => {
-      selectedPlayertags.forEach((tag) => allPlayertags.add(tag));
-    });
-
-    // Fetch all player data at once for efficiency
-    const playerResults: (PlayerResult | FetchError)[] = await Promise.all(
-      Array.from(allPlayertags).map((tag) => CR_API.getPlayer(tag))
-    );
-
-    // Create a map of tag -> name for quick lookup and maintain order
-    const tagToName = new Map<string, string>();
-    const tagToPlayer = new Map<string, Player>();
-    playerResults.forEach((result) => {
-      if (!isFetchError(result)) {
-        tagToName.set(result.tag, result.name);
-        tagToPlayer.set(result.tag, result);
-      }
-    });
-
-    // Add single account users (each has exactly one playertag)
-    data.singleAccountUsers.forEach((playertag, discordId) => {
-      const playerInfo = {
-        tag: playertag,
-        name: tagToName.get(playertag) || 'Unknown Player',
-      };
-      allFinalAccounts.set(discordId, [playerInfo]);
-    });
-
-    // Add selected accounts from multi-account users and sort by name
-    data.selectedAccounts.forEach((selectedPlayertags, discordId) => {
-      const playerInfos = selectedPlayertags
-        .map((tag) => ({
-          tag,
-          name: tagToName.get(tag) || 'Unknown Player',
-          player: tagToPlayer.get(tag),
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name)) // Sort by name
-        .map(({ tag, name }) => ({ tag, name }));
-      allFinalAccounts.set(discordId, playerInfos);
-    });
-
-    return allFinalAccounts;
-  }
-
-  /**
-   * Create the actual Discord channel
-   */
-  async createDiscordChannel(
-    sessionId: string,
-    guildId?: string
-  ): Promise<{ success: boolean; channelId?: string; error?: string }> {
-    // Use guild validation if guildId provided (recommended)
-    const session = guildId ? this.getSessionForGuild(sessionId, guildId) : this.getSession(sessionId);
-    if (!session) {
-      return { success: false, error: guildId ? 'Session not found or guild mismatch' : 'Session not found' };
-    }
+    guild: Guild,
+    channelId: string,
+  ): Promise<{ success: boolean; error?: string; addedCount?: number }> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return { success: false, error: 'Session not found' };
 
     try {
-      // TODO: Implement actual Discord channel creation
-      // const channel = await guild.channels.create({
-      //   name: session.config.channelName,
-      //   type: ChannelType.GuildText,
-      //   // ... other settings
-      // });
+      // Update database - fetch existing members first
+      const existingRes = await pool.query(
+        `SELECT members FROM member_channels WHERE guild_id = $1 AND channel_id = $2`,
+        [session.guildId, channelId],
+      );
 
-      console.log('Creating channel for session:', session);
+      const existingMembers = existingRes.rows[0].members as import('../../utils/memberChannelHelpers.js').MemberData[];
+      const existingDiscordIds = new Set(existingMembers.map((m) => m.discordId));
 
-      // Cleanup session after successful creation
-      this.endSession(sessionId);
+      // Get final data
+      const finalData = await this.getFinalConfirmationData(sessionId);
+      if (!finalData) return { success: false, error: 'Failed to get final confirmation data' };
 
-      return { success: true, channelId: 'placeholder-channel-id' };
+      // Get Discord IDs that need permissions (only truly new users)
+      const allDiscordIds = Array.from(finalData.accounts.keys());
+      const newDiscordIds = allDiscordIds.filter((id) => !existingDiscordIds.has(id));
+
+      // Update channel permissions only for new Discord IDs
+      const channel = await guild.channels.fetch(channelId);
+      if (!channel || !channel.isTextBased()) {
+        return { success: false, error: 'Channel not found' };
+      }
+
+      for (const discordId of newDiscordIds) {
+        try {
+          // Verify user exists in guild before setting permissions
+          const member = await guild.members.fetch(discordId);
+          if (member) {
+            await channel.permissionOverwrites.edit(discordId, {
+              ViewChannel: true,
+              SendMessages: true,
+              ReadMessageHistory: true,
+            });
+          }
+        } catch (error) {
+          console.warn(`[addMembersToChannel] Could not set permissions for user ${discordId}:`, error);
+          // Continue with other members
+        }
+      }
+
+      // Process members for database update
+      const { members: newMembers } = convertToMemberData(finalData.accounts);
+
+      // Merge members - for existing Discord IDs, merge their accounts; for new IDs, add them
+      const mergedMembersMap = new Map<string, import('../../utils/memberChannelHelpers.js').MemberData>();
+
+      // Add existing members to map
+      existingMembers.forEach((member) => {
+        mergedMembersMap.set(member.discordId, member);
+      });
+
+      // Process new members
+      let addedCount = 0;
+      for (const newMember of newMembers) {
+        const existing = mergedMembersMap.get(newMember.discordId);
+
+        if (!existing) {
+          // New user - add them
+          mergedMembersMap.set(newMember.discordId, newMember);
+          addedCount++;
+        } else {
+          // Existing user - merge accounts
+          if (Array.isArray(existing.players) && Array.isArray(newMember.players)) {
+            // Both have specific accounts - merge and deduplicate by tag
+            const existingTags = new Set(existing.players.map((p) => p.tag));
+            const newAccounts = newMember.players.filter((p) => !existingTags.has(p.tag));
+
+            if (newAccounts.length > 0) {
+              existing.players = [...existing.players, ...newAccounts];
+              addedCount++;
+            }
+          } else if (newMember.players && typeof newMember.players === 'object' && 'type' in newMember.players) {
+            // New member has 'any' type - replace existing (or handle as needed)
+            mergedMembersMap.set(newMember.discordId, newMember);
+            addedCount++;
+          }
+        }
+      }
+
+      const allMembers = Array.from(mergedMembersMap.values());
+
+      await pool.query(`UPDATE member_channels SET members = $1 WHERE guild_id = $2 AND channel_id = $3`, [
+        JSON.stringify(allMembers),
+        session.guildId,
+        channelId,
+      ]);
+
+      this.sessions.delete(sessionId);
+      return { success: true, addedCount };
     } catch (error) {
+      console.error('Error adding members:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 
-  /**
-   * Prepare account selection data for a user with multiple accounts
-   * Based on your original showAccountSelectionForUser function
-   */
-  async prepareAccountSelectionForUser(
-    guildId: string,
-    discordId: string,
-    playertags: string[],
-    userIndex: number,
-    totalUsers: number,
-    preSelectedTags: string[] = []
-  ): Promise<{
-    discordId: string;
-    players: Player[];
-    userIndex: number;
-    totalUsers: number;
-    preSelectedTags: string[];
-  }> {
-    // Validate that we're working with the correct guild context
-    // This is important for security and data isolation
-    if (!guildId) {
-      throw new Error('Guild ID is required for account selection');
+  getSession(sessionId: string): MemberChannelSession | null {
+    return this.sessions.get(sessionId) || null;
+  }
+
+  cleanupExpiredSessions(): void {
+    const expiryTime = new Date(Date.now() - SESSION_EXPIRY_MINUTES * 60 * 1000);
+    for (const [id, session] of this.sessions) {
+      if (session.lastActivity < expiryTime) {
+        this.sessions.delete(id);
+      }
     }
-
-    // Fetch player data for these playertags to show names
-    const playerResults: (PlayerResult | FetchError)[] = await Promise.all(
-      playertags.map((tag) => CR_API.getPlayer(tag))
-    );
-
-    const validPlayers = playerResults.filter((result): result is Player => !isFetchError(result));
-    validPlayers.sort((a, b) => b.expLevel - a.expLevel);
-
-    // Additional security: We could validate that the playertags are actually
-    // linked to this Discord user in this specific guild here if needed
-
-    return {
-      discordId,
-      players: validPlayers,
-      userIndex,
-      totalUsers,
-      preSelectedTags,
-    };
-  }
-
-  /**
-   * Store complex account selection data in session
-   */
-  storeAccountSelectionData(
-    sessionId: string,
-    data: {
-      finalSingleAccountUsers: Map<string, string>;
-      finalMultipleAccountUsers: Map<string, string[]>;
-      preSelectedAccounts: Map<string, string[]>;
-      channelName: string;
-    }
-  ): boolean {
-    const session = this.getSession(sessionId);
-    if (!session) return false;
-
-    // Store in session config (extend config as needed)
-    session.accountData = {
-      finalSingleAccountUsers: data.finalSingleAccountUsers,
-      finalMultipleAccountUsers: data.finalMultipleAccountUsers,
-      preSelectedAccounts: data.preSelectedAccounts,
-      channelName: data.channelName,
-      currentUserIndex: 0,
-    };
-
-    return true;
-  }
-
-  /**
-   * Get account selection data from session
-   */
-  getAccountSelectionData(sessionId: string): {
-    finalSingleAccountUsers: Map<string, string>;
-    finalMultipleAccountUsers: Map<string, string[]>;
-    preSelectedAccounts: Map<string, string[]>;
-    channelName: string;
-    currentUserIndex: number;
-  } | null {
-    const session = this.getSession(sessionId);
-    if (!session || !session.accountData) return null;
-
-    return session.accountData;
-  }
-
-  /**
-   * Update which user we're currently processing for account selection
-   */
-  updateCurrentUserIndex(sessionId: string, userIndex: number): boolean {
-    const session = this.getSession(sessionId);
-    if (!session || !session.accountData) return false;
-
-    session.accountData.currentUserIndex = userIndex;
-    return true;
-  }
-
-  /**
-   * Process user's account selection (either specific accounts or any count)
-   */
-  processUserAccountSelection(
-    sessionId: string,
-    discordId: string,
-    selection: {
-      type: 'specific' | 'any';
-      accounts?: string[]; // for 'specific' type
-      count?: number; // for 'any' type
-    }
-  ): boolean {
-    const session = this.getSession(sessionId);
-    const accountData = session?.accountData;
-    if (!session || !accountData) return false;
-
-    if (selection.type === 'specific' && selection.accounts) {
-      // User selected specific accounts
-      accountData.preSelectedAccounts.set(discordId, selection.accounts);
-    } else if (selection.type === 'any' && selection.count) {
-      // User wants any X accounts (store as special marker)
-      const availableAccounts = accountData.finalMultipleAccountUsers.get(discordId) || [];
-      const selectedAccounts = availableAccounts.slice(0, selection.count);
-      accountData.preSelectedAccounts.set(discordId, selectedAccounts);
-    }
-
-    return true;
-  }
-
-  /**
-   * Validate that a session belongs to a specific guild (security check)
-   */
-  validateSessionGuild(sessionId: string, guildId: string): boolean {
-    const session = this.getSession(sessionId);
-    if (!session) return false;
-
-    return session.config.guildId === guildId;
-  }
-
-  /**
-   * Get session with guild validation (recommended for all guild-specific operations)
-   */
-  getSessionForGuild(sessionId: string, guildId: string): MemberChannelSession | null {
-    const session = this.getSession(sessionId);
-    if (!session || session.config.guildId !== guildId) {
-      return null;
-    }
-    return session;
   }
 }
 
-// Singleton instance
 export const memberChannelService = new MemberChannelService();
 
-// Cleanup expired sessions every 5 minutes
-setInterval(() => {
-  memberChannelService.cleanupExpiredSessions();
-}, 5 * 60 * 1000);
+// Cleanup expired sessions periodically
+setInterval(() => memberChannelService.cleanupExpiredSessions(), SESSION_CLEANUP_INTERVAL_MINUTES * 60 * 1000);

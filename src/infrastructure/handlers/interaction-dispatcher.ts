@@ -6,7 +6,7 @@
 import { Interaction, ButtonInteraction, ModalSubmitInteraction, StringSelectMenuInteraction } from 'discord.js';
 import { parseCustomId } from '../../utils/customId.js';
 import type { ParsedCustomId } from '../../types/ParsedCustomId.js';
-import { MemberChannelInteractionRouter } from '../../features/member-channels/interactions/router.js';
+import { MemberChannelInteractionRouter } from '../../features/member-channels/router.js';
 import { ClanSettingsInteractionRouter } from '../../features/clan-settings/interactions/router.js';
 import { ServerSettingsInteractionRouter } from '../../features/server-settings/interactions/router.js';
 import { TicketInteractionRouter } from '../../features/tickets/interactions/router.js';
@@ -23,42 +23,28 @@ export class InteractionDispatcher {
   /**
    * Feature routing map
    * Maps action prefixes to their respective router classes
+   *
+   * RULE: Use ONE consistent prefix per feature. All customIds for that feature should start with this prefix.
+   * Example: All member channel actions should use 'memberChannel' prefix:
+   *   - makeCustomId('m', 'memberChannel_create', guildId)
+   *   - makeCustomId('b', 'memberChannel_confirm_123', guildId)
+   *   - makeCustomId('s', 'memberChannel_select_456', guildId)
    */
   private static featureRouters = new Map<string, FeatureRouter>([
-    // Member Channel actions
-    ['member_channel', MemberChannelInteractionRouter],
-    ['create_member_channel', MemberChannelInteractionRouter], // Add this for the command modal
-    ['open_modal_create_member_channel', MemberChannelInteractionRouter],
-    ['any_account_count_modal', MemberChannelInteractionRouter],
-    ['member_channel_select', MemberChannelInteractionRouter],
+    // Member Channel actions - All start with 'memberChannel'
+    ['memberChannel', MemberChannelInteractionRouter],
 
-    // Clan Settings actions
+    // Clan Settings actions - All start with 'clanSettings'
     ['clanSettings', ClanSettingsInteractionRouter],
-    ['clanSettingsOpenModal', ClanSettingsInteractionRouter], // For opening clan settings modals
-    ['abbreviation', ClanSettingsInteractionRouter], // For abbreviation modal
-    ['clan_role_id', ClanSettingsInteractionRouter], // For clan role modal
 
-    // Server Settings actions
-    ['serverSettings', ServerSettingsInteractionRouter],
-    ['serverSettingsReturn', ServerSettingsInteractionRouter], // For "return" type actions
-    ['serverSettingToggle', ServerSettingsInteractionRouter], // For toggle buttons
-    ['serverSettingToggleFeature', ServerSettingsInteractionRouter], // For feature toggle buttons
-    ['serverSettingOpenModal', ServerSettingsInteractionRouter], // For modal buttons (unless it conflicts with other features)
-    ['serverSettingModal', ServerSettingsInteractionRouter], // For modal submissions
-    ['serverSettingSwap', ServerSettingsInteractionRouter], // For swap buttons
-    ['serverSettingAction', ServerSettingsInteractionRouter], // For custom action buttons
-    ['logs_channel_id', ServerSettingsInteractionRouter], // For logs channel modal
-    ['category_id', ServerSettingsInteractionRouter], // For category modal
+    // Server Settings actions - All start with 'serverSetting'
+    ['serverSetting', ServerSettingsInteractionRouter],
 
-    // Ticket actions
+    // Ticket actions - All start with 'ticket'
     ['ticket', TicketInteractionRouter],
-    ['ticketPlayertagsOpenModal', TicketInteractionRouter], // For adding playertags modal
-    // ['opened_identifier', TicketInteractionRouter], // For opened identifier modal
-    // ['closed_identifier', TicketInteractionRouter], // For closed identifier modal
 
     // Add other features here as they're migrated:
-    // ['player_link', PlayerLinkingInteractionRouter],
-    // ['tickets', TicketInteractionRouter],
+    // ['playerLink', PlayerLinkingInteractionRouter],
   ]);
 
   /**
@@ -74,7 +60,7 @@ export class InteractionDispatcher {
         await this.handleSelectMenuInteraction(interaction);
       }
     } catch (error) {
-      logger.error('Error in interaction dispatcher:', error);
+      logger.error('Error in interaction dispatcher:', error, interaction);
 
       // Try to respond to the user if we haven't already - but only if the interaction hasn't been handled
       const errorMessage = 'An unexpected error occurred while processing your interaction.';

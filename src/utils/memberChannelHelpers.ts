@@ -8,7 +8,7 @@ export interface PlayerInfo {
 
 export interface MemberData {
   discordId: string;
-  players: PlayerInfo[];
+  players: PlayerInfo[] | { type: 'any'; count: number }; // Can be specific players or 'any X accounts' requirement
 }
 
 /**
@@ -21,7 +21,7 @@ export async function getChannelMembers(guildId: string, channelId: string): Pro
     FROM member_channels
     WHERE guild_id = $1 AND channel_id = $2
     `,
-    [guildId, channelId]
+    [guildId, channelId],
   );
 
   if (result.rows.length === 0) {
@@ -33,11 +33,16 @@ export async function getChannelMembers(guildId: string, channelId: string): Pro
 
 /**
  * Get all players flattened and sorted
+ * Note: Skips members with 'any X accounts' requirement
  */
 export function getAllPlayersSorted(members: MemberData[]): PlayerInfo[] {
   const allPlayers: PlayerInfo[] = [];
   members.forEach((member) => {
-    allPlayers.push(...member.players);
+    // Only include if players is an array (specific accounts)
+    if (Array.isArray(member.players)) {
+      allPlayers.push(...member.players);
+    }
+    // Skip 'any X accounts' type since they don't have specific player data
   });
   allPlayers.sort((a, b) => a.name.localeCompare(b.name));
   return allPlayers;
@@ -61,7 +66,7 @@ export async function getChannelsByDiscordId(guildId: string, discordId: string)
     WHERE guild_id = $1
     AND members @> $2::jsonb
     `,
-    [guildId, JSON.stringify([{ discordId }])]
+    [guildId, JSON.stringify([{ discordId }])],
   );
 
   return result.rows;
@@ -78,7 +83,7 @@ export async function getChannelsByPlayertag(guildId: string, playertag: string)
     WHERE guild_id = $1
     AND members::text LIKE $2
     `,
-    [guildId, `%${playertag}%`]
+    [guildId, `%${playertag}%`],
   );
 
   return result.rows;
@@ -90,7 +95,7 @@ export async function getChannelsByPlayertag(guildId: string, playertag: string)
 export async function buildPermissionOverwrites(
   guild: Guild,
   categoryId: string | null,
-  discordIds: string[]
+  discordIds: string[],
 ): Promise<
   Array<{
     id: string;
@@ -123,6 +128,7 @@ export async function buildPermissionOverwrites(
   }
 
   // Add permissions for each selected user
+  console.log(`Discord ids: ${discordIds}`);
   for (const discordId of discordIds) {
     permissionOverwrites.push({
       id: discordId,
@@ -138,20 +144,33 @@ export async function buildPermissionOverwrites(
 
 /**
  * Convert finalAccountSelection Map to MemberData array
+ * Supports both specific players and 'any X accounts' requirements
  */
-export function convertToMemberData(finalAccountSelection: Map<string, PlayerInfo[]>): {
+export function convertToMemberData(
+  finalAccountSelection: Map<string, PlayerInfo[] | { type: 'any'; count: number }>,
+): {
   members: MemberData[];
   discordIds: string[];
 } {
   const members: MemberData[] = [];
   const discordIds: string[] = [];
 
-  finalAccountSelection.forEach((players, discordId) => {
+  finalAccountSelection.forEach((accountData, discordId) => {
     discordIds.push(discordId);
-    members.push({
-      discordId,
-      players: players.map((p) => ({ tag: p.tag, name: p.name })),
-    });
+
+    if (Array.isArray(accountData)) {
+      // Specific players selected
+      members.push({
+        discordId,
+        players: accountData.map((p) => ({ tag: p.tag, name: p.name })),
+      });
+    } else {
+      // 'any X accounts' requirement
+      members.push({
+        discordId,
+        players: { type: 'any', count: accountData.count },
+      });
+    }
   });
 
   return { members, discordIds };
@@ -168,14 +187,14 @@ export async function insertMemberChannel(
   channelName: string,
   clantagFocus: string | null,
   clanNameFocus: string | null,
-  members: MemberData[]
+  members: MemberData[],
 ): Promise<void> {
   await pool.query(
     `
     INSERT INTO member_channels (guild_id, category_id, channel_id, created_by, channel_name, clantag_focus, clan_name_focus, members)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `,
-    [guildId, categoryId, channelId, createdBy, channelName, clantagFocus, clanNameFocus, JSON.stringify(members)]
+    [guildId, categoryId, channelId, createdBy, channelName, clantagFocus, clanNameFocus, JSON.stringify(members)],
   );
 }
 
@@ -186,7 +205,7 @@ export async function addMemberToChannel(
   guildId: string,
   channelId: string,
   discordId: string,
-  players: PlayerInfo[]
+  players: PlayerInfo[],
 ): Promise<void> {
   await pool.query(
     `
@@ -194,7 +213,7 @@ export async function addMemberToChannel(
     SET members = members || $1::jsonb
     WHERE guild_id = $2 AND channel_id = $3
     `,
-    [JSON.stringify([{ discordId, players }]), guildId, channelId]
+    [JSON.stringify([{ discordId, players }]), guildId, channelId],
   );
 }
 
@@ -212,7 +231,7 @@ export async function removeMemberFromChannel(guildId: string, channelId: string
     )
     WHERE guild_id = $2 AND channel_id = $3
     `,
-    [discordId, guildId, channelId]
+    [discordId, guildId, channelId],
   );
 }
 
@@ -230,26 +249,32 @@ export function findMissingMembers(channelMembers: MemberData[], clanMembers: Ar
   const channelPlayerTags = new Set<string>();
   const missingFromClan: { tag: string; name: string; discordId: string }[] = [];
   const inClan: { tag: string; name: string; discordId: string }[] = [];
+
   // Check each channel member's players against the clan
   channelMembers.forEach((member) => {
-    member.players.forEach((player) => {
-      channelPlayerTags.add(player.tag);
+    // Only check specific accounts (skip 'any X accounts' type)
+    if (Array.isArray(member.players)) {
+      member.players.forEach((player: PlayerInfo) => {
+        channelPlayerTags.add(player.tag);
 
-      // If this player is not in the clan anymore, they're missing
-      if (!clanPlayerTags.has(player.tag)) {
-        missingFromClan.push({
-          tag: player.tag,
-          name: player.name,
-          discordId: member.discordId,
-        });
-      } else {
-        inClan.push({
-          tag: player.tag,
-          name: player.name,
-          discordId: member.discordId,
-        });
-      }
-    });
+        // If this player is not in the clan anymore, they're missing
+        if (!clanPlayerTags.has(player.tag)) {
+          missingFromClan.push({
+            tag: player.tag,
+            name: player.name,
+            discordId: member.discordId,
+          });
+        } else {
+          inClan.push({
+            tag: player.tag,
+            name: player.name,
+            discordId: member.discordId,
+          });
+        }
+      });
+    }
+    // TODO: Handle 'any X accounts' type - would need to fetch user's linked accounts
+    // and check if at least X of them are in the clan
   });
 
   return {
@@ -270,7 +295,7 @@ export async function getMemberChannelInfo(guildId: string, channelId: string) {
     FROM member_channels
     WHERE guild_id = $1 AND channel_id = $2
     `,
-    [guildId, channelId]
+    [guildId, channelId],
   );
 
   if (result.rows.length === 0) {
