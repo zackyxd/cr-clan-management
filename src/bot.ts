@@ -6,6 +6,18 @@ import type { Command } from './types/Command.ts';
 
 // import { isDev, isProd } from './utils/env.js';
 
+// Global error handlers to prevent crashes
+process.on('unhandledRejection', (error: Error) => {
+  logger.error('Unhandled Rejection:', error);
+  // Don't exit the process, just log the error
+});
+
+process.on('uncaughtException', (error: Error) => {
+  logger.error('Uncaught Exception:', error);
+  // For uncaught exceptions, we should exit as the process state is unknown
+  process.exit(1);
+});
+
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 client.commands = new Collection();
 client.cooldowns = new Collection();

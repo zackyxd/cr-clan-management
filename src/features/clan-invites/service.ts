@@ -10,7 +10,6 @@ export class ClanInviteService {
    * Send a log message to the configured log channel if logging is enabled
    */
   async sendLog(client: Client, guildId: string, title: string, description: string): Promise<void> {
-    console.log('Came into clan invite logs');
     try {
       const settingsResult = await pool.query(
         `SELECT cis.send_logs, ss.logs_channel_id 

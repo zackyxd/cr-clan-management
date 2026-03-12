@@ -426,7 +426,7 @@ export class MemberChannelService {
   /**
    * Create the actual Discord channel
    */
-  async createChannel(sessionId: string, guild: Guild): Promise<{ success: boolean; error?: string }> {
+  async createChannel(sessionId: string, guild: Guild): Promise<{ success: boolean; error?: string; channelId?: string }> {
     console.log('Should be creating channel with:', sessionId);
     const session = this.sessions.get(sessionId);
     if (!session) return { success: false, error: 'Session not found' };
@@ -477,11 +477,8 @@ export class MemberChannelService {
         members,
       );
 
-      // TODO: Send initial message
-      await channel.send('Welcome to your member channel!');
-
       this.sessions.delete(sessionId);
-      return { success: true };
+      return { success: true, channelId: channel.id };
     } catch (error) {
       console.error('Error creating channel:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };

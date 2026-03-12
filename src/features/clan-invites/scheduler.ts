@@ -23,7 +23,7 @@ interface ExpiredInvite {
 
 export class InviteScheduler {
   private intervalId: NodeJS.Timeout | null = null;
-  private readonly CHECK_INTERVAL = INVITE_EXPIRY_MS; // Check every minute
+  private readonly CHECK_INTERVAL = 60 * 1000; // Check every 10 seconds
 
   constructor(private client: Client) {}
 
@@ -155,8 +155,8 @@ export class InviteScheduler {
                 logger.info(`Marked message ${msg.message_id} as expired in channel ${msg.channel_id}`);
               }
             } catch (editErr: unknown) {
-              const err = editErr as { code?: number };
-              if (err.code === 10008) {
+              const error = editErr as { code?: number };
+              if (error.code === 10008) {
                 logger.warn(`Message ${msg.message_id} was already deleted`);
               } else {
                 throw editErr;
@@ -174,7 +174,7 @@ export class InviteScheduler {
           const channel = await this.client.channels.fetch(masterChannelId);
           if (channel?.isTextBased() && (channel instanceof TextChannel || channel instanceof NewsChannel)) {
             const pingMsg = await channel.send({
-              content: `<@&${clanRoleId}> The invite link for **${clanName}** has expired!`,
+              content: `<@&${clanRoleId}>, your link has expired.`,
             });
 
             // Delete the ping message after 5 seconds

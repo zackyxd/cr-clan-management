@@ -70,7 +70,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
   const res = await pool.query(
     `SELECT family_clan, nudge_enabled, invites_enabled, clan_role_id, abbreviation 
      FROM clans WHERE guild_id = $1 AND clantag = $2`,
-    [guildId, clantag]
+    [guildId, clantag],
   );
   if (!res.rowCount) throw new Error('Clan not found');
 
@@ -145,6 +145,19 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
         .setLabel(`Edit ${settingConfig.label}`)
         .setCustomId(makeCustomId('b', 'clanSettingsOpenModal', guildId, { extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Secondary);
+    } else if (settingConfig.type === 'action') {
+      const cacheKey = storeClanSettingsData({
+        settingKey: settingConfig.key,
+        clantag,
+        clanName,
+        guildId,
+        ownerId,
+      });
+
+      button = new ButtonBuilder()
+        .setLabel(`${settingConfig.label}`)
+        .setCustomId(makeCustomId('b', 'clanSettingsAction', guildId, { extra: [cacheKey], ownerId }))
+        .setStyle(ButtonStyle.Danger);
     }
     // For 'role', you might want to use a slash command or a select menu, so you can just show info.
 
@@ -165,11 +178,11 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
 
 // Ensure select menu goes last on /clan-settings
 export function getSelectMenuRowBuilder(
-  components: readonly TopLevelComponent[]
+  components: readonly TopLevelComponent[],
 ): ActionRowBuilder<StringSelectMenuBuilder> | null {
   const selectRow = components.find(
     (row): row is ActionRow<MessageActionRowComponent> =>
-      row.type === ComponentType.ActionRow && row.components.some((c) => c.type === ComponentType.StringSelect)
+      row.type === ComponentType.ActionRow && row.components.some((c) => c.type === ComponentType.StringSelect),
   );
 
   if (!selectRow) return null;

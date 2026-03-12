@@ -36,4 +36,5 @@ export type InviteSourceType =
   | 'modal_submit'
   | '/send-invite'
   | '/update-clan-invite'
-  | 'Member Channel Ping';
+  | 'Member Channel Ping'
+  | 'Auto Member Channel Ping';

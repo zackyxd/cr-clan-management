@@ -171,7 +171,8 @@ export class MemberChannelInteractionRouter {
     };
 
     try {
-      if (interaction instanceof ModalSubmitInteraction) {
+      // Use editReply if interaction was already deferred or replied to
+      if (interaction.deferred || interaction.replied) {
         await interaction.editReply(updateData);
       } else {
         await interaction.update(updateData);
@@ -573,12 +574,15 @@ export class MemberChannelInteractionRouter {
       // Creating new channel
       const result = await memberChannelService.createChannel(sessionId, interaction.guild);
 
-      if (result.success) {
+      if (result.success && result.channelId) {
         await interaction.editReply({
           content: '✅ Member channel created successfully!',
           embeds: [],
           components: [],
         });
+
+        // Send initial member status message
+        await this.sendInitialMemberStatus(interaction, result.channelId, parsed.guildId);
       } else {
         await interaction.editReply({
           content: `❌ Failed to create channel: ${result.error}`,
@@ -996,7 +1000,7 @@ export class MemberChannelInteractionRouter {
 
     const membersRes = await pool.query(
       `
-      SELECT mc.clantag_focus, mc.clan_name_focus, mc.members
+      SELECT mc.clantag_focus, mc.clan_name_focus, mc.members, c.invites_enabled
       FROM member_channels mc
       JOIN clans c ON mc.clantag_focus = c.clantag AND mc.guild_id = c.guild_id
       WHERE mc.guild_id = $1 AND mc.channel_id = $2
@@ -1026,6 +1030,16 @@ export class MemberChannelInteractionRouter {
         .setDescription(
           `❌ There is currently no active clan invite link for **${clanNameFocus}**.\nPlease generate one using \`/update-clan-invite\``,
         )
+        .setColor(EmbedColor.FAIL);
+      await interaction.editReply({ embeds: [embed] });
+      return;
+    }
+
+    const invitesEnabled = membersRes.rows[0].invites_enabled;
+
+    if (!invitesEnabled) {
+      const embed = new EmbedBuilder()
+        .setDescription(`❌ Invites are currently disabled for **${clanNameFocus}**.`)
         .setColor(EmbedColor.FAIL);
       await interaction.editReply({ embeds: [embed] });
       return;
@@ -1114,7 +1128,6 @@ export class MemberChannelInteractionRouter {
 
     if (missingAnyTypeUsers.length > 0) {
       if (embedLines.length > 0) embedLines.push(''); // Add spacing
-      embedLines.push('**Members needing more accounts:**');
       missingAnyTypeUsers.forEach((user) => {
         const needed = user.required - user.current;
         embedLines.push(
@@ -1132,7 +1145,7 @@ export class MemberChannelInteractionRouter {
     const pings = Array.from(discordIdsToPing)
       .map((id) => `<@${id}>`)
       .join(', ');
-    const content = `${pings} You still need to join **${clanNameFocus}**.`;
+    const content = `Attention - Clan Movements for **${clanNameFocus}**: ${pings}.`;
 
     // Send to the channel (not ephemeral)
     await interaction.channel?.send({
@@ -1159,9 +1172,195 @@ export class MemberChannelInteractionRouter {
       const errorEmbed = new EmbedBuilder().setDescription(`❌ Failed to send invite link.`).setColor(EmbedColor.FAIL);
       await interaction.editReply({ embeds: [errorEmbed] });
     }
+  }
 
-    // Confirm to the user who triggered it
-    await interaction.editReply({ content: '✅ Ping sent!' });
+  // ============================================================================
+  // Helper method for initial channel creation
+  // ============================================================================
+
+  /**
+   * Send initial member status message when channel is created
+   * Only pings missing members (same behavior as Ping Members button)
+   */
+  private static async sendInitialMemberStatus(
+    interaction: ButtonInteraction,
+    channelId: string,
+    guildId: string,
+  ): Promise<void> {
+    try {
+      const channel = await interaction.client.channels.fetch(channelId);
+      if (!channel || !channel.isTextBased()) return;
+
+      // Fetch member channel data
+      const membersRes = await pool.query(
+        `
+        SELECT mc.clantag_focus, mc.clan_name_focus, mc.members, c.invites_enabled
+        FROM member_channels mc
+        JOIN clans c ON mc.clantag_focus = c.clantag AND mc.guild_id = c.guild_id
+        WHERE mc.guild_id = $1 AND mc.channel_id = $2
+        `,
+        [guildId, channelId],
+      );
+
+      if (membersRes.rowCount === 0) return;
+
+      const memberList = membersRes.rows[0].members;
+      const clanNameFocus = membersRes.rows[0].clan_name_focus;
+      const clantagFocus = membersRes.rows[0].clantag_focus;
+
+      // Get all Discord IDs to ping everyone
+      const allDiscordIds = memberList.map((m: { discordId: string }) => m.discordId);
+      const allPings = allDiscordIds.map((id: string) => `<@${id}>`).join(', ');
+
+      // If there's no clan focus, just ping everyone
+      if (!clanNameFocus || !clantagFocus) {
+        await channel.send({
+          content: `${allPings} - Attention`,
+        });
+        return;
+      }
+
+      // Fetch clan info to check member status
+      const clanInfo = await CR_API.getClan(clantagFocus);
+      if ('error' in clanInfo || !clanInfo) {
+        // If can't fetch clan info, just ping everyone
+        await channel.send({
+          content: `${allPings}\n\n⚠️ Unable to check clan status for **${clanNameFocus}** at this time.`,
+        });
+        return;
+      }
+
+      // Check if there's an active invite link
+      const activeInvite = await clanInviteService.getActiveInvite(guildId, clantagFocus);
+
+      // Create a Set of clan member tags for fast lookup
+      const clanMemberTags = new Set(clanInfo.memberList.map((m) => m.tag));
+
+      // Track missing accounts and the Discord IDs that need to be pinged
+      const missingAccounts: Array<{ name: string; tag: string; discordId: string }> = [];
+      const missingAnyTypeUsers: Array<{ discordId: string; current: number; required: number }> = [];
+      const discordIdsToPing = new Set<string>();
+
+      for (const member of memberList) {
+        const { discordId, players } = member;
+
+        if (Array.isArray(players)) {
+          // Check each specific account
+          for (const player of players) {
+            if (!clanMemberTags.has(player.tag)) {
+              missingAccounts.push({
+                name: player.name,
+                tag: player.tag,
+                discordId,
+              });
+              discordIdsToPing.add(discordId);
+            }
+          }
+        } else if (players.type === 'any') {
+          // Check if they meet the 'any X accounts' requirement
+          const userAccountsResult = await pool.query(
+            `SELECT playertag FROM user_playertags WHERE guild_id = $1 AND discord_id = $2`,
+            [guildId, discordId],
+          );
+
+          const userTags = userAccountsResult.rows.map((r) => r.playertag);
+          const accountsInClan = userTags.filter((tag) => clanMemberTags.has(tag));
+
+          // If they don't meet the requirement, ping them
+          if (accountsInClan.length < players.count) {
+            missingAnyTypeUsers.push({
+              discordId,
+              current: accountsInClan.length,
+              required: players.count,
+            });
+            discordIdsToPing.add(discordId);
+          }
+        }
+      }
+
+      // If no one needs to be pinged
+      if (discordIdsToPing.size === 0) {
+        await channel.send({
+          content: `${allPings}\n\n✅ All members are in **${clanNameFocus}**!`,
+        });
+        return;
+      }
+
+      // Build the embed for missing members
+      const embedLines: string[] = [];
+
+      if (missingAccounts.length > 0) {
+        embedLines.push('**Accounts missing:**');
+        missingAccounts.forEach((acc) => {
+          const encodedTag = encodeURIComponent(acc.tag);
+          const link = `https://royaleapi.com/player/${encodedTag}`;
+          embedLines.push(`* [${acc.name}](${link})`);
+        });
+      }
+
+      if (missingAnyTypeUsers.length > 0) {
+        if (embedLines.length > 0) embedLines.push(''); // Add spacing
+        missingAnyTypeUsers.forEach((user) => {
+          const needed = user.required - user.current;
+          embedLines.push(
+            `* <@${user.discordId}> - needs ${needed} more account${needed !== 1 ? 's' : ''} (${user.current}/${user.required})`,
+          );
+        });
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle(`Missing Members - ${clanNameFocus}`)
+        .setDescription(embedLines.join('\n'))
+        .setColor('Orange');
+
+      // Build the ping message for missing members
+      const pings = Array.from(discordIdsToPing)
+        .map((id) => `<@${id}>`)
+        .join(', ');
+      const content = `Attention - Clan Movements for **${clanNameFocus}**: ${pings}.`;
+
+      // Send to the channel
+      await channel.send({
+        content,
+        embeds: [embed],
+      });
+
+      const invitesEnabled = membersRes.rows[0].invites_enabled;
+      console.log(invitesEnabled);
+      if (!invitesEnabled) {
+        const embed = new EmbedBuilder()
+          .setDescription(`⚠️ Invites are currently disabled for **${clanNameFocus}**.`)
+          .setColor(EmbedColor.WARNING);
+        await interaction.editReply({ embeds: [embed] });
+        return;
+      }
+
+      // Send invite link if available
+      if (activeInvite) {
+        const message = await clanInviteService.sendInviteToChannel(
+          interaction.client,
+          guildId,
+          channelId,
+          clantagFocus,
+          'Member Channel Ping',
+          interaction.user.id,
+        );
+
+        if (!message) {
+          console.error('[sendInitialMemberStatus] Failed to send invite link');
+        }
+      } else {
+        const embed = new EmbedBuilder()
+          .setDescription(
+            `⚠️ There is currently no active clan invite link for **${clanNameFocus}**.\nPlease generate one using \`/update-clan-invite\``,
+          )
+          .setColor(EmbedColor.WARNING);
+        await channel.send({ embeds: [embed] });
+      }
+    } catch (error) {
+      console.error('[sendInitialMemberStatus] Error:', error);
+      // Don't throw - this is a nice-to-have feature
+    }
   }
 
   // ============================================================================

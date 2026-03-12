@@ -15,6 +15,8 @@ import {
   TextInputStyle,
   RoleSelectMenuBuilder,
   LabelBuilder,
+  NewsChannel,
+  TextChannel,
 } from 'discord.js';
 import type { ParsedCustomId } from '../../../types/ParsedCustomId.js';
 import { parseCustomId, makeCustomId } from '../../../utils/customId.js';
@@ -22,6 +24,9 @@ import { checkPerms } from '../../../utils/checkPermissions.js';
 import { EmbedColor } from '../../../types/EmbedUtil.js';
 import { buildClanSettingsView, getSelectMenuRowBuilder } from '../../../config/clanSettingsConfig.js';
 import { clanSettingsService } from '../service.js';
+import { pool } from '../../../db.js';
+import logger from '../../../logger.js';
+import { ClanInviteService } from '../../clan-invites/service.js';
 
 export class ClanSettingsInteractionRouter {
   /**
@@ -29,7 +34,7 @@ export class ClanSettingsInteractionRouter {
    */
   static async handleButton(interaction: ButtonInteraction, parsed: ParsedCustomId): Promise<void> {
     const { action, extra } = parsed;
-
+    console.log(action, extra);
     switch (action) {
       case 'clanSettings':
         await this.handleClanSettingsToggle(interaction, extra);
@@ -37,6 +42,10 @@ export class ClanSettingsInteractionRouter {
 
       case 'clanSettingsOpenModal':
         await this.handleOpenModal(interaction, extra);
+        break;
+
+      case 'clanSettingsAction':
+        await this.handleClanSettingsAction(interaction, extra);
         break;
 
       default:
@@ -54,11 +63,11 @@ export class ClanSettingsInteractionRouter {
     const { action } = parsed;
 
     switch (action) {
-      case 'abbreviation':
+      case 'clanSettings_abbreviation':
         await this.handleAbbreviationModal(interaction);
         break;
 
-      case 'clan_role_id':
+      case 'clanSettings_clan_role_id':
         await this.handleClanRoleModal(interaction);
         break;
 
@@ -92,11 +101,205 @@ export class ClanSettingsInteractionRouter {
   // Private handlers for each specific interaction
 
   /**
+   * Handle clan setting action buttons (Purge invites)
+   */
+  private static async handleClanSettingsAction(
+    interaction: ButtonInteraction,
+    extra: ParsedCustomId['extra'],
+  ): Promise<void> {
+    try {
+      const cacheKey = extra[0];
+      if (!cacheKey) {
+        await interaction.reply({
+          content: 'Missing cache key. Please try again.',
+          ephemeral: true,
+        });
+        return;
+      }
+
+      // Get cached settings data
+      const settingsData = clanSettingsService.getCachedSettingsData(cacheKey);
+      if (!settingsData) {
+        await interaction.reply({
+          content: 'Settings data not found. Please reselect the clan in the select menu, or run the command again.',
+          ephemeral: true,
+        });
+        return;
+      }
+
+      const { settingKey: featureName, clantag, clanName, guildId } = settingsData;
+
+      // Check permissions
+      const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {
+        hideNoPerms: true,
+        deferEphemeral: true,
+      });
+      if (!allowed) return;
+
+      // Handle different actions
+
+      switch (featureName) {
+        case 'purge_invites':
+          await this.handlePurgeInvitesAction(interaction, guildId, clantag, clanName);
+          break;
+
+        default:
+          await interaction.reply({
+            content: `Unknown setting: ${featureName}`,
+            ephemeral: true,
+          });
+      }
+    } catch (error) {
+      console.error('Error in clan settings action:', error);
+      await interaction.reply({
+        content: 'An error occurred while handling the action.',
+        ephemeral: true,
+      });
+    }
+  }
+
+  /**
+   * Handle purge invites action - this will delete all existing invites for the clan and optionally send a log message
+   * Only higher-staff roles can use this button.
+   */
+  private static async handlePurgeInvitesAction(
+    interaction: ButtonInteraction,
+    guildId: string,
+    clantag: string,
+    clanName: string,
+  ) {
+    interface ActiveInviteWithMessages {
+      invite_link_id: number;
+      guild_id: string;
+      clantag: string;
+      clan_name: string;
+      invite_link: string;
+      expires_at: Date;
+      messages: Array<{
+        id: number;
+        message_id: string;
+        channel_id: string;
+        source_type: string;
+        sent_by_id: string;
+      }>;
+    }
+
+    interface FailedMessage {
+      messageId: string;
+      channelId: string;
+      error?: string;
+    }
+
+    const result = await pool.query<ActiveInviteWithMessages>(
+      `
+      SELECT 
+        cil.id as invite_link_id,
+        cil.guild_id,
+        cil.clantag,
+        c.clan_name,
+        cil.invite_link,
+        cil.expires_at,
+        array_agg(
+          json_build_object(
+            'id', ilm.id,
+            'message_id', ilm.message_id,
+            'channel_id', ilm.channel_id,
+            'source_type', ilm.source_type,
+            'sent_by_id', ilm.sent_by_id
+          )
+        ) AS messages
+      FROM clan_invites_links cil
+      INNER JOIN invite_link_messages ilm ON ilm.invite_link_id = cil.id
+      LEFT JOIN clans c ON c.guild_id = cil.guild_id AND c.clantag = cil.clantag
+      WHERE cil.guild_id = $1 
+        AND cil.clantag = $2
+        AND cil.expires_at > NOW() 
+        AND cil.is_expired = FALSE
+      GROUP BY cil.id, cil.guild_id, cil.clantag, c.clan_name, cil.invite_link, cil.expires_at
+    `,
+      [guildId, clantag],
+    );
+
+    let deletedCount = 0;
+    const failedMessages: FailedMessage[] = [];
+    const unknownChannel = [];
+
+    for (const inviteData of result.rows) {
+      const validMessages = inviteData.messages?.filter((msg) => msg.message_id && msg.channel_id) || [];
+
+      for (const msg of validMessages) {
+        try {
+          const channel = await interaction.client.channels.fetch(msg.channel_id);
+          if (!channel?.isTextBased() || !(channel instanceof TextChannel || channel instanceof NewsChannel)) {
+            failedMessages.push({
+              messageId: msg.message_id,
+              channelId: msg.channel_id,
+              error: 'Channel not accessible',
+            });
+            continue;
+          }
+
+          const message = await channel.messages.fetch(msg.message_id);
+          await message.delete();
+          deletedCount++;
+          logger.info(`Deleted message ${msg.message_id} in channel ${msg.channel_id}`);
+        } catch (deleteErr: unknown) {
+          const error = deleteErr as { code?: number; message?: string };
+
+          if (error.code === 10008) {
+            // Already deleted, count as success
+            deletedCount++;
+          } else if (error.code === 10003) {
+            unknownChannel.push({
+              messageId: msg.message_id,
+              channelId: msg.channel_id,
+              error: 'Cannot see channel',
+            });
+          } else {
+            failedMessages.push({
+              messageId: msg.message_id,
+              channelId: msg.channel_id,
+              error: error.message || 'Unknown error',
+            });
+          }
+        }
+      }
+    }
+
+    // Build reply with failed messages
+    let replyContent = `✅ Deleted ${deletedCount} invite message(s) for ${clanName}.`;
+
+    if (unknownChannel.length > 0) {
+      replyContent += `\n\n⚠️ Could not delete ${unknownChannel.length} message(s) due to missing channel access.`;
+    }
+    if (failedMessages.length > 0) {
+      replyContent += `\n\n⚠️ Failed to delete ${failedMessages.length} message(s):`;
+      for (const failed of failedMessages) {
+        replyContent += `\n-# https://discord.com/channels/${guildId}/${failed.channelId}/${failed.messageId} (${failed.error})`;
+      }
+    }
+
+    const message = await interaction.followUp({
+      content: replyContent,
+      ephemeral: true,
+    });
+    if (message) {
+      const CIS = new ClanInviteService();
+      await CIS.sendLog(
+        interaction.client,
+        guildId,
+        '🧹 Clan Invites Purged',
+        `**Deleted by:** <@${interaction.user.id}>\n**Clan:** ${clanName}\n**Tag:** ${clantag}\n**Deleted Links:** ${deletedCount}\n**Unknown Channel Access:** ${unknownChannel.length}\n**Failed Deletions:** ${failedMessages.length}`,
+      );
+    }
+  }
+
+  /**
    * Handle clan settings toggle buttons (family_clan, nudge_enabled, invites_enabled)
    */
   private static async handleClanSettingsToggle(
     interaction: ButtonInteraction,
-    extra: ParsedCustomId['extra']
+    extra: ParsedCustomId['extra'],
   ): Promise<void> {
     try {
       const cacheKey = extra[0];
@@ -160,7 +363,7 @@ export class ClanSettingsInteractionRouter {
     interaction: ButtonInteraction,
     guildId: string,
     clantag: string,
-    clanName: string
+    clanName: string,
   ): Promise<void> {
     const result = await clanSettingsService.toggleFamilyClan(guildId, clantag);
 
@@ -182,7 +385,7 @@ export class ClanSettingsInteractionRouter {
     interaction: ButtonInteraction,
     guildId: string,
     clantag: string,
-    clanName: string
+    clanName: string,
   ): Promise<void> {
     const result = await clanSettingsService.toggleNudgeEnabled(guildId, clantag);
 
@@ -204,7 +407,7 @@ export class ClanSettingsInteractionRouter {
     interaction: ButtonInteraction,
     guildId: string,
     clantag: string,
-    clanName: string
+    clanName: string,
   ): Promise<void> {
     const result = await clanSettingsService.toggleInvitesEnabled(guildId, clantag);
 
@@ -224,7 +427,7 @@ export class ClanSettingsInteractionRouter {
         // Error updating invite message
         const embed = new EmbedBuilder()
           .setDescription(
-            'Setting updated, but could not update invite message. Please check the invite channel setup.'
+            'Setting updated, but could not update invite message. Please check the invite channel setup.',
           )
           .setColor(EmbedColor.WARNING);
         await interaction.followUp({ embeds: [embed], flags: MessageFlags.Ephemeral });
@@ -247,26 +450,31 @@ export class ClanSettingsInteractionRouter {
     interaction: ButtonInteraction,
     guildId: string,
     clantag: string,
-    clanName: string
+    clanName: string,
   ): Promise<void> {
-    // Find the select menu row in the current message
-    const selectMenuRowBuilder = getSelectMenuRowBuilder(interaction.message.components);
+    try {
+      // Find the select menu row in the current message
+      const selectMenuRowBuilder = getSelectMenuRowBuilder(interaction.message.components);
 
-    // Build new button rows with updated settings
-    const { embed, components: newButtonRows } = await buildClanSettingsView(
-      guildId,
-      clanName,
-      clantag,
-      interaction.user.id
-    );
+      // Build new button rows with updated settings
+      const { embed, components: newButtonRows } = await buildClanSettingsView(
+        guildId,
+        clanName,
+        clantag,
+        interaction.user.id,
+      );
 
-    // Replace all components with the new ones
-    await interaction.editReply({
-      embeds: [embed],
-      components: selectMenuRowBuilder
-        ? [...newButtonRows, selectMenuRowBuilder] // ✅ select menu goes last
-        : newButtonRows,
-    });
+      // Replace all components with the new ones
+      await interaction.editReply({
+        embeds: [embed],
+        components: selectMenuRowBuilder
+          ? [...newButtonRows, selectMenuRowBuilder] // ✅ select menu goes last
+          : newButtonRows,
+      });
+    } catch (error) {
+      console.error('[updateClanSettingsView] Failed to update view:', error);
+      // Silently fail - Discord API might be temporarily unavailable
+    }
   }
 
   /**
@@ -332,14 +540,19 @@ export class ClanSettingsInteractionRouter {
       guildId,
       clanName,
       clantag,
-      interaction.user.id
+      interaction.user.id,
     );
 
     // Update the original message
-    await interaction.message.edit({
-      embeds: [embed],
-      components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
-    });
+    try {
+      await interaction.message.edit({
+        embeds: [embed],
+        components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
+      });
+    } catch (error) {
+      console.error('[handleAbbreviationModal] Failed to edit message:', error);
+      // Continue anyway to send confirmation
+    }
 
     await interaction.followUp({
       content: '✅ Abbreviation updated successfully!',
@@ -416,14 +629,19 @@ export class ClanSettingsInteractionRouter {
       guildId,
       clanName,
       clantag,
-      interaction.user.id
+      interaction.user.id,
     );
 
     // Update the original message
-    await interaction.message.edit({
-      embeds: [embed],
-      components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
-    });
+    try {
+      await interaction.message.edit({
+        embeds: [embed],
+        components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
+      });
+    } catch (error) {
+      console.error('[handleClanRoleModal] Failed to edit message:', error);
+      // Continue anyway to send confirmation
+    }
 
     await interaction.followUp({
       content: '✅ Clan role updated successfully!',
@@ -487,18 +705,18 @@ export class ClanSettingsInteractionRouter {
   private static async showAbbreviationModal(
     interaction: ButtonInteraction,
     guildId: string,
-    clantag: string
+    clantag: string,
   ): Promise<void> {
     const modal = new ModalBuilder()
       .setTitle('Change Abbreviation')
-      .setCustomId(makeCustomId('m', 'abbreviation', guildId, { extra: [clantag] }))
+      .setCustomId(makeCustomId('m', 'clanSettings_abbreviation', guildId, { extra: [clantag] }))
       .addLabelComponents(
         new LabelBuilder()
           .setLabel('Select new abbreviation')
           .setDescription('1-10 characters')
           .setTextInputComponent(
-            new TextInputBuilder().setCustomId('input').setStyle(TextInputStyle.Short).setMinLength(1).setMaxLength(10)
-          )
+            new TextInputBuilder().setCustomId('input').setStyle(TextInputStyle.Short).setMinLength(1).setMaxLength(10),
+          ),
       );
 
     await interaction.showModal(modal);
@@ -511,15 +729,15 @@ export class ClanSettingsInteractionRouter {
     interaction: ButtonInteraction,
     guildId: string,
     clantag: string,
-    clanName: string
+    clanName: string,
   ): Promise<void> {
     const modal = new ModalBuilder()
       .setTitle('Set Clan Role')
-      .setCustomId(makeCustomId('m', 'clan_role_id', guildId, { extra: [clantag, clanName] }))
+      .setCustomId(makeCustomId('m', 'clanSettings_clan_role_id', guildId, { extra: [clantag, clanName] }))
       .addLabelComponents(
         new LabelBuilder()
           .setLabel('Role Select')
-          .setRoleSelectMenuComponent(new RoleSelectMenuBuilder().setCustomId('input').setMaxValues(1))
+          .setRoleSelectMenuComponent(new RoleSelectMenuBuilder().setCustomId('input').setMaxValues(1)),
       );
 
     await interaction.showModal(modal);
@@ -578,7 +796,7 @@ export class ClanSettingsInteractionRouter {
         guildId,
         clanName,
         clantag,
-        interaction.user.id
+        interaction.user.id,
       );
 
       // Get the current select menu to keep it in the updated message
