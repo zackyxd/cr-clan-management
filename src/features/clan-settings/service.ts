@@ -1,6 +1,6 @@
 import { pool } from '../../db.js';
 import { fetchClanName } from '../../services/clans.js';
-import { repostInviteMessage, updateInviteMessage } from '../../commands/staff_commands/updateClanInvite.js';
+import { repostInviteMessage, updateInviteMessage } from '../clan-invites/messageManager.js';
 import { getClanSettingsData } from '../../cache/clanSettingsDataCache.js';
 import logger from '../../logger.js';
 import type { ClanSettings, ClanSettingsData, ClanSettingsResponse, ClanInviteSettings } from './types.js';

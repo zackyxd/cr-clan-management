@@ -22,7 +22,7 @@ const command: Command = {
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild)
     .addStringOption((option) =>
-      option.setName('clan-abbreviation').setDescription('Quickly go to a specific clan.').setRequired(false)
+      option.setName('clan-abbreviation').setDescription('Quickly go to a specific clan.').setRequired(false),
     ),
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -48,7 +48,7 @@ const command: Command = {
         FROM clans
         WHERE guild_id = $1 AND abbreviation = $2
         `,
-        [guild.id, clanArg]
+        [guild.id, clanArg],
       );
       const row = clanRes.rows[0];
 
@@ -87,14 +87,10 @@ const command: Command = {
 
 export async function buildClanSelectMenu(guildId: string, ownerId: string) {
   const res = await pool.query(
-    `
-    SELECT c.clantag, c.clan_name, c.family_clan, cs.settings
-    FROM clans c
-    LEFT JOIN clan_settings cs
-    ON c.guild_id = cs.guild_id AND c.clantag = cs.clantag
-    WHERE c.guild_id = $1
-    `,
-    [guildId]
+    `SELECT clantag, clan_name, family_clan, clan_trophies
+     FROM clans
+     WHERE guild_id = $1`,
+    [guildId],
   );
 
   if (!res || !res.rows || res.rows.length === 0) {
@@ -139,7 +135,7 @@ export async function buildClanSelectMenu(guildId: string, ownerId: string) {
         new EmbedBuilder()
           .setTitle(`Clan Settings: ${clan.clan_name}`)
           .setDescription('No settings found for this clan.')
-          .setColor(EmbedColor.FAIL)
+          .setColor(EmbedColor.FAIL),
       );
     }
   }

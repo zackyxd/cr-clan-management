@@ -1,6 +1,6 @@
 import { pool } from '../../db.js';
 import { TextChannel, NewsChannel, Client } from 'discord.js';
-import { updateInviteMessage, repostInviteMessage } from '../../commands/staff_commands/updateClanInvite.js';
+import { updateInviteMessage, repostInviteMessage } from '../clan-invites/messageManager.js';
 import { getServerSettingsData } from '../../cache/serverSettingsDataCache.js';
 import logger from '../../logger.js';
 import type {

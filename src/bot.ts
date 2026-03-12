@@ -67,6 +67,10 @@ client.once(Events.ClientReady, async (c) => {
   } finally {
     dbClient.release();
   }
+
+  // Start clan invite scheduler
+  const inviteScheduler = new InviteScheduler(c);
+  inviteScheduler.start();
 });
 
 // NOTE: Old interaction handling moved to events/interactionCreate.ts with new feature-based dispatcher
@@ -109,6 +113,7 @@ import { pool } from './db.js';
 import { loadButtons } from './interactions/handleButtonInteraction.js';
 import { loadModals } from './interactions/handleModalInteraction.js';
 import { loadSelectMenus } from './interactions/handleSelectMenuInteraction.js';
+import { InviteScheduler } from './features/clan-invites/scheduler.js';
 
 // import { pool } from './dbConfig.js';
 logger.info(`🌱 Environment: ${process.env.NODE_ENV || 'development (default)'}`);

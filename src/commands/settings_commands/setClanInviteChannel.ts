@@ -10,7 +10,7 @@ import {
 import { pool } from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { Command } from '../../types/Command.js';
-import { updateInviteMessage } from '../staff_commands/updateClanInvite.js';
+import { updateInviteMessage } from '../../features/clan-invites/messageManager.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()

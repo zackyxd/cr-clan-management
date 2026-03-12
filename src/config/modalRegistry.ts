@@ -45,19 +45,13 @@ export const ModalRegistry: Record<string, ModalSetting> = {
   abbreviation: {
     key: 'abbreviation',
     type: 'text',
-    tableName: 'clan_settings',
-    featureName: 'clan_invites',
-  },
-  update_invite: {
-    key: 'update_invite',
-    type: 'text',
-    tableName: 'clan_invite_settings',
+    tableName: 'clans',
     featureName: 'clan_invites',
   },
   clan_role_id: {
     key: 'clan_role_id',
     type: 'select', // Changed to select as it's a role select
-    tableName: 'clan_settings',
+    tableName: 'clans',
     featureName: 'clan_invites',
   },
 
@@ -70,7 +64,7 @@ export const ModalRegistry: Record<string, ModalSetting> = {
 export async function processModalSubmission(
   interaction: ModalSubmitInteraction,
   action: string,
-  guildId: string
+  guildId: string,
 ): Promise<boolean> {
   // Get modal setting from registry
   const modalSetting = ModalRegistry[action];
@@ -123,7 +117,7 @@ export async function processModalSubmission(
     const { embed, components } = await buildFeatureEmbedAndComponents(
       guildId,
       interaction.user.id,
-      modalSetting.featureName
+      modalSetting.featureName,
     );
 
     // Update the original message

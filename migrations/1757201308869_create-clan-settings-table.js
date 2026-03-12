@@ -1,4 +1,8 @@
 /**
+ * Clan settings table - DEPRECATED
+ * All settings are now stored as individual columns in the clans table for better performance.
+ * This migration is kept as a no-op to maintain migration history.
+ * 
  * @type {import('node-pg-migrate').ColumnDefinitions | undefined}
  */
 export const shorthands = undefined;
@@ -9,25 +13,8 @@ export const shorthands = undefined;
  * @returns {Promise<void> | void}
  */
 export const up = (pgm) => {
-  pgm.createTable('clan_settings', {
-    guild_id: { type: 'varchar(30)', notNull: true },
-    clantag: { type: 'varchar(20)', notNull: true },
-    settings: { type: 'jsonb', notNull: true, default: pgm.func("'{}'::jsonb") }
-  });
-
-  pgm.addConstraint('clan_settings', 'clan_settings_pk', {
-    primaryKey: ['guild_id', 'clantag']
-  });
-
-  pgm.addConstraint('clan_settings', 'clan_settings_clan_fk', {
-    foreignKeys: {
-      columns: ['guild_id', 'clantag'],
-      references: 'clans(guild_id, clantag)',
-      onDelete: 'CASCADE'
-    }
-  });
-
-  pgm.createIndex('clan_settings', 'settings', { method: 'gin' });
+  // No-op: clan_settings table is not needed
+  // All settings are stored in the clans table as individual columns
 };
 
 /**
@@ -36,5 +23,5 @@ export const up = (pgm) => {
  * @returns {Promise<void> | void}
  */
 export const down = (pgm) => {
-  pgm.dropTable('clan_settings');
+  // No-op: Nothing to undo
 };

@@ -18,6 +18,8 @@ import { makeCustomId } from '../../utils/customId.js';
 import { pool } from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { CR_API, FetchError } from '../../api/CR_API.js';
+import { clanInviteService } from '../clan-invites/service.js';
+import { createInviteEmbed } from '../clan-invites/utils.js';
 
 /**
  * Router for member channel interactions
@@ -994,9 +996,10 @@ export class MemberChannelInteractionRouter {
 
     const membersRes = await pool.query(
       `
-      SELECT clantag_focus, clan_name_focus, members
-      FROM member_channels
-      WHERE guild_id = $1 AND channel_id = $2
+      SELECT mc.clantag_focus, mc.clan_name_focus, mc.members
+      FROM member_channels mc
+      JOIN clans c ON mc.clantag_focus = c.clantag AND mc.guild_id = c.guild_id
+      WHERE mc.guild_id = $1 AND mc.channel_id = $2
       `,
       [parsed.guildId, interaction.channelId],
     );
@@ -1013,9 +1016,22 @@ export class MemberChannelInteractionRouter {
       return;
     }
 
-    const memberList = membersRes.rows[0].members;
     const clanNameFocus = membersRes.rows[0].clan_name_focus;
     const clantagFocus = membersRes.rows[0].clantag_focus;
+
+    // Check if there's an active invite link
+    const activeInvite = await clanInviteService.getActiveInvite(parsed.guildId, clantagFocus);
+    if (!activeInvite) {
+      const embed = new EmbedBuilder()
+        .setDescription(
+          `❌ There is currently no active clan invite link for **${clanNameFocus}**.\nPlease generate one using \`/update-clan-invite\``,
+        )
+        .setColor(EmbedColor.FAIL);
+      await interaction.editReply({ embeds: [embed] });
+      return;
+    }
+
+    const memberList = membersRes.rows[0].members;
 
     // Fetch clan info
     const clanInfo = await CR_API.getClan(clantagFocus);
@@ -1092,7 +1108,7 @@ export class MemberChannelInteractionRouter {
       missingAccounts.forEach((acc) => {
         const encodedTag = encodeURIComponent(acc.tag);
         const link = `https://royaleapi.com/player/${encodedTag}`;
-        embedLines.push(`• [${acc.name}](${link})`);
+        embedLines.push(`* [${acc.name}](${link})`);
       });
     }
 
@@ -1102,7 +1118,7 @@ export class MemberChannelInteractionRouter {
       missingAnyTypeUsers.forEach((user) => {
         const needed = user.required - user.current;
         embedLines.push(
-          `• <@${user.discordId}> - needs ${needed} more account${needed !== 1 ? 's' : ''} (${user.current}/${user.required})`,
+          `* <@${user.discordId}> - needs ${needed} more account${needed !== 1 ? 's' : ''} (${user.current}/${user.required})`,
         );
       });
     }
@@ -1123,6 +1139,26 @@ export class MemberChannelInteractionRouter {
       content,
       embeds: [embed],
     });
+
+    // Send invite to the current channel and track it
+    const message = await clanInviteService.sendInviteToChannel(
+      interaction.client,
+      interaction.guildId!,
+      interaction.channelId,
+      clantagFocus,
+      'Member Channel Ping',
+      interaction.user.id,
+    );
+
+    if (message) {
+      const confirmEmbed = new EmbedBuilder()
+        .setDescription(`✅ Sent invite link for **${clanNameFocus}** below.`)
+        .setColor(EmbedColor.SUCCESS);
+      await interaction.editReply({ embeds: [confirmEmbed] });
+    } else {
+      const errorEmbed = new EmbedBuilder().setDescription(`❌ Failed to send invite link.`).setColor(EmbedColor.FAIL);
+      await interaction.editReply({ embeds: [errorEmbed] });
+    }
 
     // Confirm to the user who triggered it
     await interaction.editReply({ content: '✅ Ping sent!' });

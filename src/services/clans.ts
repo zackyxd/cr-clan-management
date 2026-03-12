@@ -57,15 +57,6 @@ export async function linkClan(
     );
     await client.query(insertClanSQL);
 
-    // Insert settings too
-    await client.query(
-      `
-    INSERT INTO clan_settings (guild_id, clantag, settings)
-    VALUES ($1, $2, $3::json)
-    ON CONFLICT (guild_id, clantag) DO NOTHING
-    `,
-      [guildId, clantag, JSON.stringify({ abbreviation: abbreviation.toLowerCase() })],
-    );
     return {
       embed: new EmbedBuilder()
         .setDescription(`**${confirmClanExists.name}** was linked to the server!`)

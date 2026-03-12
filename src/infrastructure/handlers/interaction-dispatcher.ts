@@ -11,6 +11,7 @@ import { ClanSettingsInteractionRouter } from '../../features/clan-settings/inte
 import { ServerSettingsInteractionRouter } from '../../features/server-settings/interactions/router.js';
 import { TicketInteractionRouter } from '../../features/tickets/interactions/router.js';
 import logger from '../../logger.js';
+import { ClanInvitesInteractionRouter } from '../../features/clan-invites/router.js';
 
 // Define router interface
 interface FeatureRouter {
@@ -42,6 +43,9 @@ export class InteractionDispatcher {
 
     // Ticket actions - All start with 'ticket'
     ['ticket', TicketInteractionRouter],
+
+    // Clan Invite Actions - All start with 'clanInvite'
+    ['clanInvite', ClanInvitesInteractionRouter],
 
     // Add other features here as they're migrated:
     // ['playerLink', PlayerLinkingInteractionRouter],
