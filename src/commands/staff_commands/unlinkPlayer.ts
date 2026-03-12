@@ -9,7 +9,7 @@ const command: Command = {
     .setName('unlink')
     .setDescription(`(Coleader) Unlink a Discord User from a Clash Royale account`)
     .addStringOption((option) =>
-      option.setName('playertag').setDescription('#ABC123').setMinLength(4).setMaxLength(13).setRequired(true)
+      option.setName('playertag').setDescription('#ABC123').setMinLength(4).setMaxLength(13).setRequired(true),
     ),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const guild = interaction.guild;
@@ -28,7 +28,6 @@ const command: Command = {
 
     const playertag = interaction.options.getString('playertag') as string;
 
-    await interaction.deferReply();
     const client = await pool.connect();
     await client.query('BEGIN');
     try {

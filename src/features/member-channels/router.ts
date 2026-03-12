@@ -576,7 +576,7 @@ export class MemberChannelInteractionRouter {
 
       if (result.success && result.channelId) {
         await interaction.editReply({
-          content: '✅ Member channel created successfully!',
+          content: `✅ <#${result.channelId}> created successfully!`,
           embeds: [],
           components: [],
         });
