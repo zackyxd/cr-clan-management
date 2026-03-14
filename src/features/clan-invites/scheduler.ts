@@ -110,25 +110,64 @@ export class InviteScheduler {
       const masterChannelId = settings?.channel_id;
       const masterMessageId = settings?.message_id;
 
-      // 3. Update the master list message to show expired invite moved to inactive section
+      // 3. Update the master list message AND send ping concurrently
+      const updatePromises: Promise<void>[] = [];
+
+      // Update master message
       if (masterChannelId && masterMessageId) {
-        try {
-          const { embeds, components } = await updateInviteMessage(pool, guild_id);
-          await repostInviteMessage({
-            client: this.client,
-            channelId: masterChannelId,
-            messageId: masterMessageId,
-            embeds,
-            components,
-            pin: false, // Don't re-pin
-            pool,
-            guildId: guild_id,
-          });
-          logger.info(`Updated master invite list in guild ${guild_id}`);
-        } catch (err) {
-          logger.error(`Failed to update master invite list:`, err);
-        }
+        updatePromises.push(
+          (async () => {
+            try {
+              const { embeds, components } = await updateInviteMessage(pool, guild_id);
+              await repostInviteMessage({
+                client: this.client,
+                channelId: masterChannelId,
+                messageId: masterMessageId,
+                embeds,
+                components,
+                pin: false, // Don't re-pin
+                pool,
+                guildId: guild_id,
+              });
+              logger.info(`Updated master invite list in guild ${guild_id}`);
+            } catch (err) {
+              logger.error(`Failed to update master invite list:`, err);
+            }
+          })(),
+        );
       }
+
+      // Send ping notification if enabled (happens concurrently with master message update)
+      if (shouldPing && masterChannelId) {
+        updatePromises.push(
+          (async () => {
+            try {
+              const channel = await this.client.channels.fetch(masterChannelId);
+              if (channel?.isTextBased() && (channel instanceof TextChannel || channel instanceof NewsChannel)) {
+                const pingMsg = await channel.send({
+                  content: `<@&${clanRoleId}>, your link has expired.`,
+                });
+
+                // Delete the ping message after 5 seconds
+                setTimeout(async () => {
+                  try {
+                    await pingMsg.delete();
+                  } catch (err) {
+                    logger.warn(`Failed to delete ping message: ${err}`);
+                  }
+                }, 5000);
+
+                logger.info(`Sent expiration ping for clan ${clantag}`);
+              }
+            } catch (err) {
+              logger.error(`Failed to send expiration ping:`, err);
+            }
+          })(),
+        );
+      }
+
+      // Wait for both to complete
+      await Promise.all(updatePromises);
 
       // 4. Update tracked messages (from /send-invite or other sources)
       // Filter out null entries from array_agg when there are no tracked messages
@@ -165,31 +204,6 @@ export class InviteScheduler {
           } catch (err) {
             logger.error(`Failed to update tracked message ${msg.message_id}:`, err);
           }
-        }
-      }
-
-      // 5. Send ping notification if enabled (and delete it)
-      if (shouldPing && masterChannelId) {
-        try {
-          const channel = await this.client.channels.fetch(masterChannelId);
-          if (channel?.isTextBased() && (channel instanceof TextChannel || channel instanceof NewsChannel)) {
-            const pingMsg = await channel.send({
-              content: `<@&${clanRoleId}>, your link has expired.`,
-            });
-
-            // Delete the ping message after 5 seconds
-            setTimeout(async () => {
-              try {
-                await pingMsg.delete();
-              } catch (err) {
-                logger.warn(`Failed to delete ping message: ${err}`);
-              }
-            }, 5000);
-
-            logger.info(`Sent expiration ping for clan ${clantag}`);
-          }
-        } catch (err) {
-          logger.error(`Failed to send expiration ping:`, err);
         }
       }
     } catch (error) {

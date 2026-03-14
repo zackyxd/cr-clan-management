@@ -5,6 +5,9 @@ import {
   ModalBuilder,
   ChannelSelectMenuBuilder,
   LabelBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ActionRowBuilder,
 } from 'discord.js';
 import { ParsedCustomId } from '../../../types/ParsedCustomId.js';
 import { checkPerms } from '../../../utils/checkPermissions.js';
@@ -349,6 +352,27 @@ export class ServerSettingsInteractionRouter {
               .setChannelSelectMenuComponent(new ChannelSelectMenuBuilder().setCustomId('input').setMaxValues(1)),
           );
         return interaction.showModal(modal);
+      } else if (settingKey === 'delete_confirm_count') {
+        const modal = new ModalBuilder()
+          .setTitle('Set Delete Confirm Count')
+          .setCustomId(
+            makeCustomId('m', `serverSetting_${settingKey}`, guildId, {
+              extra: [tableName || '', featureName || ''],
+            }),
+          )
+          .addComponents(
+            new ActionRowBuilder<TextInputBuilder>().addComponents(
+              new TextInputBuilder()
+                .setCustomId('input')
+                .setLabel('Number of confirmations required')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('Enter a number (minimum: 1)')
+                .setMinLength(1)
+                .setMaxLength(2)
+                .setRequired(true),
+            ),
+          );
+        return interaction.showModal(modal);
       }
 
       // // Generic text input modal for other settings
@@ -491,6 +515,15 @@ export class ServerSettingsInteractionRouter {
     if (!inputValue) {
       await interaction.editReply({ content: 'No value provided.' });
       return;
+    }
+
+    // Validate number input for delete_confirm_count
+    if (settingKey === 'delete_confirm_count') {
+      const numValue = parseInt(inputValue, 10);
+      if (isNaN(numValue) || numValue < 1) {
+        await interaction.editReply({ content: '❌ Please enter a valid number (minimum: 1).' });
+        return;
+      }
     }
 
     // Update via service

@@ -42,9 +42,11 @@ const command: Command = {
 
     const validChannelSQL = await pool.query(
       `
-      SELECT channel_id, clantag_focus, clan_name_focus, members, last_ping
-      FROM member_channels
-      WHERE guild_id = $1 AND channel_id = $2
+      SELECT mc.channel_id, mc.clantag_focus, mc.clan_name_focus, mc.members, mc.last_ping, mc.current_delete_count, mc.delete_confirmed_by,
+             COALESCE(mcs.delete_confirm_count, 2) as delete_confirm_count
+      FROM member_channels mc
+      LEFT JOIN member_channel_settings mcs ON mc.guild_id = mcs.guild_id
+      WHERE mc.guild_id = $1 AND mc.channel_id = $2
       `,
       [guild.id, interaction.channelId],
     );
@@ -143,6 +145,12 @@ const command: Command = {
         return;
       }
 
+      const confirmedBy: string[] = res.delete_confirmed_by || [];
+      const pendingDeleteWarning =
+        confirmedBy.length > 0
+          ? `\n\n⚠️ **Delete confirmations: ${confirmedBy.length}/${res.delete_confirm_count}**\n-# Confirmed by: ${confirmedBy.map((id: string) => `<@${id}>`).join(', ')}`
+          : '';
+
       clanInfo = new EmbedBuilder()
         .setTitle(`${res.clan_name_focus || 'Member Channel'} Info`)
         .setDescription(
@@ -150,20 +158,28 @@ const command: Command = {
             `**Clan Members:** ${clanData.members}/50\n` +
             `**Channel Members:** ${totalMembers}\n` +
             `**Accounts Selected:** ${totalAccounts}\n` +
-            `**Last Ping:** ${res.last_ping ? new Date(res.last_ping).toLocaleString() : 'N/A'}`,
+            `**Last Ping:** ${res.last_ping ? new Date(res.last_ping).toLocaleString() : 'N/A'}` +
+            pendingDeleteWarning,
         )
-        .setColor('Blue');
+        .setColor(confirmedBy.length > 0 ? 'Orange' : 'Blue');
     } else {
       // No clan focus - show basic channel info
+      const confirmedBy: string[] = res.delete_confirmed_by || [];
+      const pendingDeleteWarning =
+        confirmedBy.length > 0
+          ? `\n\n⚠️ **Delete confirmations: ${confirmedBy.length}/${res.delete_confirm_count}**\n-# Confirmed by: ${confirmedBy.map((id: string) => `<@${id}>`).join(', ')}`
+          : '';
+
       clanInfo = new EmbedBuilder()
         .setTitle('Member Channel Info')
         .setDescription(
           `**Clan Focus:** None\n` +
             `**Channel Members:** ${totalMembers}\n` +
             `**Accounts Selected:** ${totalAccounts}\n` +
-            `**Last Ping:** ${res.last_ping ? new Date(res.last_ping).toLocaleString() : 'N/A'}`,
+            `**Last Ping:** ${res.last_ping ? new Date(res.last_ping).toLocaleString() : 'N/A'}` +
+            pendingDeleteWarning,
         )
-        .setColor('Blue');
+        .setColor(confirmedBy.length > 0 ? 'Orange' : 'Blue');
     }
 
     const memberActionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(

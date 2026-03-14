@@ -9,7 +9,7 @@ import {
   TextChannel,
 } from 'discord.js';
 import { Pool, PoolClient } from 'pg';
-import { BOTCOLOR, EmbedColor } from '../../types/EmbedUtil.js';
+import { BOTCOLOR, EmbedColor, EmbedColor } from '../../types/EmbedUtil.js';
 import { makeCustomId } from '../../utils/customId.js';
 import logger from '../../logger.js';
 import { clanInviteService } from './service.js';
@@ -63,7 +63,7 @@ export async function updateInviteMessage(
   }
 
   const embeds: EmbedBuilder[] = [];
-  const activeEmbed = new EmbedBuilder().setTitle('Active Clan Links').setColor(BOTCOLOR);
+  const activeEmbed = new EmbedBuilder().setTitle('Active Clan Links').setColor(EmbedColor.SUCCESS);
   if (visibleClans.length === 0) {
     activeEmbed.setDescription('No Active Links');
   } else {

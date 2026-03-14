@@ -201,6 +201,13 @@ export const FeatureRegistry: Record<string, Feature> = {
         defaultValue: false,
       },
       {
+        key: 'delete_confirm_count',
+        label: 'Delete Confirmations',
+        description: 'Number of people needed to delete a channel.',
+        type: 'number',
+        defaultValue: 2,
+      },
+      {
         key: 'auto_ping',
         label: 'Auto Ping',
         description: 'Automatically ping members every 12 hours since the last ping (on training days).',
@@ -210,7 +217,7 @@ export const FeatureRegistry: Record<string, Feature> = {
       {
         key: 'send_logs',
         label: 'Send Logs',
-        description: 'Allow the bot to send log information about tickets.',
+        description: 'Allow the bot to send log information about member channels.',
         type: 'toggle',
         defaultValue: false,
       },

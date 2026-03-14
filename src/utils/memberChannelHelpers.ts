@@ -9,6 +9,7 @@ export interface PlayerInfo {
 export interface MemberData {
   discordId: string;
   players: PlayerInfo[] | { type: 'any'; count: number }; // Can be specific players or 'any X accounts' requirement
+  joiningLate?: boolean;
 }
 
 /**

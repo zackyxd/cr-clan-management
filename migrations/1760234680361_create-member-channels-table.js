@@ -19,7 +19,9 @@ export const up = (pgm) => {
     clantag_focus: { type: 'varchar(20)' },
     clan_name_focus: { type: 'varchar(30)' },
     members: { type: 'jsonb', notNull: true, default: pgm.func("'{}'::jsonb") },
-    last_ping: { type: 'timestamptz', default: null }
+    last_ping: { type: 'timestamptz', default: null },
+    current_delete_count: { type: 'integer', default: 0 },
+    delete_confirmed_by: { type: 'jsonb', notNull: true, default: pgm.func("'{}'::jsonb") }
   },
     {
       constraints: {

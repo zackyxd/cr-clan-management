@@ -11,15 +11,18 @@ import {
   TextInputBuilder,
   TextInputStyle,
   MessageFlags,
+  UserSelectMenuBuilder,
+  LabelBuilder,
 } from 'discord.js';
 import { memberChannelService } from './service.js';
 import type { ParsedCustomId } from '../../types/ParsedCustomId.js';
 import { makeCustomId } from '../../utils/customId.js';
 import { pool } from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
-import { CR_API, FetchError } from '../../api/CR_API.js';
+import { CR_API, FetchError, normalizeTag } from '../../api/CR_API.js';
 import { clanInviteService } from '../clan-invites/service.js';
 import { createInviteEmbed } from '../clan-invites/utils.js';
+import { MemberData } from '../../utils/memberChannelHelpers.js';
 
 /**
  * Router for member channel interactions
@@ -694,6 +697,18 @@ export class MemberChannelInteractionRouter {
     const modal = new ModalBuilder()
       .setCustomId(makeCustomId('m', 'memberChannel_addMemberModal', interaction.guildId!))
       .setTitle('Add Members to Channel')
+      .addLabelComponents(
+        new LabelBuilder()
+          .setLabel('Select Members to Add')
+          .setDescription('Choose Discord members from the list')
+          .setUserSelectMenuComponent(
+            new UserSelectMenuBuilder()
+              .setCustomId('addMemberUsersSelect')
+              .setMinValues(0)
+              .setMaxValues(25)
+              .setRequired(false),
+          ),
+      )
       .addComponents(
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
@@ -706,7 +721,7 @@ export class MemberChannelInteractionRouter {
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
             .setCustomId('addMemberDiscordIdsInput')
-            .setLabel('Discord IDs or @mentions (space separated)')
+            .setLabel('Additional Discord IDs (space separated)')
             .setStyle(TextInputStyle.Paragraph)
             .setPlaceholder('123456789012345678 @user1 @user2')
             .setRequired(false),
@@ -714,6 +729,194 @@ export class MemberChannelInteractionRouter {
       );
 
     await interaction.showModal(modal);
+  }
+
+  // ============================================================================
+  // Remove Members Flow
+  // ============================================================================
+
+  /**
+   * Handle "Remove Member" button click - show modal for input
+   */
+  static async handleRemoveMembersButton(interaction: ButtonInteraction, _parsed: ParsedCustomId) {
+    const modal = new ModalBuilder()
+      .setCustomId(makeCustomId('m', 'memberChannel_removeMemberModal', interaction.guildId!))
+      .setTitle('Remove Members from Channel')
+      .addLabelComponents(
+        new LabelBuilder()
+          .setLabel('Select Members to Remove')
+          .setDescription('Choose Discord members from the list')
+          .setUserSelectMenuComponent(
+            new UserSelectMenuBuilder()
+              .setCustomId('removeMemberUsersSelect')
+              .setMinValues(0)
+              .setMaxValues(25)
+              .setRequired(false),
+          ),
+      )
+      .addComponents(
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          new TextInputBuilder()
+            .setCustomId('removeMemberPlayertagsInput')
+            .setLabel('Player Tags (comma or space separated)')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('#ABC123, #DEF456 or #ABC123 #DEF456')
+            .setRequired(false),
+        ),
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          new TextInputBuilder()
+            .setCustomId('removeMemberDiscordIdsInput')
+            .setLabel('Additional Discord IDs (space separated)')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('123456789012345678 @user1 @user2')
+            .setRequired(false),
+        ),
+      );
+
+    await interaction.showModal(modal);
+  }
+
+  /**
+   * Handle modal submission for removing members
+   */
+  static async handleRemoveMemberModal(interaction: ModalSubmitInteraction, parsed: ParsedCustomId) {
+    const playertags = interaction.fields.getTextInputValue('removeMemberPlayertagsInput');
+    const discordIds = interaction.fields.getTextInputValue('removeMemberDiscordIdsInput');
+
+    // Get selected users from the user select menu
+    const selectedUsers = interaction.fields.getSelectedUsers('removeMemberUsersSelect');
+    const selectedUserIds = selectedUsers ? Array.from(selectedUsers.values()).map((user) => user.id) : [];
+
+    // Combine selected users with manually entered Discord IDs
+    const manualDiscordIds = discordIds
+      .split(/[\s,]+/)
+      .map((id) => id.replace(/[<@!>]/g, '').trim())
+      .filter((id) => id.length > 0);
+
+    const allDiscordIds = [...selectedUserIds, ...manualDiscordIds];
+
+    if (!playertags.trim() && allDiscordIds.length === 0) {
+      await interaction.editReply({ content: '❌ Please select or provide at least one member or player tag.' });
+      return;
+    }
+
+    try {
+      // Fetch current members
+      const result = await pool.query(`SELECT members FROM member_channels WHERE guild_id = $1 AND channel_id = $2`, [
+        parsed.guildId,
+        interaction.channelId,
+      ]);
+
+      if (result.rowCount === 0) {
+        await interaction.editReply({ content: '❌ Member channel not found.' });
+        return;
+      }
+
+      const members: MemberData[] = result.rows[0].members;
+      const removedMembers: string[] = [];
+
+      // Parse input playertags
+      const inputPlayertags = playertags
+        .split(/[\s,]+/)
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0 && tag.startsWith('#'));
+      const normalizedPlayertags = inputPlayertags.map((tag: string) => normalizeTag(tag));
+
+      // inputDiscordIds already contains both selected users and manual entries
+      const inputDiscordIds = allDiscordIds;
+
+      // Track members to remove and members to update
+      const membersToKeep: MemberData[] = [];
+
+      for (const member of members) {
+        const { discordId, players } = member;
+        let shouldKeep = true;
+        let updatedPlayers = players;
+
+        // Check if Discord ID should be removed
+        if (inputDiscordIds.includes(discordId)) {
+          // If member has 'any' type, remove them completely
+          if (!Array.isArray(players)) {
+            shouldKeep = false;
+            removedMembers.push(`<@${discordId}> (any ${players.count} accounts)`);
+            continue;
+          } else {
+            // If specific accounts, remove all of them
+            shouldKeep = false;
+            removedMembers.push(`<@${discordId}> (${players.length} accounts)`);
+            continue;
+          }
+        }
+
+        // Check if specific playertags should be removed
+        if (Array.isArray(players)) {
+          const remainingPlayers = players.filter((player) => {
+            const isRemoved = normalizedPlayertags.includes(normalizeTag(player.tag));
+            if (isRemoved) {
+              removedMembers.push(`${player.name} (${player.tag})`);
+            }
+            return !isRemoved;
+          });
+
+          // If all accounts removed, don't keep this member
+          if (remainingPlayers.length === 0) {
+            shouldKeep = false;
+          } else if (remainingPlayers.length < players.length) {
+            // Some accounts removed, keep member with remaining accounts
+            updatedPlayers = remainingPlayers;
+          }
+        }
+
+        if (shouldKeep) {
+          membersToKeep.push({
+            discordId,
+            players: updatedPlayers,
+          });
+        }
+      }
+
+      if (removedMembers.length === 0) {
+        await interaction.editReply({
+          content: '❌ No matching members or playertags found to remove.',
+        });
+        return;
+      }
+
+      // Update database
+      await pool.query(`UPDATE member_channels SET members = $1 WHERE guild_id = $2 AND channel_id = $3`, [
+        JSON.stringify(membersToKeep),
+        parsed.guildId,
+        interaction.channelId,
+      ]);
+
+      // Update channel permissions - remove users who were completely removed
+      if (interaction.guild && interaction.channel && 'permissionOverwrites' in interaction.channel) {
+        const remainingDiscordIds = new Set(membersToKeep.map((m) => m.discordId));
+        const originalDiscordIds = members.map((m) => m.discordId);
+
+        for (const discordId of originalDiscordIds) {
+          if (!remainingDiscordIds.has(discordId)) {
+            try {
+              await interaction.channel.permissionOverwrites.delete(discordId);
+            } catch (error) {
+              console.warn(`[removeMember] Could not remove permissions for user ${discordId}:`, error);
+            }
+          }
+        }
+      }
+
+      const removedList = removedMembers.slice(0, 10).join('\n');
+      const moreCount = removedMembers.length > 10 ? `\n... and ${removedMembers.length - 10} more` : '';
+
+      await interaction.editReply({
+        content: `✅ Successfully removed ${removedMembers.length} member(s)/account(s):\n${removedList}${moreCount}`,
+      });
+    } catch (error) {
+      console.error('[handleRemoveMemberModal] Error:', error);
+      await interaction.editReply({
+        content: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
+    }
   }
 
   /**
@@ -725,8 +928,20 @@ export class MemberChannelInteractionRouter {
     const playertags = interaction.fields.getTextInputValue('addMemberPlayertagsInput');
     const discordIds = interaction.fields.getTextInputValue('addMemberDiscordIdsInput');
 
-    if (!playertags.trim() && !discordIds.trim()) {
-      await interaction.editReply({ content: '❌ Please provide at least one player tag or Discord ID.' });
+    // Get selected users from the user select menu
+    const selectedUsers = interaction.fields.getSelectedUsers('addMemberUsersSelect');
+    const selectedUserIds = selectedUsers ? Array.from(selectedUsers.values()).map((user) => user.id) : [];
+
+    // Combine selected users with manually entered Discord IDs
+    const manualDiscordIds = discordIds
+      .split(/[\s,]+/)
+      .map((id) => id.replace(/[<@!>]/g, '').trim())
+      .filter((id) => id.length > 0);
+
+    const allDiscordIds = [...selectedUserIds, ...manualDiscordIds].join(' ');
+
+    if (!playertags.trim() && selectedUserIds.length === 0 && manualDiscordIds.length === 0) {
+      await interaction.editReply({ content: '❌ Please select or provide at least one member or player tag.' });
       return;
     }
 
@@ -735,7 +950,7 @@ export class MemberChannelInteractionRouter {
         parsed.guildId,
         interaction.channelId!,
         interaction.user.id,
-        { playertags, discordIds },
+        { playertags, discordIds: allDiscordIds },
       );
 
       const session = memberChannelService.getSession(sessionId);
@@ -832,16 +1047,17 @@ export class MemberChannelInteractionRouter {
     const statusLines: string[] = [];
 
     for (const member of memberList) {
-      const { discordId, players } = member;
+      const { discordId, players, joiningLate } = member;
+      const lateEmoji = joiningLate ? ' 🕐' : '';
 
       if (Array.isArray(players)) {
         // Specific accounts - show player names
         for (const player of players) {
           const isInClan = clanMemberTags.has(player.tag);
           if (isInClan) {
-            statusLines.push(`✅ ${player.name}`);
+            statusLines.push(`✅ ${player.name} ${lateEmoji}`);
           } else {
-            statusLines.push(`❌ ${player.name}`);
+            statusLines.push(`❌ ${player.name} ${lateEmoji}`);
           }
         }
       } else if (players.type === 'any') {
@@ -857,9 +1073,9 @@ export class MemberChannelInteractionRouter {
         const meetsRequirement = accountsInClan.length >= players.count;
 
         if (meetsRequirement) {
-          statusLines.push(`✅ <@${discordId}> - ${accountsInClan.length}/${players.count} accounts`);
+          statusLines.push(`✅ <@${discordId}> - ${accountsInClan.length}/${players.count} accounts ${lateEmoji}`);
         } else {
-          statusLines.push(`❌ <@${discordId}> - ${accountsInClan.length}/${players.count} accounts`);
+          statusLines.push(`❌ <@${discordId}> - ${accountsInClan.length}/${players.count} accounts ${lateEmoji}`);
         }
       }
     }
@@ -1067,12 +1283,15 @@ export class MemberChannelInteractionRouter {
     const clanMemberTags = new Set(clanInfo.memberList.map((m) => m.tag));
 
     // Track missing accounts and the Discord IDs that need to be pinged
-    const missingAccounts: Array<{ name: string; tag: string; discordId: string }> = [];
+    const missingAccounts: Array<{ name: string; tag: string; discordId: string; joiningLate: boolean }> = [];
     const missingAnyTypeUsers: Array<{ discordId: string; current: number; required: number }> = [];
     const discordIdsToPing = new Set<string>();
 
     for (const member of memberList) {
-      const { discordId, players } = member;
+      const { discordId, players, joiningLate } = member;
+
+      // Skip pinging if joining late (unless war starts soon)
+      const shouldSkipForLate = joiningLate && !isWarStartingSoon();
 
       if (Array.isArray(players)) {
         // Check each specific account
@@ -1082,8 +1301,11 @@ export class MemberChannelInteractionRouter {
               name: player.name,
               tag: player.tag,
               discordId,
+              joiningLate: joiningLate || false,
             });
-            discordIdsToPing.add(discordId);
+            if (!shouldSkipForLate) {
+              discordIdsToPing.add(discordId);
+            }
           }
         }
       } else if (players.type === 'any') {
@@ -1103,7 +1325,9 @@ export class MemberChannelInteractionRouter {
             current: accountsInClan.length,
             required: players.count,
           });
-          discordIdsToPing.add(discordId);
+          if (!shouldSkipForLate) {
+            discordIdsToPing.add(discordId);
+          }
         }
       }
     }
@@ -1120,9 +1344,10 @@ export class MemberChannelInteractionRouter {
     if (missingAccounts.length > 0) {
       embedLines.push('**Accounts missing:**');
       missingAccounts.forEach((acc) => {
+        const emoji = acc.joiningLate ? '🕐 ' : '';
         const encodedTag = encodeURIComponent(acc.tag);
         const link = `https://royaleapi.com/player/${encodedTag}`;
-        embedLines.push(`* [${acc.name}](${link})`);
+        embedLines.push(`* [${acc.name}](${link}) ${emoji}`);
       });
     }
 
@@ -1141,6 +1366,12 @@ export class MemberChannelInteractionRouter {
       .setDescription(embedLines.join('\n'))
       .setColor('Orange');
 
+    const joiningLateButton = new ButtonBuilder()
+      .setCustomId(makeCustomId('b', 'memberChannel_joiningLate', parsed.guildId, { cooldown: 5 }))
+      .setLabel('Joining Late')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('🕐');
+
     // Build the ping message
     const pings = Array.from(discordIdsToPing)
       .map((id) => `<@${id}>`)
@@ -1151,6 +1382,7 @@ export class MemberChannelInteractionRouter {
     await interaction.channel?.send({
       content,
       embeds: [embed],
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joiningLateButton)],
     });
 
     // Send invite to the current channel and track it
@@ -1172,6 +1404,48 @@ export class MemberChannelInteractionRouter {
       const errorEmbed = new EmbedBuilder().setDescription(`❌ Failed to send invite link.`).setColor(EmbedColor.FAIL);
       await interaction.editReply({ embeds: [errorEmbed] });
     }
+  }
+
+  static async handleJoiningLateButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
+    await interaction.deferReply({ ephemeral: true });
+
+    // Fetch current members
+
+    const result = await pool.query(
+      `
+      SELECT members from member_channels WHERE guild_id = $1 and channel_id = $2`,
+      [parsed.guildId, interaction.channelId],
+    );
+
+    if (result.rowCount === 0) {
+      await interaction.editReply({ content: '❌ No member channel found for this channel.' });
+      return;
+    }
+
+    const members: MemberData[] = result.rows[0].members;
+    const memberIndex = members.findIndex((m) => m.discordId === interaction.user.id);
+
+    if (memberIndex === -1) {
+      await interaction.editReply({ content: '❌ You are not listed as a member for this channel.' });
+      return;
+    }
+
+    // Toggle joining late status
+    members[memberIndex].joiningLate = !members[memberIndex].joiningLate;
+    const isJoiningLate = members[memberIndex].joiningLate;
+
+    // Update database
+    await pool.query(`UPDATE member_channels SET members = $1 WHERE guild_id = $2 AND channel_id = $3`, [
+      JSON.stringify(members),
+      parsed.guildId,
+      interaction.channelId,
+    ]);
+
+    const emoji = isJoiningLate ? '🕐' : '✅';
+    const status = isJoiningLate ? 'joining late' : 'joining on time';
+    await interaction.editReply({
+      content: `${emoji} You are now marked as **${status}**.`,
+    });
   }
 
   // ============================================================================
@@ -1212,10 +1486,17 @@ export class MemberChannelInteractionRouter {
       const allDiscordIds = memberList.map((m: { discordId: string }) => m.discordId);
       const allPings = allDiscordIds.map((id: string) => `<@${id}>`).join(', ');
 
+      const joiningLateButton = new ButtonBuilder()
+        .setCustomId(makeCustomId('b', 'memberChannel_joiningLate', guildId))
+        .setLabel('Joining Late')
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji('🕐');
+
       // If there's no clan focus, just ping everyone
       if (!clanNameFocus || !clantagFocus) {
         await channel.send({
           content: `${allPings} - Attention`,
+          components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joiningLateButton)],
         });
         return;
       }
@@ -1323,6 +1604,7 @@ export class MemberChannelInteractionRouter {
       await channel.send({
         content,
         embeds: [embed],
+        components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joiningLateButton)],
       });
 
       const invitesEnabled = membersRes.rows[0].invites_enabled;
@@ -1363,6 +1645,126 @@ export class MemberChannelInteractionRouter {
     }
   }
 
+  static async handleDeleteChannelButton(interaction: ButtonInteraction, _parsed: ParsedCustomId) {
+    await interaction.deferReply({ ephemeral: true });
+    const result = await pool.query(
+      `
+      SELECT mc.channel_id, mc.current_delete_count, mc.delete_confirmed_by, mc.members, mc.clantag_focus, mc.clan_name_focus, mc.last_ping,
+             COALESCE(mcs.delete_confirm_count, 2) as delete_confirm_count
+      FROM member_channels mc
+      LEFT JOIN member_channel_settings mcs ON mc.guild_id = mcs.guild_id
+      WHERE mc.guild_id = $1 AND mc.channel_id = $2`,
+      [interaction.guildId, interaction.channelId],
+    );
+
+    if (result.rowCount === 0) {
+      await interaction.editReply({ content: '❌ No member channel found for this channel.' });
+      return;
+    }
+
+    const deleteConfirmCount = result.rows[0].delete_confirm_count || 2;
+    const confirmedBy: string[] = result.rows[0].delete_confirmed_by || [];
+    const currentUserId = interaction.user.id;
+
+    // Check if user has already confirmed (only enforce if delete_confirm_count > 1)
+    if (deleteConfirmCount > 1 && confirmedBy.includes(currentUserId)) {
+      const remainingConfirmations = deleteConfirmCount - confirmedBy.length;
+      await interaction.editReply({
+        content: `❌ You have already confirmed this deletion. ${remainingConfirmations} more unique confirmation(s) needed from other members.`,
+      });
+      return;
+    }
+
+    // Add current user to confirmed list
+    const newConfirmedBy = [...confirmedBy, currentUserId];
+    const newDeleteCount = newConfirmedBy.length;
+
+    // Update delete count and confirmed by list
+    await pool.query(
+      `
+      UPDATE member_channels
+      SET current_delete_count = $3, delete_confirmed_by = $4
+      WHERE guild_id = $1 AND channel_id = $2
+      `,
+      [interaction.guildId, interaction.channelId, newDeleteCount, JSON.stringify(newConfirmedBy)],
+    );
+
+    // Check if we should delete the channel
+    if (newDeleteCount >= deleteConfirmCount) {
+      // Delete the channel
+      try {
+        // Type guard: only text-based channels that can be deleted
+        const channel = interaction.channel;
+        if (channel?.isTextBased() && 'delete' in channel) {
+          setTimeout(async () => {
+            await channel.delete();
+          }, 5000);
+          await interaction.editReply('Deleting channel in 5 seconds...');
+        }
+
+        // Clean up database
+        await pool.query(`DELETE FROM member_channels WHERE guild_id = $1 AND channel_id = $2`, [
+          interaction.guildId,
+          interaction.channelId,
+        ]);
+      } catch (error) {
+        console.error('[handleDeleteChannelButton] Error deleting channel:', error);
+        await interaction.editReply({ content: '❌ Failed to delete channel.' });
+      }
+      return;
+    }
+
+    // Update the original /check message with new delete count
+    const remainingConfirmations = deleteConfirmCount - newDeleteCount;
+
+    // Calculate total accounts from members
+    const totalMembers = result.rows[0].members.length;
+    const totalAccounts = result.rows[0].members.reduce((sum: number, member: MemberData) => {
+      if (Array.isArray(member.players)) {
+        return sum + member.players.length;
+      } else if (member.players && typeof member.players === 'object' && 'count' in member.players) {
+        return sum + member.players.count;
+      }
+      return sum;
+    }, 0);
+
+    // Build list of users who confirmed
+    const confirmedByList = newConfirmedBy.map((userId) => `<@${userId}>`).join(', ');
+
+    // Rebuild the embed with delete count warning
+    let embedDescription = '';
+    if (result.rows[0].clantag_focus) {
+      const clanData = await CR_API.getClan(result.rows[0].clantag_focus);
+      if (!('error' in clanData)) {
+        embedDescription =
+          `**Clan:** ${result.rows[0].clan_name_focus} (${result.rows[0].clantag_focus})\n` +
+          `**Clan Members:** ${clanData.members}/50\n` +
+          `**Channel Members:** ${totalMembers}\n` +
+          `**Accounts Selected:** ${totalAccounts}\n` +
+          `**Last Ping:** ${result.rows[0].last_ping ? new Date(result.rows[0].last_ping).toLocaleString() : 'N/A'}\n\n` +
+          `⚠️ **Delete confirmations: ${newDeleteCount}/${deleteConfirmCount}** (${remainingConfirmations} more needed)\n` +
+          `-# Confirmed by: ${confirmedByList}`;
+      }
+    } else {
+      embedDescription =
+        `**Clan Focus:** None\n` +
+        `**Channel Members:** ${totalMembers}\n` +
+        `**Accounts Selected:** ${totalAccounts}\n` +
+        `**Last Ping:** ${result.rows[0].last_ping ? new Date(result.rows[0].last_ping).toLocaleString() : 'N/A'}\n\n` +
+        `⚠️ **Delete confirmations: ${newDeleteCount}/${deleteConfirmCount}** (${remainingConfirmations} more needed)\n` +
+        `-# Confirmed by: ${confirmedByList}`;
+    }
+
+    const updatedEmbed = new EmbedBuilder()
+      .setTitle(result.rows[0].clan_name_focus ? `${result.rows[0].clan_name_focus} Info` : 'Member Channel Info')
+      .setDescription(embedDescription)
+      .setColor('Orange');
+
+    await interaction.editReply({
+      content: `⚠️ Delete confirmation ${newDeleteCount}/${deleteConfirmCount} recorded. ${remainingConfirmations} more confirmation(s) needed from other members.`,
+    });
+  }
+
   // ============================================================================
   // Main router methods for interaction dispatcher
   // ============================================================================
@@ -1372,7 +1774,7 @@ export class MemberChannelInteractionRouter {
    */
   static async handleButton(interaction: ButtonInteraction, parsed: ParsedCustomId): Promise<void> {
     const { action } = parsed;
-
+    console.log(action);
     if (action === 'memberChannel_create') {
       return this.handleConfirmButton(interaction, parsed);
     } else if (action.startsWith('memberChannel_any_')) {
@@ -1393,6 +1795,14 @@ export class MemberChannelInteractionRouter {
       return this.handlePingMembersButton(interaction, parsed);
     } else if (action.startsWith('memberChannel_addMembers')) {
       return this.handleAddMembersButton(interaction, parsed);
+    } else if (action.startsWith('memberChannel_removeMember')) {
+      return this.handleRemoveMembersButton(interaction, parsed);
+    } else if (action.startsWith('memberChannel_deleteChannel')) {
+      return this.handleDeleteChannelButton(interaction, parsed);
+    }
+
+    if (action.startsWith('memberChannel_joiningLate')) {
+      return this.handleJoiningLateButton(interaction, parsed);
     }
   }
   /**
@@ -1408,6 +1818,8 @@ export class MemberChannelInteractionRouter {
       return this.handleAnyAccountsModal(interaction, parsed);
     } else if (action === 'memberChannel_addMemberModal') {
       return this.handleAddMemberModal(interaction, parsed);
+    } else if (action === 'memberChannel_removeMemberModal') {
+      return this.handleRemoveMemberModal(interaction, parsed);
     }
   }
 
@@ -1423,4 +1835,8 @@ export class MemberChannelInteractionRouter {
       return this.handleSelectClanFocus(interaction, parsed);
     }
   }
+}
+
+function isWarStartingSoon(): boolean {
+  return false;
 }

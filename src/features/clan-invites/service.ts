@@ -71,7 +71,7 @@ export class ClanInviteService {
       client,
       guildId,
       '🔗 New Invite Link Created',
-      `**Clan:** ${clanName || clantag}\n**Tag:** ${clantag}\n**Link:** ${inviteLink}\n**Created by:** <@${createdBy}>\n**Expires:** <t:${Math.floor(expiresAt.getTime() / 1000)}:R>`,
+      `**Created by:** <@${createdBy}>\n**Clan:** ${clanName || clantag}\n**Tag:** ${clantag}\n**Link:** ${inviteLink}\n**Expires:** <t:${Math.floor(expiresAt.getTime() / 1000)}:R>`,
     );
 
     return linkId;
@@ -241,7 +241,7 @@ export class ClanInviteService {
       client,
       guildId,
       '📤 Invite Link Sent',
-      `**Clan:** ${invite.clan_name}\n**Tag:** ${clantag}\n**Channel:** <#${channelId}>\n**Sent by:** <@${sentByUserId}>\n**Source:** ${sourceType}\n**Link used:** ${invite.invite_link}\n**Expires:** <t:${Math.floor(invite.expires_at.getTime() / 1000)}:R>`,
+      `**Sent by:** <@${sentByUserId}>\n**Clan:** ${invite.clan_name}\n**Tag:** ${clantag}\n**Channel:** <#${channelId}>\n**Source:** ${sourceType}\n**Link used:** ${invite.invite_link}\n**Expires:** <t:${Math.floor(invite.expires_at.getTime() / 1000)}:R>`,
     );
 
     return message;

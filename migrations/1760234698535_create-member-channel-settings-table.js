@@ -15,6 +15,7 @@ export const up = (pgm) => {
       channel_count: { type: 'integer', default: 1, notNull: true },
       category_id: { type: 'varchar(30)' },
       pin_invite: { type: 'boolean', default: false },
+      delete_confirm_count: { type: 'integer', default: 2 },
       auto_ping: { type: 'boolean', default: false },
       send_logs: { type: 'boolean', default: false },
       logs_channel_id: { type: 'varchar(30)' },

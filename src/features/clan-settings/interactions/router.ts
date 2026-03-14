@@ -26,7 +26,7 @@ import { buildClanSettingsView, getSelectMenuRowBuilder } from '../../../config/
 import { clanSettingsService } from '../service.js';
 import { pool } from '../../../db.js';
 import logger from '../../../logger.js';
-import { ClanInviteService } from '../../clan-invites/service.js';
+import { clanInviteService } from '../../clan-invites/service.js';
 
 export class ClanSettingsInteractionRouter {
   /**
@@ -284,12 +284,11 @@ export class ClanSettingsInteractionRouter {
       ephemeral: true,
     });
     if (message) {
-      const CIS = new ClanInviteService();
-      await CIS.sendLog(
+      await clanInviteService.sendLog(
         interaction.client,
         guildId,
         '🧹 Clan Invites Purged',
-        `**Deleted by:** <@${interaction.user.id}>\n**Clan:** ${clanName}\n**Tag:** ${clantag}\n**Deleted Links:** ${deletedCount}\n**Unknown Channel Access:** ${unknownChannel.length}\n**Failed Deletions:** ${failedMessages.length}`,
+        `**Purged by:** <@${interaction.user.id}>\n**Clan:** ${clanName}\n**Tag:** ${clantag}\n**Deleted Links:** ${deletedCount}\n**Unknown Channel Access:** ${unknownChannel.length}\n**Failed Deletions:** ${failedMessages.length}`,
       );
     }
   }
