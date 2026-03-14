@@ -16,6 +16,8 @@
     "migrate:test:up": "dotenv -e .env.test --quiet -- npx node-pg-migrate up",
     "migrate:test:down-all": "dotenv -e .env.test --quiet -- npx node-pg-migrate down $(ls migrations | wc -l)",
     "migrate:test:reset": "npm run migrate:test:down-all && npm run migrate:test:up",
+    "migrate:prod:up": "dotenv -e .env.prod -- npx node-pg-migrate up",
+    "migrate:prod:down": "dotenv -e .env.prod -- npx node-pg-migrate down 1",
     "start:dev": "npm run clean && tsc && NODE_ENV=dev node dist/bot.js",
     "start:prod": "npm run clean && tsc && NODE_ENV=prod node dist/bot.js",
     "populate-test-data": "NODE_ENV=dev npx tsx scripts/populate-test-data.ts",
