@@ -11,7 +11,7 @@ export async function linkUser(
   client: PoolClient,
   guildId: string,
   originalDiscordId: string,
-  playertag: string
+  playertag: string,
 ): Promise<{ embed: EmbedBuilder; player_name?: string; components?: ActionRowBuilder[] }> {
   playertag = normalizeTag(playertag);
   const confirmPlayerExists = await CR_API.getPlayer(playertag);
@@ -28,7 +28,7 @@ export async function linkUser(
     `SELECT max_player_links
     FROM link_settings
     WHERE guild_id = $1`,
-    [guildId]
+    [guildId],
   );
   const maxLinks = maxLinkRes.rows[0]?.max_player_links ?? 10;
 
@@ -37,7 +37,7 @@ export async function linkUser(
     `SELECT COUNT(*)::int AS link_count
     FROM user_playertags
     WHERE guild_id = $1 AND discord_id = $2`,
-    [guildId, originalDiscordId]
+    [guildId, originalDiscordId],
   );
   const currentUserLinkCount = userLinkCountRes.rows[0]?.link_count ?? 0;
 
@@ -64,7 +64,7 @@ export async function linkUser(
       return {
         embed: new EmbedBuilder()
           .setDescription(
-            `<@${alreadyLinkedDiscordId}> was already linked to this account \`(${playertag})\`.\nNo Action Needed.`
+            `<@${alreadyLinkedDiscordId}> was already linked to this account \`(${playertag})\`.\nNo Action Needed.`,
           )
           .setColor(EmbedColor.WARNING),
       };
@@ -73,10 +73,10 @@ export async function linkUser(
       const cooldown = 5000; // ms
       const relink = new ButtonBuilder()
         .setCustomId(
-          makeCustomId('b', 'relinkUser', guildId, {
+          makeCustomId('b', 'ticketsRelinkUser', guildId, {
             cooldown: cooldown,
             extra: [originalDiscordId, playertag],
-          })
+          }),
         )
         // .setCustomId(`relinkUser:${cooldown}:${guildId}:${originalDiscordId}:${playertag}`)
         .setLabel('Relink?')
@@ -85,7 +85,7 @@ export async function linkUser(
       return {
         embed: new EmbedBuilder()
           .setDescription(
-            `**DID NOT LINK.**\n<@${alreadyLinkedDiscordId}> is already linked to this playertag \`(${playertag})\``
+            `**DID NOT LINK. Action Required.**\n<@${alreadyLinkedDiscordId}> is already linked to this playertag \`(${playertag})\``,
           )
           .setColor(EmbedColor.FAIL),
         components: [row],
@@ -96,7 +96,7 @@ export async function linkUser(
 
   if (!player_embed) {
     logger.error(
-      `Issue linking ${playertag} to ${originalDiscordId} due to formatPlayerData not being valid. Should have been a new link. `
+      `Issue linking ${playertag} to ${originalDiscordId} due to formatPlayerData not being valid. Should have been a new link. `,
     );
     return {
       embed: new EmbedBuilder()

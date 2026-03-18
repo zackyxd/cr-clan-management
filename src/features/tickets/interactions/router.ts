@@ -1,6 +1,9 @@
 import {
   ActionRowBuilder,
   ButtonInteraction,
+  EmbedBuilder,
+  GuildMember,
+  MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
   StringSelectMenuInteraction,
@@ -11,9 +14,13 @@ import { ParsedCustomId } from '../../../types/ParsedCustomId.js';
 import { checkPerms } from '../../../utils/checkPermissions.js';
 import { buildFeatureEmbedAndComponents } from '../../../config/serverSettingsBuilder.js';
 import { CR_API } from '../../../api/CR_API.js';
+import { formatPlayerData } from '../../../api/FORMAT_DATA.js';
 import logger from '../../../logger.js';
 import { ticketService } from '../service.js';
 import { makeCustomId } from '../../../utils/customId.js';
+import { pool } from '../../../db.js';
+import { buildFindLinkedDiscordId, buildUpsertRelinkPlayertag } from '../../../sql_queries/users.js';
+import { EmbedColor } from '../../../types/EmbedUtil.js';
 
 export class TicketInteractionRouter {
   /**
@@ -32,6 +39,9 @@ export class TicketInteractionRouter {
     switch (action) {
       case 'ticketPlayertagsOpenModal':
         await this.showPlayertagsModal(interaction, guildId);
+        break;
+      case 'ticketsRelinkUser':
+        await this.relinkUser(interaction, parsed);
         break;
 
       default:
@@ -94,11 +104,118 @@ export class TicketInteractionRouter {
             .setLabel('Separate multiple tags by spaces')
             .setPlaceholder('#ABC123 #DEF456 #GHI789')
             .setStyle(TextInputStyle.Paragraph)
-            .setRequired(true)
-        )
+            .setRequired(true),
+        ),
       );
 
     await interaction.showModal(modal);
+  }
+
+  private static async relinkUser(interaction: ButtonInteraction, parsed: ParsedCustomId): Promise<void> {
+    const { guildId, extra } = parsed;
+    const [originalDiscordId, playertag] = extra || [];
+    if (!originalDiscordId || !playertag) {
+      await interaction.reply({
+        content: 'Invalid relink data.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.deferUpdate();
+
+    const client = await pool.connect();
+    await client.query('BEGIN');
+    try {
+      // Old account
+      const currentDiscordIdQuery = await client.query(buildFindLinkedDiscordId(guildId, playertag));
+      const currentDiscordId = currentDiscordIdQuery.rows[0].discord_id;
+
+      // New account - relink to new discord id
+      const relinkQuery = buildUpsertRelinkPlayertag(guildId, originalDiscordId, playertag);
+      const relinkRes = await client.query(relinkQuery);
+      const newDiscordId = relinkRes.rows[0].new_discord_id;
+
+      if (currentDiscordId !== newDiscordId) {
+        const playerData = await CR_API.getPlayer(playertag);
+        if ('error' in playerData) {
+          await interaction.editReply({
+            content: `⚠️ Could not fetch data for ${playertag}: ${playerData.error}`,
+          });
+          await client.query('ROLLBACK');
+          return;
+        }
+
+        const playerEmbed = formatPlayerData(playerData);
+        if (!playerEmbed) {
+          await interaction.editReply({ content: 'There was an error with showing player data' });
+          await client.query('ROLLBACK');
+          return;
+        }
+
+        const getUser = await interaction.guild?.members.fetch(newDiscordId);
+        playerEmbed?.setFooter({ text: `Relinked | ${playertag}`, iconURL: getUser?.displayAvatarURL() });
+        await interaction.editReply({ embeds: [playerEmbed], components: [] });
+        await interaction.followUp({
+          content: `The playertag \`${playertag}\` has been relinked from <@${currentDiscordId}> → <@${newDiscordId}>`,
+          flags: MessageFlags.Ephemeral,
+        });
+
+        // Handle renaming if enabled
+        try {
+          if (!interaction.guild) {
+            await client.query('COMMIT');
+            return;
+          }
+
+          const renameEnabled = await client.query(
+            `
+            SELECT rename_players
+            FROM link_settings
+            WHERE guild_id = $1
+            `,
+            [interaction.guild.id],
+          );
+
+          if (renameEnabled.rows[0]?.['rename_players']) {
+            const member: GuildMember | null = await interaction.guild.members.fetch(newDiscordId).catch(() => null);
+
+            if (!member) {
+              await interaction.followUp({
+                embeds: [
+                  new EmbedBuilder().setDescription('**This user is not in this server.**').setColor(EmbedColor.FAIL),
+                ],
+                flags: MessageFlags.Ephemeral,
+              });
+            } else {
+              await member.setNickname(playerData.name);
+            }
+          }
+        } catch (error) {
+          await interaction.followUp({
+            content: `Could not rename this player.`,
+            flags: MessageFlags.Ephemeral,
+          });
+          logger.info(error);
+        }
+
+        await client.query('COMMIT');
+      } else {
+        await client.query('ROLLBACK');
+        await interaction.editReply({
+          content: `There was an error with relinking...try again or contact @Zacky`,
+        });
+      }
+    } catch (error) {
+      logger.error(`Error in relinkUser: ${error}`);
+      await client.query('ROLLBACK');
+      await interaction.followUp({
+        content: `Error with relinking: ${error}`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } finally {
+      client.release();
+    }
   }
 
   /**
@@ -159,7 +276,7 @@ export class TicketInteractionRouter {
   private static async handleIdentifierModal(
     interaction: ModalSubmitInteraction,
     guildId: string,
-    action: 'opened_identifier' | 'closed_identifier'
+    action: 'opened_identifier' | 'closed_identifier',
   ): Promise<void> {
     const messageId = interaction.message?.id;
     if (!messageId) {

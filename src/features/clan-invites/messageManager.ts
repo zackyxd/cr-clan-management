@@ -51,7 +51,7 @@ export async function updateInviteMessage(
         c.clan_role_id AS role_id,
         c.invites_enabled
       FROM clans c
-      LEFT JOIN clan_invites_links cil ON cil.guild_id = c.guild_id AND cil.clantag = c.clantag 
+      LEFT JOIN clan_invite_links cil ON cil.guild_id = c.guild_id AND cil.clantag = c.clantag 
         AND cil.expires_at > NOW() AND cil.is_expired = FALSE
       WHERE c.guild_id = $1 
         AND c.invites_enabled = true

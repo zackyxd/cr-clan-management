@@ -56,7 +56,7 @@ export class ClanInviteService {
     clanName?: string,
   ): Promise<number> {
     const result = await pool.query(
-      `INSERT INTO clan_invites_links
+      `INSERT INTO clan_invite_links
        (guild_id, clantag, invite_link, created_by, expires_at)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
@@ -82,7 +82,7 @@ export class ClanInviteService {
    */
   async getActiveInvite(guildId: string, clantag: string): Promise<InviteLink | null> {
     const result = await pool.query(
-      `SELECT * FROM clan_invites_links
+      `SELECT * FROM clan_invite_links
        WHERE guild_id = $1 AND clantag = $2
          AND expires_at > NOW() AND is_expired = FALSE
        ORDER BY created_at DESC
@@ -101,7 +101,7 @@ export class ClanInviteService {
       `SELECT 
          cil.*,
          c.clan_name
-       FROM clan_invites_links cil
+       FROM clan_invite_links cil
        JOIN clans c ON c.guild_id = cil.guild_id AND c.clantag = cil.clantag
        WHERE cil.guild_id = $1 AND cil.clantag = $2
          AND cil.expires_at > NOW() AND cil.is_expired = FALSE
@@ -138,7 +138,7 @@ export class ClanInviteService {
     clanName?: string,
   ): Promise<void> {
     await pool.query(
-      `UPDATE clan_invites_links
+      `UPDATE clan_invite_links
        SET is_expired = TRUE
        WHERE id = $1`,
       [inviteLinkId],
@@ -152,7 +152,7 @@ export class ClanInviteService {
    */
   async cleanupOldExpiredLinks(daysOld: number = 30): Promise<number> {
     const result = await pool.query(
-      `DELETE FROM clan_invites_links
+      `DELETE FROM clan_invite_links
        WHERE is_expired = TRUE 
          AND expires_at < NOW() - INTERVAL '${daysOld} days'
        RETURNING id`,
@@ -182,7 +182,7 @@ export class ClanInviteService {
        FROM (
          SELECT DISTINCT ON (clantag)
            *
-         FROM clan_invites_links
+         FROM clan_invite_links
          WHERE guild_id = $1
            AND expires_at > NOW() 
            AND is_expired = FALSE

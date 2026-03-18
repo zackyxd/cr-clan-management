@@ -37,7 +37,7 @@ export const up = (pgm) => {
     invite_link_id: {
       type: 'integer',
       notNull: true,
-      references: 'clan_invites_links(id)',
+      references: 'clan_invite_links(id)',
       onDelete: 'CASCADE'
     },
     guild_id: { type: 'varchar(30)', notNull: true },

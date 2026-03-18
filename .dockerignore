@@ -1,59 +1,16 @@
-# Git
+node_modules
+npm-debug.log
+dist
 .git
 .gitignore
-.github
-
-# Node
-node_modules
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Build output
-dist
-
-# Environment files
-.env*
-!.env.example
-
-# Test files
+.env
+.env.dev
+.env.prod
+.env.test
+# .env.docker is NOT ignored - needed for user permissions
+logs
 __tests__
-*.test.ts
-*.test.js
-jest.config.js
-jest.setup.ts
-jest.env-setup.ts
-jest.resolver.js
-
-# Documentation
 *.md
 !README.md
-REFACTOR_GUIDE.md
-FILE_STRUCTURE_PROPOSAL.md
-MEMBER_CHANNEL_MIGRATION.md
-MEMBER_CHANNEL_REFACTOR.md
-
-# Logs
-logs
-*.log
-
-# Scripts
-one-off-scripts
-scripts/populate-test-data.ts
-
-# Development files
-src/*.test.ts
 .vscode
-.idea
-*.swp
-*.swo
-*~
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Misc
-migrate-cheatsheet.txt
-removeQueues.ts
-performance.ts
+.github

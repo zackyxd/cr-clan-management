@@ -62,7 +62,7 @@ export class InviteScheduler {
             'sent_by_id', ilm.sent_by_id
             )
           ) AS messages
-        FROM clan_invites_links cil
+        FROM clan_invite_links cil
         LEFT JOIN invite_link_messages ilm on ilm.invite_link_id = cil.id
         LEFT JOIN clans c ON c.guild_id = cil.guild_id AND c.clantag = cil.clantag
         WHERE cil.expires_at <= NOW() AND cil.is_expired = FALSE

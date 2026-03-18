@@ -208,7 +208,7 @@ export class ClanSettingsInteractionRouter {
             'sent_by_id', ilm.sent_by_id
           )
         ) AS messages
-      FROM clan_invites_links cil
+      FROM clan_invite_links cil
       INNER JOIN invite_link_messages ilm ON ilm.invite_link_id = cil.id
       LEFT JOIN clans c ON c.guild_id = cil.guild_id AND c.clantag = cil.clantag
       WHERE cil.guild_id = $1 
