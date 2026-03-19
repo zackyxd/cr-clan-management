@@ -7,13 +7,17 @@ dist/
 .env.test
 .env
 .env.example
-# .env.docker is NOT ignored - it contains UID/GID only, no secrets
+
 # Deployment keys (if generated locally)
 deployment-keys.txt
 *.pem
 *.key
 id_ed25519*
 id_rsa*
+
+# PM2 logs
+.pm2/
+pm2.log
 
 # Local documentation/notes
 migrate-cheatsheet.txt
@@ -30,5 +34,4 @@ src/utils/memberChannelHelpers.examples.ts
 FILE_STRUCTURE_PROPOSAL.md
 MEMBER_CHANNEL_MIGRATION.md
 REFACTOR_GUIDE.md
-docs/*
 quickstart.sh
