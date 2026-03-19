@@ -208,17 +208,7 @@ NODE_ENV=production
 
 Save: `Ctrl+X`, `Y`, `Enter`
 
-### 3. Update ecosystem.config.js Paths
-
-```bash
-nano ecosystem.config.js
-```
-
-Change the `cwd` path on **both** apps from `/home/zacky/cr-clan-management` to your actual path (e.g., `/home/your_user/cr-clan-management`).
-
-Save: `Ctrl+X`, `Y`, `Enter`
-
-### 4. Run Migrations
+### 3. Run Migrations
 
 ```bash
 # Run migrations on DEV database
@@ -228,7 +218,7 @@ npm run migrate:dev:up
 npm run migrate:prod:up
 ```
 
-### 5. Start Both Bots
+### 4. Start Both Bots
 
 ```bash
 # Start both dev and prod bots
@@ -242,7 +232,7 @@ npm run pm2:start:prod  # Prod only
 pm2 save
 ```
 
-### 6. Verify Bots Are Running
+### 5. Verify Bots Are Running
 
 ```bash
 # Check status
