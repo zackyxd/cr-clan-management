@@ -20,6 +20,7 @@ export interface TicketData {
   playertags: string[];
   createdBy: string;
   isClosed: boolean;
+  createdAt?: Date;
   closedAt?: Date;
 }
 

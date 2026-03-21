@@ -31,7 +31,7 @@ export class TicketService {
         AND gf.feature_name = 'tickets'
         AND gf.is_enabled = TRUE
       `,
-      [guildId]
+      [guildId],
     );
 
     if (rows.length === 0) {
@@ -54,11 +54,11 @@ export class TicketService {
   async getTicketData(guildId: string, channelId: string): Promise<TicketData | null> {
     const { rows } = await pool.query(
       `
-      SELECT guild_id, channel_id, playertags, created_by, is_closed, closed_at
+      SELECT guild_id, channel_id, playertags, created_by, is_closed, created_at, closed_at
       FROM tickets
       WHERE guild_id = $1 AND channel_id = $2
       `,
-      [guildId, channelId]
+      [guildId, channelId],
     );
 
     if (rows.length === 0) {
@@ -71,6 +71,7 @@ export class TicketService {
       playertags: rows[0].playertags,
       createdBy: rows[0].created_by,
       isClosed: rows[0].is_closed,
+      createdAt: rows[0].created_at,
       closedAt: rows[0].closed_at,
     };
   }
@@ -85,7 +86,7 @@ export class TicketService {
       // Get current ticket data including creator
       const { rows } = await pool.query(
         `SELECT playertags, created_by FROM tickets WHERE guild_id = $1 AND channel_id = $2`,
-        [guildId, channelId]
+        [guildId, channelId],
       );
 
       console.log(rows[0], userId);
@@ -145,7 +146,7 @@ export class TicketService {
               AND t.channel_id = EXCLUDED.channel_id
             )
           `,
-          [guildId, channelId, uniqueValidTags, userId]
+          [guildId, channelId, uniqueValidTags, userId],
         );
       }
 
@@ -208,7 +209,7 @@ export class TicketService {
         SET is_closed = TRUE, closed_at = NOW()
         WHERE guild_id = $1 AND channel_id = $2
         `,
-        [guildId, channelId]
+        [guildId, channelId],
       );
 
       // Get ticket data
@@ -298,7 +299,7 @@ export class TicketService {
         SET is_closed = FALSE, closed_at = NOW()
         WHERE guild_id = $1 AND channel_id = $2
         `,
-        [guildId, channelId]
+        [guildId, channelId],
       );
 
       logger.info(`Reopened ticket in guild ${guildId}, channel ${channelId}`);
