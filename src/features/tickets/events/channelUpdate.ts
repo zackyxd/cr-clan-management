@@ -72,7 +72,7 @@ export async function handleTicketChannelUpdate(
       await ticketService.sendLog(
         client,
         guildId,
-        'Ticket Reopened',
+        '📫 Ticket Reopened',
         `<@${ticketData.createdBy}> reopened a ticket <#${newChannel.id}>.`,
       );
       return true;

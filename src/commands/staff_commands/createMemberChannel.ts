@@ -13,6 +13,7 @@ import { Command } from '../../types/Command.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { makeCustomId } from '../../utils/customId.js';
 import { pool } from '../../db.js';
+import logger from '../../logger.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -42,7 +43,7 @@ const command: Command = {
     try {
       const settingsCheck = await pool.query(
         `
-        SELECT category_id, pin_invite, auto_ping, logs_channel_id, channel_count
+        SELECT category_id, pin_invite, auto_ping, channel_count
         FROM member_channel_settings
         WHERE guild_id = $1
         `,
@@ -83,7 +84,7 @@ const command: Command = {
           return;
         }
       } catch (error) {
-        console.log(error);
+        logger.error('Error fetching member channel category:', error);
         await interaction.reply({
           content:
             '❌ The configured member channel category no longer exists or is invalid. Please contact an administrator to check the settings.',
@@ -92,7 +93,7 @@ const command: Command = {
         return;
       }
     } catch (dbError) {
-      console.error('Error checking member channel settings:', dbError);
+      logger.error('Error checking member channel settings:', dbError);
       await interaction.reply({
         content: '❌ Unable to verify member channel settings. Please try again later.',
         flags: MessageFlags.Ephemeral,
