@@ -53,7 +53,7 @@ export async function buildMemberChannelCheckUI(
           `**Clan:** ${channelData.clan_name_focus} (${channelData.clantag_focus})\n` +
             `**Channel Members:** ${totalMembers}\n` +
             `**Accounts Selected:** ${totalAccounts}\n` +
-            `**Last Ping:** ${channelData.last_ping ? new Date(channelData.last_ping).toLocaleString() : 'N/A'}` +
+            `**Last Ping:** ${channelData.last_ping ? `<t:${Math.floor(new Date(channelData.last_ping).getTime() / 1000)}:R>` : 'N/A'}` +
             pendingDeleteWarning +
             (channelData.is_locked ? '\n\n🔒 Locked.' : ''),
         )
@@ -66,7 +66,7 @@ export async function buildMemberChannelCheckUI(
             `**Clan Members:** ${clanData.members}/50\n` +
             `**Channel Members:** ${totalMembers}\n` +
             `**Accounts Selected:** ${totalAccounts}\n` +
-            `**Last Ping:** ${channelData.last_ping ? new Date(channelData.last_ping).toLocaleString() : 'N/A'}` +
+            `**Last Ping:** ${channelData.last_ping ? `<t:${Math.floor(new Date(channelData.last_ping).getTime() / 1000)}:R>` : 'N/A'}` +
             pendingDeleteWarning +
             (channelData.is_locked ? '\n\n🔒 Locked.' : ''),
         )
@@ -80,7 +80,7 @@ export async function buildMemberChannelCheckUI(
         `**Clan Focus:** None\n` +
           `**Channel Members:** ${totalMembers}\n` +
           `**Accounts Selected:** ${totalAccounts}\n` +
-          `**Last Ping:** ${channelData.last_ping ? new Date(channelData.last_ping).toLocaleString() : 'N/A'}` +
+          `**Last Ping:** ${channelData.last_ping ? `<t:${Math.floor(new Date(channelData.last_ping).getTime() / 1000)}:R>` : 'N/A'}` +
           pendingDeleteWarning +
           (channelData.is_locked ? '\n\n🔒 Locked.' : ''),
       )
