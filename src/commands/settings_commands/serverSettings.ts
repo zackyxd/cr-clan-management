@@ -1,6 +1,5 @@
 import {
   ChatInputCommandInteraction,
-  PermissionFlagsBits,
   SlashCommandBuilder,
   MessageFlags,
   ButtonStyle,

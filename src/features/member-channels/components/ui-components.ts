@@ -25,7 +25,7 @@ export function createAccountSelectionEmbed(context: AccountSelectionContext, pl
   return new EmbedBuilder()
     .setTitle(`Account Selection - User ${(context.userIndex ?? 0) + 1} of ${context.totalUsers ?? 1}`)
     .setDescription(
-      `**<@${context.discordId}> has multiple accounts linked.\nSelect which accounts you want to add:**\n${playerDescriptions}`
+      `**<@${context.discordId}> has multiple accounts linked.\nSelect which accounts you want to add:**\n${playerDescriptions}`,
     )
     .setColor(EmbedColor.WARNING)
     .setFooter({
@@ -40,14 +40,14 @@ export function createAccountSelectMenu(
   players: Player[],
   guildId: string,
   sessionId: string,
-  creatorId: string
+  creatorId: string,
 ): StringSelectMenuBuilder {
   const select = new StringSelectMenuBuilder()
     .setCustomId(
       makeCustomId('s', 'member_channel_account_select', guildId, {
         ownerId: creatorId,
         extra: [sessionId],
-      })
+      }),
     )
     .setPlaceholder('Select specific accounts')
     .setMinValues(1)
@@ -71,14 +71,14 @@ export function createAccountActionButtons(
   guildId: string,
   sessionId: string,
   creatorId: string,
-  userIndex: number
+  userIndex: number,
 ): ActionRowBuilder<ButtonBuilder> {
   const anyAccountButton = new ButtonBuilder()
     .setCustomId(
       makeCustomId('b', 'member_channel_any_account', guildId, {
         ownerId: creatorId,
         extra: [userIndex.toString(), sessionId],
-      })
+      }),
     )
     .setLabel('Use any account(s)')
     .setStyle(ButtonStyle.Primary);
@@ -88,7 +88,7 @@ export function createAccountActionButtons(
       makeCustomId('b', 'member_channel_continue', guildId, {
         ownerId: creatorId,
         extra: [userIndex.toString(), sessionId],
-      })
+      }),
     )
     .setLabel('Continue with Selected')
     .setStyle(ButtonStyle.Secondary);
@@ -104,16 +104,16 @@ export function createConfirmationEmbed(
   clanNameFocus: string | null,
   totalUsers: number,
   totalAccounts: number,
-  membersList: string
+  membersList: string,
 ): EmbedBuilder {
   return new EmbedBuilder()
     .setTitle('✅ Account Selection Complete!')
     .setDescription(
-      `**Channel Name:** *${channelName}*\n**${totalUsers} Users** with **${totalAccounts} Player Accounts**`
+      `**Channel Name:** *${channelName}*\n**${totalUsers} Users** with **${totalAccounts} Player Accounts**`,
     )
     .addFields(
       { name: 'Clan Focus', value: clanNameFocus || 'None', inline: true },
-      { name: 'Members', value: membersList }
+      { name: 'Members', value: membersList },
     )
     .setColor(EmbedColor.SUCCESS);
 }
@@ -124,7 +124,7 @@ export function createConfirmationEmbed(
 export function createConfirmationButtons(
   guildId: string,
   sessionId: string,
-  creatorId: string
+  creatorId: string,
 ): ActionRowBuilder<ButtonBuilder> {
   const confirmButton = new ButtonBuilder()
     .setCustomId(
@@ -132,7 +132,7 @@ export function createConfirmationButtons(
         ownerId: creatorId,
         cooldown: 5,
         extra: ['confirm', sessionId],
-      })
+      }),
     )
     .setLabel('Create Channel')
     .setStyle(ButtonStyle.Success);
@@ -143,7 +143,7 @@ export function createConfirmationButtons(
         ownerId: creatorId,
         cooldown: 5,
         extra: ['cancel', sessionId],
-      })
+      }),
     )
     .setLabel('Cancel')
     .setStyle(ButtonStyle.Danger);
@@ -158,14 +158,14 @@ export function createAnyAccountModal(
   guildId: string,
   maxAccounts: number,
   sessionId?: string,
-  creatorId?: string
+  creatorId?: string,
 ): ModalBuilder {
   const modal = new ModalBuilder()
     .setCustomId(
       makeCustomId('m', 'any_account_count_modal', guildId, {
         ownerId: creatorId,
         extra: sessionId ? [sessionId] : [],
-      })
+      }),
     )
     .setTitle('Select Account Count');
 

@@ -16,7 +16,6 @@ export const up = (pgm) => {
     closed_identifier: { type: 'varchar(30)', default: 'closed' },
     allow_append: { type: 'boolean', default: false },
     send_logs: { type: 'boolean', default: false },
-    logs_channel_id: { type: 'varchar(30)' }
   });
 
 

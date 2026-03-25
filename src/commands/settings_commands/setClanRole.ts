@@ -39,7 +39,6 @@ const command: Command = {
     const roleSelected = interaction.options.getRole('role');
     const abbreviation = interaction.options.getString('abbreviation')?.toLowerCase();
 
-    await interaction.deferReply();
     const clanRes = await pool.query(
       `SELECT clantag, clan_name, clan_role_id
        FROM clans

@@ -4,13 +4,14 @@ import { pool } from '../../db.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { checkFeature } from '../../utils/checkFeatureEnabled.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
+import { checkFeatureSetting } from '../../config/featureRegistry.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('append')
     .setDescription('Append text to the current ticket channel name')
     .addStringOption((option) =>
-      option.setName('text').setDescription('Text you want to add to the channel name').setRequired(true)
+      option.setName('text').setDescription('Text you want to add to the channel name').setRequired(true),
     ),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const guild = interaction.guild;
@@ -24,8 +25,11 @@ const command: Command = {
       return;
     }
 
-    const featureCheck = await checkFeature(interaction, guild.id, 'allow_append');
-    if (!featureCheck) {
+    const featureCheck = await checkFeatureSetting(guild.id, 'tickets', 'allow_append');
+    if (!featureCheck.enabled && featureCheck.embed) {
+      await interaction.reply({
+        embeds: [featureCheck.embed],
+      });
       return;
     }
 
@@ -48,13 +52,12 @@ const command: Command = {
       FROM tickets
       WHERE guild_id = $1 AND channel_id = $2
       `,
-      [guild.id, interaction.channelId]
+      [guild.id, interaction.channelId],
     );
 
     if (rows.length === 0) {
-      await interaction.reply({
+      await interaction.editReply({
         content: 'This is not a channel you can append to. It must be a ticket channel.',
-        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -66,15 +69,13 @@ const command: Command = {
       const diff = now.getTime() - new Date(ticket.appended_at).getTime();
       if (diff < 10 * 60 * 1000) {
         // 10 minutes
-        await interaction.reply({
-          content: '⚠️ You can only append to the ticket name once every 10 minutes.',
-          flags: MessageFlags.Ephemeral,
+        await interaction.editReply({
+          content: `⚠️ You can only append to the ticket name once every 10 minutes. Try again in <t:${Math.floor((now.getTime() + (10 * 60 * 1000 - diff)) / 1000)}:R>`,
         });
         return;
       }
     }
 
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const originalName = ticket?.initial_ticket_name ?? channel?.name ?? '';
 
     // Append the new text
@@ -84,7 +85,7 @@ const command: Command = {
       await channel?.setName(newName);
       if (originalChannelName === channel.name) {
         await interaction.editReply(
-          "The channel name was unable to be changed due to Discord's limit. Try again in 10 minutes."
+          "The channel name was unable to be changed due to Discord's limit. Try again in 10 minutes.",
         );
         return;
       }
@@ -97,7 +98,7 @@ const command: Command = {
           appended_at = NOW()
         WHERE guild_id = $3 AND channel_id = $4
         `,
-        [originalChannelName, textWanted, guild.id, interaction.channelId]
+        [originalChannelName, textWanted, guild.id, interaction.channelId],
       );
       const embed = new EmbedBuilder()
         .setDescription(`Successfully changed the ticket name to \`${newName}\``)

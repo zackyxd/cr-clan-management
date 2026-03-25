@@ -63,9 +63,6 @@ client.once(Events.ClientReady, async (c) => {
     name: 'over clans',
     type: ActivityType.Watching,
   });
-  await loadButtons();
-  await loadModals();
-  await loadSelectMenus();
   const dbClient = await pool.connect();
   try {
     await dbClient.query('BEGIN');
@@ -122,9 +119,6 @@ import 'dotenv-flow/config';
 import { insert_guilds_on_startup, remove_guilds_on_startup, sync_default_features } from './services/guilds.js';
 import logger from './logger.js';
 import { pool } from './db.js';
-import { loadButtons } from './interactions/handleButtonInteraction.js';
-import { loadModals } from './interactions/handleModalInteraction.js';
-import { loadSelectMenus } from './interactions/handleSelectMenuInteraction.js';
 import { InviteScheduler } from './features/clan-invites/scheduler.js';
 
 // import { pool } from './dbConfig.js';

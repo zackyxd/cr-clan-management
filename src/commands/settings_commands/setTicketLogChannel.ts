@@ -14,7 +14,7 @@ const command: Command = {
     .setName('set-ticket-log-channel')
     .setDescription('Channel for ticket logs to go to (must enable in settings)')
     .addChannelOption((option) =>
-      option.setName('channel').setDescription('Channel for logs to be sent to').setRequired(true)
+      option.setName('channel').setDescription('Channel for logs to be sent to').setRequired(true),
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
@@ -34,7 +34,7 @@ const command: Command = {
         SET logs_channel_id = $1
         WHERE guild_id = $2
         `,
-      [channel?.id, guild.id]
+      [channel?.id, guild.id],
     );
 
     const checkAdded = await pool.query(
@@ -43,7 +43,7 @@ const command: Command = {
       FROM ticket_settings
       WHERE guild_id = $1
       `,
-      [guild.id]
+      [guild.id],
     );
 
     let successfullyAdded = false;
@@ -66,4 +66,4 @@ const command: Command = {
   },
 };
 
-export default command;
+// export default command;

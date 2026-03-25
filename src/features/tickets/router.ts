@@ -7,6 +7,7 @@ import {
   ModalBuilder,
   ModalSubmitInteraction,
   StringSelectMenuInteraction,
+  TextChannel,
   TextInputBuilder,
   TextInputStyle,
 } from 'discord.js';
@@ -20,6 +21,7 @@ import { makeCustomId } from '../../utils/customId.js';
 import { pool } from '../../db.js';
 import { buildFindLinkedDiscordId, buildUpsertRelinkPlayertag } from '../../sql_queries/users.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
+import { sendTicketButton } from './events/channelCreate.js';
 
 export class TicketInteractionRouter {
   /**
@@ -45,13 +47,37 @@ export class TicketInteractionRouter {
       }
       case 'ticket_openclose': {
         // Staff only - check permissions
-        const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {
+        const allowed = await checkPerms(interaction, guildId, 'button', 'either', {
           hideNoPerms: true,
           skipDefer: false,
         });
         if (!allowed) return;
         const channelId = parsed.extra?.[0];
         await this.changeTicketStatus(interaction, guildId, channelId);
+        break;
+      }
+      case 'ticket_append': {
+        // Staff only - check permissions
+        const allowed = await checkPerms(interaction, guildId, 'button', 'either', {
+          hideNoPerms: true,
+          skipDefer: true,
+        });
+        if (!allowed) return;
+        const channelId = parsed.extra?.[0];
+        await this.showAppendModal(interaction, guildId, channelId);
+        break;
+      }
+      case 'ticket_resend_playertag_button': {
+        if (interaction.channel instanceof TextChannel && interaction.guild) {
+          interaction.reply({ content: '✅ Playertag button resent.', ephemeral: true });
+          await sendTicketButton(interaction.channel, guildId);
+        } else {
+          await interaction.reply({
+            content:
+              '❌ This resend playertag button can only be used in a text channel. If a mistake, contact @Zacky.',
+            ephemeral: true,
+          });
+        }
         break;
       }
 
@@ -82,6 +108,16 @@ export class TicketInteractionRouter {
         // Defer with ephemeral if closed, non-ephemeral if open
         await interaction.deferReply({ ephemeral: isClosed });
         await this.handleModalSubmit(interaction, guildId);
+        break;
+      }
+      case 'ticketAppendModal': {
+        // Staff only - check permissions
+        const allowed = await checkPerms(interaction, guildId, 'modal', 'either', {
+          hideNoPerms: true,
+          deferEphemeral: true,
+        });
+        if (!allowed) return;
+        await this.handleAppendSubmit(interaction, guildId);
         break;
       }
 
@@ -117,6 +153,31 @@ export class TicketInteractionRouter {
             .setPlaceholder('#ABC123 #DEF456 #GHI789')
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(true),
+        ),
+      );
+
+    await interaction.showModal(modal);
+  }
+
+  /**
+   * Show modal for appending text to ticket name
+   */
+  private static async showAppendModal(
+    interaction: ButtonInteraction,
+    guildId: string,
+    channelId: string,
+  ): Promise<void> {
+    const modal = new ModalBuilder()
+      .setCustomId(makeCustomId('m', 'ticketAppendModal', guildId, { extra: [channelId] }))
+      .setTitle('Append to Ticket Name')
+      .addComponents(
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          new TextInputBuilder()
+            .setCustomId('input')
+            .setLabel('Text to add to channel name')
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true)
+            .setMaxLength(50),
         ),
       );
 
@@ -429,6 +490,96 @@ export class TicketInteractionRouter {
     } else {
       await interaction.editReply({
         content: 'All playertags were already added to this ticket.',
+      });
+    }
+  }
+
+  /**
+   * Handle append modal submission
+   */
+  private static async handleAppendSubmit(interaction: ModalSubmitInteraction, guildId: string): Promise<void> {
+    const textWanted = interaction.fields.getTextInputValue('input');
+
+    if (!interaction.channelId) {
+      await interaction.editReply({ content: 'Could not determine channel ID.' });
+      return;
+    }
+
+    const channel = await interaction.guild?.channels.fetch(interaction.channelId);
+    const originalChannelName = channel?.name;
+    if (!originalChannelName) {
+      await interaction.editReply({ content: 'Could not fetch channel information.' });
+      return;
+    }
+
+    // Fetch ticket info
+    const { rows } = await pool.query(
+      `
+      SELECT initial_ticket_name, appended_at
+      FROM tickets
+      WHERE guild_id = $1 AND channel_id = $2
+      `,
+      [guildId, interaction.channelId],
+    );
+
+    if (rows.length === 0) {
+      await interaction.editReply({
+        content: 'This is not a channel you can append to. It must be a ticket channel.',
+      });
+      return;
+    }
+
+    const ticket = rows[0];
+
+    // Check cooldown (10 minutes)
+    const now = new Date();
+    if (ticket?.appended_at) {
+      const diff = now.getTime() - new Date(ticket.appended_at).getTime();
+      if (diff < 10 * 60 * 1000) {
+        // 10 minutes
+        await interaction.editReply({
+          content: `⚠️ You can only append to the ticket name once every 10 minutes. Try again in <t:${Math.floor((now.getTime() + (10 * 60 * 1000 - diff)) / 1000)}:R>`,
+        });
+        return;
+      }
+    }
+
+    const originalName = ticket?.initial_ticket_name ?? channel?.name ?? '';
+
+    // Append the new text
+    const newName = originalName + ' ' + textWanted;
+
+    try {
+      await channel?.setName(newName);
+
+      // Check if Discord actually changed the name (rate limit check)
+      if (originalChannelName === channel?.name) {
+        await interaction.editReply({
+          content: "The channel name was unable to be changed due to Discord's limit. Try again in 10 minutes.",
+        });
+        return;
+      }
+
+      await pool.query(
+        `
+        UPDATE tickets
+        SET 
+          initial_ticket_name = COALESCE(initial_ticket_name, $1),
+          appended_name = $2, 
+          appended_at = NOW()
+        WHERE guild_id = $3 AND channel_id = $4
+        `,
+        [originalChannelName, textWanted, guildId, interaction.channelId],
+      );
+
+      const embed = new EmbedBuilder()
+        .setDescription(`✅ Successfully changed the ticket name to \`${newName}\``)
+        .setColor(EmbedColor.SUCCESS);
+      await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+      logger.error('Error appending to ticket name:', error);
+      await interaction.editReply({
+        content: '❌ Failed to change ticket name. Please try again.',
       });
     }
   }

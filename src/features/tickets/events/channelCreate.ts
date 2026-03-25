@@ -4,6 +4,21 @@ import { ticketService } from '../service.js';
 import logger from '../../../logger.js';
 
 /**
+ * Send the playertags entry button to a ticket channel
+ */
+export async function sendTicketButton(channel: TextChannel, guildId: string): Promise<void> {
+  const button = new ButtonBuilder()
+    .setLabel('Enter Clash Royale Playertags')
+    .setCustomId(makeCustomId('b', 'ticketPlayertagsOpenModal', guildId, { cooldown: 10 }))
+    .setStyle(ButtonStyle.Primary);
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
+
+  await channel.send({ components: [row] });
+  logger.info(`Sent ticket button to channel ${channel.id} in guild ${guildId}`);
+}
+
+/**
  * Handle ticket creation when a channel is created
  * Sends a button to add playertags if the channel name matches the opened identifier
  */
@@ -21,18 +36,9 @@ export async function handleTicketChannelCreate(channel: TextChannel, guildId: s
       return false;
     }
 
-    // Send button to add playertags
-    const button = new ButtonBuilder()
-      .setLabel('Enter Clash Royale Playertags')
-      .setCustomId(makeCustomId('b', 'ticketPlayertagsOpenModal', guildId, { cooldown: 1 }))
-      .setStyle(ButtonStyle.Primary);
-
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(button);
-
     // Delay to ensure channel is fully created
     setTimeout(async () => {
-      await channel.send({ components: [row] });
-      logger.info(`Sent ticket button to channel ${channel.id} in guild ${guildId}`);
+      await sendTicketButton(channel, guildId);
     }, 1500);
 
     return true;

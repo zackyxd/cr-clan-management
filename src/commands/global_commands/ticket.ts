@@ -5,11 +5,13 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ActionRowBuilder,
+  TextChannel,
 } from 'discord.js';
 import { ticketService } from '../../features/tickets/service.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { Command } from '../../types/Command.js';
 import { makeCustomId } from '../../utils/customId.js';
+import { sendTicketButton } from '../../features/tickets/events/channelCreate.js';
 
 const command: Command = {
   data: new SlashCommandBuilder().setName('ticket').setDescription('View information about the current ticket'),
@@ -41,8 +43,12 @@ const command: Command = {
 
     if (!ticketData) {
       await interaction.editReply({
-        content: '❌ This channel is not a ticket. Use this command inside a ticket channel.',
+        content:
+          '❌ This channel is not a ticket. Use this command inside a ticket channel.\nIf this is a ticket, playertags must be entered first using the button below.',
       });
+      if (interaction.channel instanceof TextChannel) {
+        await sendTicketButton(interaction.channel, guildId);
+      }
       return;
     }
 
@@ -103,6 +109,18 @@ const command: Command = {
 
     const ticketActionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(ticketButton);
 
+    if (!ticketData.isClosed) {
+      const appendButton = new ButtonBuilder()
+        .setLabel('Append to Name')
+        .setCustomId(makeCustomId('b', 'ticket_append', guildId, { cooldown: 5, extra: [channelId] }))
+        .setStyle(ButtonStyle.Primary);
+      ticketActionRow.addComponents(appendButton);
+      const resendButton = new ButtonBuilder()
+        .setLabel('Resend Playertag Button')
+        .setCustomId(makeCustomId('b', 'ticket_resend_playertag_button', guildId, { cooldown: 5, extra: [channelId] }))
+        .setStyle(ButtonStyle.Secondary);
+      ticketActionRow.addComponents(resendButton);
+    }
     embed.setTimestamp();
     embed.setFooter({ text: `Ticket Channel ID: ${channelId}` });
 

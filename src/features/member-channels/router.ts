@@ -14,6 +14,7 @@ import {
   UserSelectMenuBuilder,
   LabelBuilder,
   ChannelType,
+  Guild,
 } from 'discord.js';
 import { memberChannelService } from './service.js';
 import type { ParsedCustomId } from '../../types/ParsedCustomId.js';
@@ -124,9 +125,9 @@ export class MemberChannelInteractionRouter {
       .setDescription(
         `<@${data.discordId}> has multiple accounts. Select which ones to add.\n\n` +
           `**Options:**\n` +
-          `• Use the dropdown to select specific accounts\n` +
-          `• Click "Any X Accounts" to specify a count\n` +
-          `• Click "Continue" to skip without selecting any`,
+          `* Use the dropdown to select specific accounts\n` +
+          `* Click "Any X Accounts" to specify a count\n` +
+          `* Click "Continue" to skip without selecting any`,
       )
       .setColor('Yellow');
 
@@ -569,6 +570,11 @@ export class MemberChannelInteractionRouter {
           embeds: [],
           components: [],
         });
+
+        // Send notification in the channel about added members
+        if (result.addedMembers && result.addedMembers.length > 0) {
+          await this.notifyAddedMembers(interaction.guild, session.targetChannelId, result.addedMembers);
+        }
       } else {
         await interaction.editReply({
           content: `❌ Failed to add members: ${result.error}`,
@@ -891,6 +897,15 @@ export class MemberChannelInteractionRouter {
         interaction.channelId,
       ]);
 
+      // Log member removal (fire-and-forget)
+      memberChannelService.logMembersRemoved(
+        interaction.client,
+        parsed.guildId,
+        interaction.channelId!,
+        interaction.user.id,
+        removedMembers,
+      );
+
       // Update channel permissions - remove users who were completely removed
       if (interaction.guild && interaction.channel && 'permissionOverwrites' in interaction.channel) {
         const remainingDiscordIds = new Set(membersToKeep.map((m) => m.discordId));
@@ -1011,25 +1026,53 @@ export class MemberChannelInteractionRouter {
         return;
       }
 
+      // Check rate limit - 10 minutes
+      const rateCheck = await pool.query(
+        `SELECT last_renamed_at FROM member_channels WHERE guild_id = $1 AND channel_id = $2`,
+        [parsed.guildId, interaction.channelId],
+      );
+
+      if (rateCheck.rows[0]?.last_renamed_at) {
+        const lastRenamed = new Date(rateCheck.rows[0].last_renamed_at);
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+        if (lastRenamed > tenMinutesAgo) {
+          const timeLeft = Math.ceil((lastRenamed.getTime() + 10 * 60 * 1000 - Date.now()) / 60000);
+          await interaction.editReply({
+            content: `❌ Channel was renamed recently. Try again <t:${Math.floor((lastRenamed.getTime() + 10 * 60 * 1000) / 1000)}:R>.`,
+          });
+          return;
+        }
+      }
+
       let newChannelName = newName;
-      console.log(interaction.channel.name);
+      const oldChannelName = interaction.channel.name;
       if (interaction.channel.name.startsWith('🔒')) {
         newChannelName = `🔒 ${newChannelName}`;
       }
-      const changeChannelName = await interaction.channel.setName(newChannelName);
-      if (changeChannelName) {
-        await interaction.editReply({ content: `✅ Channel renamed to ${newChannelName}` });
-        await pool.query(
-          `
-          UPDATE member_channels
-          SET channel_name = $1
-          WHERE guild_id = $2 AND channel_id = $3
-        `,
-          [newName, parsed.guildId, interaction.channelId],
-        );
-      } else {
-        await interaction.editReply({ content: '❌ Failed to rename channel.' });
-      }
+
+      // Rename the channel
+      await interaction.channel.setName(newChannelName);
+
+      // Update database with new name and timestamp
+      await pool.query(
+        `UPDATE member_channels 
+         SET channel_name = $1, last_renamed_at = NOW() 
+         WHERE guild_id = $2 AND channel_id = $3`,
+        [newName, parsed.guildId, interaction.channelId],
+      );
+
+      await interaction.editReply({ content: `✅ Channel renamed to ${newChannelName}` });
+
+      // Log channel rename (fire-and-forget)
+      memberChannelService.logChannelRenamed(
+        interaction.client,
+        parsed.guildId,
+        interaction.channelId!,
+        interaction.user.id,
+        oldChannelName,
+        newChannelName,
+      );
     } catch (error) {
       console.error('[handleRenameChannelModal] Error:', error);
       await interaction.editReply({
@@ -1207,6 +1250,15 @@ export class MemberChannelInteractionRouter {
           [parsed.guildId, channelId],
         );
 
+        // Log focus removal (fire-and-forget)
+        memberChannelService.logFocusChanged(
+          interaction.client,
+          parsed.guildId,
+          channelId,
+          interaction.user.id,
+          undefined,
+        );
+
         await interaction.editReply({
           content: '✅ Clan focus has been removed from this channel.',
           embeds: [],
@@ -1239,6 +1291,12 @@ export class MemberChannelInteractionRouter {
           [selectedValue, clanName, parsed.guildId, channelId],
         );
 
+        // Log focus change (fire-and-forget)
+        memberChannelService.logFocusChanged(interaction.client, parsed.guildId, channelId, interaction.user.id, {
+          name: clanName,
+          tag: selectedValue,
+        });
+
         await interaction.editReply({
           content: `✅ Clan focus set to **${clanName}** (${selectedValue}). Run \`/check\` again to refresh.`,
           embeds: [],
@@ -1269,15 +1327,15 @@ export class MemberChannelInteractionRouter {
       [parsed.guildId, interaction.channelId],
     );
 
-    if (membersRes.rowCount === 0) {
-      await interaction.editReply({ content: '❌ No member channel found for this channel.' });
-      return;
-    }
-
-    if (!membersRes.rows[0].clan_name_focus || !membersRes.rows[0].clantag_focus) {
+    if (!membersRes.rows[0]?.clan_name_focus || !membersRes.rows[0]?.clantag_focus) {
       await interaction.editReply({
         content: '❌ This member channel does not have a clan focus set. Please set a clan focus first.',
       });
+      return;
+    }
+
+    if (membersRes.rowCount === 0) {
+      await interaction.editReply({ content: '❌ No member channel found for this channel.' });
       return;
     }
 
@@ -1335,8 +1393,8 @@ export class MemberChannelInteractionRouter {
     for (const member of memberList) {
       const { discordId, players, joiningLate } = member;
 
-      // Skip pinging if joining late (unless war starts soon)
-      const shouldSkipForLate = joiningLate && !isWarStartingSoon();
+      // Only skip pinging late joiners during safe period (Monday 2:30 AM to Wednesday 2:30 PM MST)
+      const shouldSkipPing = joiningLate && !shouldPingLateJoiners();
 
       if (Array.isArray(players)) {
         // Check each specific account
@@ -1348,7 +1406,7 @@ export class MemberChannelInteractionRouter {
               discordId,
               joiningLate: joiningLate || false,
             });
-            if (!shouldSkipForLate) {
+            if (!shouldSkipPing) {
               discordIdsToPing.add(discordId);
             }
           }
@@ -1370,15 +1428,15 @@ export class MemberChannelInteractionRouter {
             current: accountsInClan.length,
             required: players.count,
           });
-          if (!shouldSkipForLate) {
+          if (!shouldSkipPing) {
             discordIdsToPing.add(discordId);
           }
         }
       }
     }
 
-    // If no one needs to be pinged
-    if (discordIdsToPing.size === 0) {
+    // Check if everyone is actually in the clan (no missing accounts at all)
+    if (missingAccounts.length === 0 && missingAnyTypeUsers.length === 0) {
       await interaction.editReply({ content: '✅ All members are in the clan!' });
       return;
     }
@@ -1417,11 +1475,17 @@ export class MemberChannelInteractionRouter {
       .setStyle(ButtonStyle.Secondary)
       .setEmoji('🕐');
 
-    // Build the ping message
-    const pings = Array.from(discordIdsToPing)
-      .map((id) => `<@${id}>`)
-      .join(', ');
-    const content = `Attention - Clan Movements for **${clanNameFocus}**: ${pings}.`;
+    // Build the ping message - only ping if there are people to ping
+    let content: string;
+    if (discordIdsToPing.size > 0) {
+      const pings = Array.from(discordIdsToPing)
+        .map((id) => `<@${id}>`)
+        .join(', ');
+      content = `Attention - Clan Movements for **${clanNameFocus}**: ${pings}.`;
+    } else {
+      // There are missing members but they're all joining late during safe period
+      content = `**${clanNameFocus}** - Missing members`;
+    }
 
     // Send to the channel (not ephemeral)
     await interaction.channel?.send({
@@ -1605,10 +1669,41 @@ export class MemberChannelInteractionRouter {
         }
       }
 
-      // If no one needs to be pinged
+      // If no one needs to be pinged - all members are already in clan
       if (discordIdsToPing.size === 0) {
+        // Build an embed showing all members and their accounts
+        let allMembersDescription = '✅ **All members are in the clan!**\n\n';
+
+        for (const member of memberList) {
+          const { discordId, players } = member;
+          allMembersDescription += `**<@${discordId}>**\n`;
+
+          if (Array.isArray(players)) {
+            if (players.length === 0) {
+              allMembersDescription += '* No accounts selected\n';
+            } else {
+              for (const player of players) {
+                const encodedTag = encodeURIComponent(player.tag);
+                const link = `https://royaleapi.com/player/${encodedTag}`;
+                allMembersDescription += `* ✅ [${player.name}](${link})\n`;
+              }
+            }
+          } else if (players.type === 'any') {
+            allMembersDescription += `* ✅ Any ${players.count} account${players.count !== 1 ? 's' : ''} linked to you\n`;
+          }
+          allMembersDescription += '\n';
+        }
+
+        const allInClanEmbed = new EmbedBuilder()
+          .setTitle(`Member Channel Created - ${clanNameFocus}`)
+          .setDescription(allMembersDescription.trim())
+          .setColor(EmbedColor.SUCCESS)
+          .setTimestamp();
+
         await channel.send({
-          content: `${allPings}\n\n✅ All members are in **${clanNameFocus}**!`,
+          content: allPings,
+          embeds: [allInClanEmbed],
+          components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joiningLateButton)],
         });
         return;
       }
@@ -1691,6 +1786,60 @@ export class MemberChannelInteractionRouter {
     }
   }
 
+  /**
+   * Notify newly added members in the channel
+   */
+  private static async notifyAddedMembers(
+    guild: Guild,
+    channelId: string,
+    addedMembers: Array<{
+      discordId: string;
+      players: import('../../utils/memberChannelHelpers.js').PlayerInfo[] | { type: 'any'; count: number };
+    }>,
+  ): Promise<void> {
+    try {
+      const channel = await guild.channels.fetch(channelId);
+      if (!channel || !channel.isTextBased()) return;
+
+      // Build ping string
+      const pings = addedMembers.map((m) => `<@${m.discordId}>`).join(' ');
+
+      // Build description with selected accounts
+      let description = '**New members added to this channel:**\n\n';
+
+      for (const member of addedMembers) {
+        // const guildMember = await guild.members.fetch(member.discordId).catch(() => null);
+        // const displayName = guildMember?.displayName || `<@${member.discordId}>`;
+        const displayName = `<@${member.discordId}>`;
+
+        description += `**${displayName}**\n`;
+
+        // Handle different player selection types
+        if (Array.isArray(member.players)) {
+          if (member.players.length === 0) {
+            description += '* No accounts selected\n';
+          } else {
+            for (const player of member.players) {
+              description += `* ${player.name} (\`${player.tag}\`)\n`;
+            }
+          }
+        } else if (member.players && typeof member.players === 'object' && 'type' in member.players) {
+          // Handle "any X accounts" type
+          const anyType = member.players as { type: string; count: number };
+          description += `* Any ${anyType.count} account${anyType.count !== 1 ? 's' : ''} linked to you\n`;
+        }
+        description += '\n';
+      }
+
+      const embed = new EmbedBuilder().setDescription(description.trim()).setColor(EmbedColor.SUCCESS).setTimestamp();
+
+      await channel.send({ content: pings, embeds: [embed] });
+    } catch (error) {
+      console.error('[notifyAddedMembers] Error:', error);
+      // Don't throw - this is a nice-to-have feature
+    }
+  }
+
   static async handleDeleteChannelButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
     await interaction.deferReply({ ephemeral: true });
     const result = await pool.query(
@@ -1744,6 +1893,10 @@ export class MemberChannelInteractionRouter {
     if (newDeleteCount >= deleteConfirmCount) {
       // Mark as deleted in database first
       try {
+        // Get channel info before deletion
+        const channel = interaction.channel;
+        const channelName = channel && 'name' in channel ? channel.name : undefined;
+
         await pool.query(
           `UPDATE member_channels 
            SET is_deleted = true, deleted_at = NOW() 
@@ -1751,10 +1904,18 @@ export class MemberChannelInteractionRouter {
           [interaction.guildId, interaction.channelId],
         );
 
+        // Log channel deletion (fire-and-forget)
+        memberChannelService.logChannelDeleted(
+          interaction.client,
+          interaction.guildId!,
+          interaction.channelId!,
+          interaction.user.id,
+          channelName ?? undefined,
+        );
+
         await interaction.editReply('Deleting channel in 5 seconds...');
 
         // Delete the Discord channel after 5 seconds
-        const channel = interaction.channel;
         if (channel?.isTextBased() && 'delete' in channel) {
           setTimeout(async () => {
             try {
@@ -1994,6 +2155,37 @@ export class MemberChannelInteractionRouter {
   }
 }
 
-function isWarStartingSoon(): boolean {
-  return false;
+/**
+ * Check if we should ping "joining late" members
+ * War starts Thursday ~2:30 AM MST (UTC-7)
+ * Returns false during safe period: Monday 2:30 AM to Wednesday 2:30 PM MST (don't ping late joiners)
+ * Returns true otherwise: Wednesday 2:30 PM MST onwards (ping everyone including late joiners)
+ */
+function shouldPingLateJoiners(): boolean {
+  const now = new Date();
+
+  // Convert to MST (UTC-7) by subtracting 7 hours from UTC
+  const mstTime = new Date(now.getTime() - 7 * 60 * 60 * 1000);
+
+  // Get current day of week in MST (0 = Sunday, 1 = Monday, 3 = Wednesday, 4 = Thursday)
+  const currentDay = mstTime.getUTCDay();
+  const currentHour = mstTime.getUTCHours();
+  const currentMinute = mstTime.getUTCMinutes();
+
+  // Convert to total minutes since start of week for easier comparison
+  const currentTimeInMinutes = currentDay * 24 * 60 + currentHour * 60 + currentMinute;
+
+  // Monday 2:30 AM = day 1, hour 2, minute 30 = 1 * 1440 + 2 * 60 + 30 = 1590 minutes
+  const mondayStart = 1 * 24 * 60 + 2 * 60 + 30; // 1590 minutes
+
+  // Wednesday 2:30 PM = day 3, hour 14, minute 30 = 3 * 1440 + 14 * 60 + 30 = 5190 minutes
+  const wednesdayEnd = 3 * 24 * 60 + 14 * 60 + 30; // 5190 minutes
+
+  // If we're between Monday 2:30 AM and Wednesday 2:30 PM, it's the safe period
+  if (currentTimeInMinutes >= mondayStart && currentTimeInMinutes < wednesdayEnd) {
+    return false; // Safe period: don't ping joining late members
+  }
+
+  // Otherwise, we're in war prep or war time (Wednesday 2:30 PM onwards)
+  return true; // War time: ping everyone including joining late members
 }

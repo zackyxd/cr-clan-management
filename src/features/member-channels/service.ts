@@ -1,4 +1,4 @@
-import { ChannelType, Guild, PermissionFlagsBits } from 'discord.js';
+import { ChannelType, Client, EmbedBuilder, Guild, NewsChannel, PermissionFlagsBits, TextChannel } from 'discord.js';
 import { CR_API, FetchError, isFetchError, normalizeTag, Player, PlayerResult } from '../../api/CR_API.js';
 import { pool } from '../../db.js';
 import { buildGetLinkedDiscordIds, buildGetLinkedPlayertags } from '../../sql_queries/users.js';
@@ -19,12 +19,44 @@ import type {
   ClanInfo,
 } from './types.js';
 import { SESSION_CLEANUP_INTERVAL_MINUTES, SESSION_EXPIRY_MINUTES } from '../../config/constants.js';
+import logger from '../../logger.js';
+import { EmbedColor } from '../../types/EmbedUtil.js';
 
 /**
  * Service for managing member channel creation workflow
  */
 export class MemberChannelService {
   private sessions = new Map<string, MemberChannelSession>();
+
+  async sendLog(client: Client, guildId: string, title: string, description: string): Promise<void> {
+    try {
+      const settingsResult = await pool.query(
+        `SELECT ts.send_logs, ss.logs_channel_id 
+         FROM ticket_settings ts
+         JOIN server_settings ss ON ss.guild_id = ts.guild_id
+         WHERE ts.guild_id = $1`,
+        [guildId],
+      );
+      const { send_logs, logs_channel_id } = settingsResult.rows[0] || {};
+
+      if (!send_logs || !logs_channel_id) return;
+      const channel = await client.channels.fetch(logs_channel_id);
+      if (!channel || !(channel instanceof TextChannel || channel instanceof NewsChannel)) {
+        logger.warn(`Log channel ${logs_channel_id} not found or not text-based`);
+        return;
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setDescription(description)
+        .setColor(EmbedColor.LOGS)
+        .setTimestamp();
+
+      await channel.send({ embeds: [embed] });
+    } catch (error) {
+      logger.error('Error sending member channel log:', error);
+    }
+  }
 
   // ============================================================================
   // STEP 3: Receive and validate initial input
@@ -426,7 +458,10 @@ export class MemberChannelService {
   /**
    * Create the actual Discord channel
    */
-  async createChannel(sessionId: string, guild: Guild): Promise<{ success: boolean; error?: string; channelId?: string }> {
+  async createChannel(
+    sessionId: string,
+    guild: Guild,
+  ): Promise<{ success: boolean; error?: string; channelId?: string }> {
     console.log('Should be creating channel with:', sessionId);
     const session = this.sessions.get(sessionId);
     if (!session) return { success: false, error: 'Session not found' };
@@ -475,6 +510,36 @@ export class MemberChannelService {
         finalData.clanInfo?.clantag ?? null,
         finalData.clanInfo?.clanName ?? null,
         members,
+      );
+
+      // Log channel creation
+      const membersList = Array.from(finalData.accounts.entries())
+        .map(([discordId, players]) => {
+          if (Array.isArray(players)) {
+            const playerTags = players.map((p) => `${p.name} (${p.tag})`).join(', ');
+            return `* <@${discordId}>: ${playerTags}`;
+          } else if (players && 'type' in players && players.type === 'any') {
+            return `* <@${discordId}>: Any ${players.count} accounts`;
+          }
+          return `* <@${discordId}>`;
+        })
+        .join('\n');
+
+      const totalAccounts = Array.from(finalData.accounts.values()).reduce((sum, players) => {
+        if (Array.isArray(players)) return sum + players.length;
+        if (players && 'type' in players && players.type === 'any') return sum + players.count;
+        return sum;
+      }, 0);
+
+      let description = `**Channel:** <#${channel.id}>\n**Creator:** <@${session.creatorId}>\n**Total Members:** ${finalData.accounts.size}\n**Total Accounts:** ${totalAccounts}`;
+      if (finalData.clanInfo) {
+        description += `\n**Clan Focus:** ${finalData.clanInfo.clanName} (${finalData.clanInfo.clantag})`;
+      }
+      description += `\n\n**Members:**\n${membersList}`;
+
+      // Log in background (fire-and-forget)
+      this.sendLog(guild.client, session.guildId, '📝 Member Channel Created', description).catch((err) =>
+        logger.error('Failed to log channel creation:', err),
       );
 
       this.sessions.delete(sessionId);
@@ -571,7 +636,15 @@ export class MemberChannelService {
     sessionId: string,
     guild: Guild,
     channelId: string,
-  ): Promise<{ success: boolean; error?: string; addedCount?: number }> {
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    addedCount?: number;
+    addedMembers?: Array<{
+      discordId: string;
+      players: import('../../utils/memberChannelHelpers.js').PlayerInfo[] | { type: 'any'; count: number };
+    }>;
+  }> {
     const session = this.sessions.get(sessionId);
     if (!session) return { success: false, error: 'Session not found' };
 
@@ -627,6 +700,12 @@ export class MemberChannelService {
         mergedMembersMap.set(member.discordId, member);
       });
 
+      // Track added members for notification
+      const addedMembers: Array<{
+        discordId: string;
+        players: import('../../utils/memberChannelHelpers.js').PlayerInfo[] | { type: 'any'; count: number };
+      }> = [];
+
       // Process new members
       let addedCount = 0;
       for (const newMember of newMembers) {
@@ -635,6 +714,7 @@ export class MemberChannelService {
         if (!existing) {
           // New user - add them
           mergedMembersMap.set(newMember.discordId, newMember);
+          addedMembers.push({ discordId: newMember.discordId, players: newMember.players });
           addedCount++;
         } else {
           // Existing user - merge accounts
@@ -645,11 +725,13 @@ export class MemberChannelService {
 
             if (newAccounts.length > 0) {
               existing.players = [...existing.players, ...newAccounts];
+              addedMembers.push({ discordId: newMember.discordId, players: newAccounts });
               addedCount++;
             }
           } else if (newMember.players && typeof newMember.players === 'object' && 'type' in newMember.players) {
             // New member has 'any' type - replace existing (or handle as needed)
             mergedMembersMap.set(newMember.discordId, newMember);
+            addedMembers.push({ discordId: newMember.discordId, players: newMember.players });
             addedCount++;
           }
         }
@@ -663,8 +745,36 @@ export class MemberChannelService {
         channelId,
       ]);
 
+      // Log members added (fire-and-forget)
+      if (addedMembers.length > 0) {
+        const addedList = addedMembers
+          .map((member) => {
+            if (Array.isArray(member.players)) {
+              const playerTags = member.players.map((p) => `${p.name} (${p.tag})`).join(', ');
+              return `* <@${member.discordId}>: ${playerTags}`;
+            } else if (member.players && 'type' in member.players && member.players.type === 'any') {
+              return `* <@${member.discordId}>: Any ${member.players.count} accounts`;
+            }
+            return `* <@${member.discordId}>`;
+          })
+          .join('\n');
+
+        const totalAccounts = addedMembers.reduce((sum, member) => {
+          if (Array.isArray(member.players)) return sum + member.players.length;
+          if (member.players && 'type' in member.players && member.players.type === 'any')
+            return sum + member.players.count;
+          return sum;
+        }, 0);
+
+        const description = `**Channel:** <#${channelId}>\n**Added by:** <@${session.creatorId}>\n**Members Added:** ${addedMembers.length}\n**Accounts Added:** ${totalAccounts}\n\n**Added:**\n${addedList}`;
+
+        this.sendLog(guild.client, session.guildId, '✅ Members Added to Channel', description).catch((err) =>
+          logger.error('Failed to log members added:', err),
+        );
+      }
+
       this.sessions.delete(sessionId);
-      return { success: true, addedCount };
+      return { success: true, addedCount, addedMembers };
     } catch (error) {
       console.error('Error adding members:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -681,6 +791,83 @@ export class MemberChannelService {
       if (session.lastActivity < expiryTime) {
         this.sessions.delete(id);
       }
+    }
+  }
+
+  // ============================================================================
+  // Logging methods for router operations
+  // ============================================================================
+
+  /**
+   * Log member removal (called from router)
+   */
+  async logMembersRemoved(
+    client: Client,
+    guildId: string,
+    channelId: string,
+    userId: string,
+    removedMembers: string[],
+  ): Promise<void> {
+    const removedList = removedMembers.map((member) => `* ${member}`).join('\n');
+    const description = `**Channel:** <#${channelId}>\n**Removed by:** <@${userId}>\n**Items Removed:** ${removedMembers.length}\n\n**Removed:**\n${removedList}`;
+    this.sendLog(client, guildId, '❌ Members Removed from Channel', description).catch((err) =>
+      logger.error('Failed to log members removed:', err),
+    );
+  }
+
+  /**
+   * Log channel rename (called from router)
+   */
+  async logChannelRenamed(
+    client: Client,
+    guildId: string,
+    channelId: string,
+    userId: string,
+    oldName: string,
+    newName: string,
+  ): Promise<void> {
+    const description = `**Channel:** <#${channelId}>\n**Renamed by:** <@${userId}>\n**Old Name:** ${oldName}\n**New Name:** ${newName}`;
+    this.sendLog(client, guildId, '✏️ Member Channel Renamed', description).catch((err) =>
+      logger.error('Failed to log channel rename:', err),
+    );
+  }
+
+  /**
+   * Log channel deletion (called from router)
+   */
+  async logChannelDeleted(
+    client: Client,
+    guildId: string,
+    channelId: string,
+    userId: string,
+    channelName?: string,
+  ): Promise<void> {
+    const description = `**Channel ID:** ${channelId}${channelName ? `\n**Name:** ${channelName}` : ''}\n**Deleted by:** <@${userId}>`;
+    this.sendLog(client, guildId, '🗑️ Member Channel Deleted', description).catch((err) =>
+      logger.error('Failed to log channel deletion:', err),
+    );
+  }
+
+  /**
+   * Log clan focus change (called from router)
+   */
+  async logFocusChanged(
+    client: Client,
+    guildId: string,
+    channelId: string,
+    userId: string,
+    clanFocus?: { name: string; tag: string },
+  ): Promise<void> {
+    if (clanFocus) {
+      const description = `**Channel:** <#${channelId}>\n**Changed by:** <@${userId}>\n**New Focus:** ${clanFocus.name} (${clanFocus.tag})`;
+      this.sendLog(client, guildId, '🎯 Clan Focus Changed', description).catch((err) =>
+        logger.error('Failed to log focus change:', err),
+      );
+    } else {
+      const description = `**Channel:** <#${channelId}>\n**Changed by:** <@${userId}>`;
+      this.sendLog(client, guildId, '🎯 Clan Focus Removed', description).catch((err) =>
+        logger.error('Failed to log focus removal:', err),
+      );
     }
   }
 }

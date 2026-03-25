@@ -16,6 +16,7 @@ export const up = (pgm) => {
     channel_id: { type: 'varchar(30)', notNull: true },
     created_by: { type: 'varchar(30)', notNull: true },
     channel_name: { type: 'varchar(50)', notNull: true },
+    last_renamed_at: { type: 'timestamptz', default: null },
     clantag_focus: { type: 'varchar(20)' },
     clan_name_focus: { type: 'varchar(30)' },
     members: { type: 'jsonb', notNull: true, default: pgm.func("'{}'::jsonb") },

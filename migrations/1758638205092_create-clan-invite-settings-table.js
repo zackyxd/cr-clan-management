@@ -20,7 +20,6 @@ export const up = (pgm) => {
     show_inactive: { type: 'boolean', default: false }, // show inactive
     ping_expired: { type: 'boolean', default: false }, // ping role if available
     send_logs: { type: 'boolean', default: false }, // send info about clan invite links (updated / sent out)
-    logs_channel_id: { type: 'varchar(30)' }
   });
 };
 
