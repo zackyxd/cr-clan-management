@@ -48,7 +48,11 @@ export class ServerSettingsInteractionRouter {
         if (cacheKey) {
           const cacheData = getServerSettingsData(cacheKey);
           if (!cacheData) {
-            await interaction.editReply({ content: 'Settings data expired. Please try again.' });
+            await interaction.editReply({
+              content: 'Settings data expired. Please try again.',
+              embeds: [],
+              components: [],
+            });
             return;
           }
 

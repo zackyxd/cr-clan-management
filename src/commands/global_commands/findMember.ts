@@ -10,7 +10,7 @@ const command: Command = {
     .setName('find-member')
     .setDescription(`Find a member's @user given their playertag`)
     .addStringOption((option) =>
-      option.setName('playertag').setDescription('#ABC123').setMinLength(4).setMaxLength(13).setRequired(true)
+      option.setName('playertag').setDescription('#ABC123').setMinLength(4).setMaxLength(13).setRequired(true),
     ),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const guild = interaction.guild;
@@ -21,7 +21,7 @@ const command: Command = {
 
     let playertag = interaction.options.getString('playertag') as string;
     playertag = normalizeTag(playertag);
-    await interaction.deferReply();
+    await interaction.deferReply({ ephemeral: true });
     const playerRes = await pool.query(buildFindMember(guild.id, playertag));
     const foundDiscordUserId = playerRes?.rows[0]?.discord_id ?? null;
     if (!foundDiscordUserId) {
@@ -34,7 +34,7 @@ const command: Command = {
     const getUser = await interaction.guild?.members.fetch(foundDiscordUserId);
     const embed = new EmbedBuilder()
       .setDescription(
-        `**<@${foundDiscordUserId}> (${getUser.displayName}) is linked to this playertag \`${playertag}\`**`
+        `**<@${foundDiscordUserId}> (${getUser.displayName}) is linked to this playertag \`${playertag}\`**`,
       )
       .setColor(BOTCOLOR);
     await interaction.editReply({ embeds: [embed] });
