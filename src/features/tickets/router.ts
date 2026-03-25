@@ -619,6 +619,13 @@ export class TicketInteractionRouter {
         embeds: [],
         components: [],
       });
+      logger.info(`Successfully reopened ticket`);
+      await ticketService.sendLog(
+        interaction.client,
+        guildId,
+        'Ticket Reopened',
+        `<@${ticketData.createdBy}> reopened a ticket <#${channelId}>.`,
+      );
     } else {
       // Was open, now closed - closeTicket returns embeds
       const { embeds } = result;
