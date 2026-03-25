@@ -273,7 +273,7 @@ export class TicketService {
       const tagsToLink = ticketData.playertags.slice(0, availableSlots);
       const tagsExceedingLimit = ticketData.playertags.slice(availableSlots);
       await channel.send({
-        content: `Ticket identified as closed, linking playertags to <@${ticketData.createdBy}>...`,
+        content: `Ticket identified as closed, linking playertags to <@${ticketData.createdBy}>. Links shown below.`,
         embeds: [],
       });
       for (const playertag of tagsToLink) {

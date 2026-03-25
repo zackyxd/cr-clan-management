@@ -623,7 +623,7 @@ export class TicketInteractionRouter {
       await ticketService.sendLog(
         interaction.client,
         guildId,
-        'Ticket Reopened',
+        '📫 Ticket Reopened',
         `<@${ticketData.createdBy}> reopened a ticket <#${channelId}>.`,
       );
     } else {

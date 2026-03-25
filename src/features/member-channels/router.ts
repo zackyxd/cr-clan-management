@@ -26,6 +26,7 @@ import { clanInviteService } from '../clan-invites/service.js';
 import { createInviteEmbed } from '../clan-invites/utils.js';
 import { MemberData } from '../../utils/memberChannelHelpers.js';
 import { buildMemberChannelCheckUI } from '../../utils/memberChannelCheckHelpers.js';
+import logger from '../../logger.js';
 
 /**
  * Router for member channel interactions
@@ -85,7 +86,7 @@ export class MemberChannelInteractionRouter {
         await this.showFinalConfirmation(interaction, sessionId);
       }
     } catch (error) {
-      console.error('[handleStartCreateChannelModal] Error:', error);
+      logger.error('[handleStartCreateChannelModal] Error:', error);
       await interaction.editReply({
         content: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
         embeds: [],
@@ -1074,7 +1075,7 @@ export class MemberChannelInteractionRouter {
         newChannelName,
       );
     } catch (error) {
-      console.error('[handleRenameChannelModal] Error:', error);
+      logger.error('[handleRenameChannelModal] Error:', error);
       await interaction.editReply({
         content: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
@@ -1509,6 +1510,14 @@ export class MemberChannelInteractionRouter {
         .setDescription(`✅ Sent invite link for **${clanNameFocus}** below.`)
         .setColor(EmbedColor.SUCCESS);
       await interaction.editReply({ embeds: [confirmEmbed] });
+      await pool.query(
+        `
+        UPDATE member_channels 
+        SET last_ping = NOW()
+        WHERE guild_id = $1 AND channel_id = $2
+        `,
+        [interaction.guildId, interaction.channelId],
+      );
     } else {
       const errorEmbed = new EmbedBuilder().setDescription(`❌ Failed to send invite link.`).setColor(EmbedColor.FAIL);
       await interaction.editReply({ embeds: [errorEmbed] });
@@ -2074,7 +2083,7 @@ export class MemberChannelInteractionRouter {
               .setMaxLength(30),
           ),
       );
-    return interaction.showModal(modal);
+    await interaction.showModal(modal);
   }
 
   // ============================================================================
@@ -2086,7 +2095,7 @@ export class MemberChannelInteractionRouter {
    */
   static async handleButton(interaction: ButtonInteraction, parsed: ParsedCustomId): Promise<void> {
     const { action } = parsed;
-    console.log(action);
+    logger.info(`Button interaction: ${action}`);
     if (action === 'memberChannel_create') {
       return this.handleConfirmButton(interaction, parsed);
     } else if (action.startsWith('memberChannel_any_')) {
@@ -2120,6 +2129,13 @@ export class MemberChannelInteractionRouter {
     if (action.startsWith('memberChannel_joiningLate')) {
       return this.handleJoiningLateButton(interaction, parsed);
     }
+
+    // Fallback for unhandled actions
+    logger.warn(`Unhandled member channel button action: ${action}`);
+    await interaction.reply({
+      content: '❌ This action is not recognized. Please try again or contact an administrator.',
+      ephemeral: true,
+    });
   }
   /**
    * [ROUTER] Route modal interactions to appropriate handlers
