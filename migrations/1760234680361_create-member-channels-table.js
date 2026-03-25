@@ -20,8 +20,14 @@ export const up = (pgm) => {
     clan_name_focus: { type: 'varchar(30)' },
     members: { type: 'jsonb', notNull: true, default: pgm.func("'{}'::jsonb") },
     last_ping: { type: 'timestamptz', default: null },
+    is_locked: { type: 'boolean', default: false },
+    auto_delete_at: { type: 'timestamptz', default: null },
     current_delete_count: { type: 'integer', default: 0 },
-    delete_confirmed_by: { type: 'jsonb', notNull: true, default: pgm.func("'{}'::jsonb") }
+    current_bulk_delete_count: { type: 'integer', default: 0 },
+    delete_confirmed_by: { type: 'text[]', notNull: true, default: pgm.func("'{}'::text[]") },
+    bulk_delete_confirmed_by: { type: 'text[]', notNull: true, default: pgm.func("'{}'::text[]") },
+    is_deleted: { type: 'boolean', default: false },
+    deleted_at: { type: 'timestamptz', default: null }
   },
     {
       constraints: {

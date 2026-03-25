@@ -26,7 +26,7 @@ export function buildCheckHasRoleQuery(guildId: string): string {
     FROM server_settings
     WHERE guild_id = (%L)
     `,
-    guildId
+    guildId,
   );
 }
 
@@ -74,7 +74,7 @@ export async function checkPerms(
     hideNoPerms?: boolean; // hide 'you dont have permission' message
     deferEphemeral?: boolean; // whether valid defers should be ephemeral
     skipDefer?: boolean; // for modal buttons
-  }
+  },
 ): Promise<boolean> {
   const { hideNoPerms = false, deferEphemeral = false, skipDefer = false } = opts;
   // 1️⃣ Fetch member & required roles FIRST (don't defer yet)
@@ -109,12 +109,12 @@ export async function checkPerms(
 
     if (level === 'either') {
       embed.setDescription(
-        'One of the server admins needs to set up staff roles with `/set-staff-roles` before you can use this.'
+        'One of the server admins needs to set up staff roles with `/set-staff-roles` before you can use this.',
       );
     } else {
       const label = level === 'higher' ? 'higher' : 'lower';
       embed.setDescription(
-        `The **${label}** leadership role has not been configured yet. Please ask a server admin to run \`/set-staff-roles\` to configure it.`
+        `The **${label}** leadership role has not been configured yet. Please ask a server admin to run \`/set-staff-roles\` to configure it.`,
       );
     }
 

@@ -91,7 +91,7 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
   const expLevel = data.expLevel ?? 1;
   const expLevelData = rawExpData[`experience_${expLevel}`];
   const expLevelIcon = expLevelData ? `<:${expLevelData.name}:${expLevelData.id}>` : `Level ${expLevel}`;
-  const role = typeof data.role === 'string' ? ROLE_DISPLAY[data.role] ?? '' : '';
+  const role = typeof data.role === 'string' ? (ROLE_DISPLAY[data.role] ?? '') : '';
   const clanName = data?.clan?.name ?? 'No Clan';
   const badgeId = data?.clan?.badgeId?.toString() ?? '00';
   const {
@@ -182,9 +182,10 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
         name: `\t`,
         value: `\u200B${EMOJIS.outside} [Ingame profile](<https://link.clashroyale.com/en/?playerInfo?id=${playertag}>)`,
         inline: false,
-      }
+      },
     )
-    .setDescription(combinedDescription);
+    .setDescription(combinedDescription)
+    .setFooter({ text: `${playertag}` });
 }
 
 function checkLevel(level: number, rarity: string) {

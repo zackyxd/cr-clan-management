@@ -13,6 +13,7 @@ import {
   MessageFlags,
   UserSelectMenuBuilder,
   LabelBuilder,
+  ChannelType,
 } from 'discord.js';
 import { memberChannelService } from './service.js';
 import type { ParsedCustomId } from '../../types/ParsedCustomId.js';
@@ -23,6 +24,7 @@ import { CR_API, FetchError, normalizeTag } from '../../api/CR_API.js';
 import { clanInviteService } from '../clan-invites/service.js';
 import { createInviteEmbed } from '../clan-invites/utils.js';
 import { MemberData } from '../../utils/memberChannelHelpers.js';
+import { buildMemberChannelCheckUI } from '../../utils/memberChannelCheckHelpers.js';
 
 /**
  * Router for member channel interactions
@@ -693,7 +695,7 @@ export class MemberChannelInteractionRouter {
   /**
    * Handle "Add Members" button click - show modal for input
    */
-  static async handleAddMembersButton(interaction: ButtonInteraction, _parsed: ParsedCustomId) {
+  static async handleAddMembersButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
     const modal = new ModalBuilder()
       .setCustomId(makeCustomId('m', 'memberChannel_addMemberModal', interaction.guildId!))
       .setTitle('Add Members to Channel')
@@ -738,7 +740,7 @@ export class MemberChannelInteractionRouter {
   /**
    * Handle "Remove Member" button click - show modal for input
    */
-  static async handleRemoveMembersButton(interaction: ButtonInteraction, _parsed: ParsedCustomId) {
+  static async handleRemoveMembersButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
     const modal = new ModalBuilder()
       .setCustomId(makeCustomId('m', 'memberChannel_removeMemberModal', interaction.guildId!))
       .setTitle('Remove Members from Channel')
@@ -987,6 +989,49 @@ export class MemberChannelInteractionRouter {
       }
     } catch (error) {
       console.error('[handleAddMemberModal] Error:', error);
+      await interaction.editReply({
+        content: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
+    }
+  }
+
+  static async handleRenameChannelModal(interaction: ModalSubmitInteraction, parsed: ParsedCustomId) {
+    const newName = interaction.fields.getTextInputValue('renameChannelInput').trim();
+
+    if (newName.length === 0 || newName.length > 30) {
+      await interaction.editReply({ content: '❌ Channel name must be between 1 and 30 characters.' });
+      return;
+    }
+    try {
+      // Ensure channel is a guild text channel, not a DM
+      if (!interaction.channel || interaction.channel.type === ChannelType.DM || !('setName' in interaction.channel)) {
+        await interaction.editReply({
+          content: '❌ This command must be used in a server channel.',
+        });
+        return;
+      }
+
+      let newChannelName = newName;
+      console.log(interaction.channel.name);
+      if (interaction.channel.name.startsWith('🔒')) {
+        newChannelName = `🔒 ${newChannelName}`;
+      }
+      const changeChannelName = await interaction.channel.setName(newChannelName);
+      if (changeChannelName) {
+        await interaction.editReply({ content: `✅ Channel renamed to ${newChannelName}` });
+        await pool.query(
+          `
+          UPDATE member_channels
+          SET channel_name = $1
+          WHERE guild_id = $2 AND channel_id = $3
+        `,
+          [newName, parsed.guildId, interaction.channelId],
+        );
+      } else {
+        await interaction.editReply({ content: '❌ Failed to rename channel.' });
+      }
+    } catch (error) {
+      console.error('[handleRenameChannelModal] Error:', error);
       await interaction.editReply({
         content: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
@@ -1475,7 +1520,8 @@ export class MemberChannelInteractionRouter {
         `,
         [guildId, channelId],
       );
-
+      // TODO if no focus group, isnt sending a message?
+      // Also handle 'All members are in 'clan'', just pings and no info.
       if (membersRes.rowCount === 0) return;
 
       const memberList = membersRes.rows[0].members;
@@ -1645,12 +1691,12 @@ export class MemberChannelInteractionRouter {
     }
   }
 
-  static async handleDeleteChannelButton(interaction: ButtonInteraction, _parsed: ParsedCustomId) {
+  static async handleDeleteChannelButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
     await interaction.deferReply({ ephemeral: true });
     const result = await pool.query(
       `
       SELECT mc.channel_id, mc.current_delete_count, mc.delete_confirmed_by, mc.members, mc.clantag_focus, mc.clan_name_focus, mc.last_ping,
-             COALESCE(mcs.delete_confirm_count, 2) as delete_confirm_count
+             COALESCE(mcs.delete_confirm_count, 2) as delete_confirm_count, mc.is_locked
       FROM member_channels mc
       LEFT JOIN member_channel_settings mcs ON mc.guild_id = mcs.guild_id
       WHERE mc.guild_id = $1 AND mc.channel_id = $2`,
@@ -1662,6 +1708,11 @@ export class MemberChannelInteractionRouter {
       return;
     }
 
+    if (result.rows[0].is_locked) {
+      await interaction.editReply({ content: '❌ This channel is locked and cannot be deleted.' });
+      return;
+    }
+
     const deleteConfirmCount = result.rows[0].delete_confirm_count || 2;
     const confirmedBy: string[] = result.rows[0].delete_confirmed_by || [];
     const currentUserId = interaction.user.id;
@@ -1670,7 +1721,7 @@ export class MemberChannelInteractionRouter {
     if (deleteConfirmCount > 1 && confirmedBy.includes(currentUserId)) {
       const remainingConfirmations = deleteConfirmCount - confirmedBy.length;
       await interaction.editReply({
-        content: `❌ You have already confirmed this deletion. ${remainingConfirmations} more unique confirmation(s) needed from other members.`,
+        content: `❌ You have already confirmed this deletion. ${remainingConfirmations} more confirmation(s) needed from others.`,
       });
       return;
     }
@@ -1686,29 +1737,35 @@ export class MemberChannelInteractionRouter {
       SET current_delete_count = $3, delete_confirmed_by = $4
       WHERE guild_id = $1 AND channel_id = $2
       `,
-      [interaction.guildId, interaction.channelId, newDeleteCount, JSON.stringify(newConfirmedBy)],
+      [interaction.guildId, interaction.channelId, newDeleteCount, newConfirmedBy],
     );
 
     // Check if we should delete the channel
     if (newDeleteCount >= deleteConfirmCount) {
-      // Delete the channel
+      // Mark as deleted in database first
       try {
-        // Type guard: only text-based channels that can be deleted
+        await pool.query(
+          `UPDATE member_channels 
+           SET is_deleted = true, deleted_at = NOW() 
+           WHERE guild_id = $1 AND channel_id = $2`,
+          [interaction.guildId, interaction.channelId],
+        );
+
+        await interaction.editReply('Deleting channel in 5 seconds...');
+
+        // Delete the Discord channel after 5 seconds
         const channel = interaction.channel;
         if (channel?.isTextBased() && 'delete' in channel) {
           setTimeout(async () => {
-            await channel.delete();
+            try {
+              await channel.delete();
+            } catch (error) {
+              console.error('[handleDeleteChannelButton] Error deleting channel:', error);
+            }
           }, 5000);
-          await interaction.editReply('Deleting channel in 5 seconds...');
         }
-
-        // Clean up database
-        await pool.query(`DELETE FROM member_channels WHERE guild_id = $1 AND channel_id = $2`, [
-          interaction.guildId,
-          interaction.channelId,
-        ]);
       } catch (error) {
-        console.error('[handleDeleteChannelButton] Error deleting channel:', error);
+        console.error('[handleDeleteChannelButton] Error marking channel for deletion:', error);
         await interaction.editReply({ content: '❌ Failed to delete channel.' });
       }
       return;
@@ -1765,6 +1822,100 @@ export class MemberChannelInteractionRouter {
     });
   }
 
+  static async handleLockChannelButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
+    // Defer immediately to prevent timeout
+    await interaction.deferUpdate();
+
+    // Ensure channel is a guild text channel, not a DM
+    if (!interaction.channel || interaction.channel.type === ChannelType.DM || !interaction.guild) {
+      return;
+    }
+
+    const lockRes = await pool.query(
+      `
+      SELECT is_locked FROM member_channels WHERE guild_id = $1 AND channel_id = $2
+    `,
+      [parsed.guildId, interaction.channelId],
+    );
+
+    const isLocked = lockRes.rows[0].is_locked;
+    const newLockStatus = !isLocked;
+
+    await pool.query(
+      `
+      UPDATE member_channels
+      SET is_locked = $3
+      WHERE guild_id = $1 and channel_id = $2
+    `,
+      [parsed.guildId, interaction.channelId, newLockStatus],
+    );
+
+    // Re-fetch the channel data to rebuild the embed with updated lock status
+    const validChannelSQL = await pool.query(
+      `
+      SELECT mc.channel_id, mc.clantag_focus, mc.clan_name_focus, mc.members, mc.last_ping, mc.current_delete_count, mc.delete_confirmed_by,
+             COALESCE(mcs.delete_confirm_count, 2) as delete_confirm_count, mc.is_locked
+      FROM member_channels mc
+      LEFT JOIN member_channel_settings mcs ON mc.guild_id = mcs.guild_id
+      WHERE mc.guild_id = $1 AND mc.channel_id = $2
+      `,
+      [parsed.guildId, interaction.channelId],
+    );
+    const res = validChannelSQL.rows[0];
+
+    if (!res || !interaction.guild) {
+      return;
+    }
+
+    const { embed, components } = await buildMemberChannelCheckUI(res, interaction.guild.id);
+
+    // Update channel name to add/remove lock icon (do this after building UI to avoid delays)
+    if ('setName' in interaction.channel) {
+      const currentName = interaction.channel.name;
+      let newChannelName: string;
+
+      if (newLockStatus) {
+        // Locking: Add lock icon if not already present
+        newChannelName = currentName.startsWith('🔒') ? currentName : `🔒${currentName}`;
+      } else {
+        // Unlocking: Remove lock icon if present
+        newChannelName = currentName.startsWith('🔒') ? currentName.slice(1) : currentName;
+      }
+
+      // Don't await this - let it happen in the background
+      // Note: Discord rate limits channel renames to 2 per 10 minutes
+      if (currentName !== newChannelName) {
+        interaction.channel.setName(newChannelName).catch(() => {
+          // Silently fail - rate limits are expected
+        });
+      }
+    }
+
+    // Use interaction.editReply() after deferUpdate()
+    await interaction.editReply({
+      embeds: [embed],
+      components,
+    });
+  }
+
+  static async handleRenameChannelButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
+    const modal = new ModalBuilder()
+      .setCustomId(makeCustomId('m', 'memberChannel_renameChannelModal', interaction.guildId!, { cooldown: 5 }))
+      .setTitle('Rename Member Channel')
+      .addLabelComponents(
+        new LabelBuilder()
+          .setLabel('New Channel Name')
+          .setTextInputComponent(
+            new TextInputBuilder()
+              .setCustomId('renameChannelInput')
+              .setStyle(TextInputStyle.Short)
+              .setMinLength(1)
+              .setMaxLength(30),
+          ),
+      );
+    return interaction.showModal(modal);
+  }
+
   // ============================================================================
   // Main router methods for interaction dispatcher
   // ============================================================================
@@ -1799,6 +1950,10 @@ export class MemberChannelInteractionRouter {
       return this.handleRemoveMembersButton(interaction, parsed);
     } else if (action.startsWith('memberChannel_deleteChannel')) {
       return this.handleDeleteChannelButton(interaction, parsed);
+    } else if (action.startsWith('memberChannel_lockChannel')) {
+      return this.handleLockChannelButton(interaction, parsed);
+    } else if (action.startsWith('memberChannel_renameChannel')) {
+      return this.handleRenameChannelButton(interaction, parsed);
     }
 
     if (action.startsWith('memberChannel_joiningLate')) {
@@ -1820,6 +1975,8 @@ export class MemberChannelInteractionRouter {
       return this.handleAddMemberModal(interaction, parsed);
     } else if (action === 'memberChannel_removeMemberModal') {
       return this.handleRemoveMemberModal(interaction, parsed);
+    } else if (action === 'memberChannel_renameChannelModal') {
+      return this.handleRenameChannelModal(interaction, parsed);
     }
   }
 

@@ -11,7 +11,7 @@ export async function handleTicketChannelUpdate(
   oldChannel: TextChannel,
   newChannel: TextChannel,
   guildId: string,
-  client: Client
+  client: Client,
 ): Promise<boolean> {
   try {
     // Check if channel name changed
@@ -38,7 +38,7 @@ export async function handleTicketChannelUpdate(
     // Ticket is being closed
     if (isNowClosed && !wasClosedBefore) {
       logger.info(
-        `Ticket channel name changed from "${oldChannel.name}" to "${newChannel.name}". Closing ticket and auto-linking.`
+        `Ticket channel name changed from "${oldChannel.name}" to "${newChannel.name}". Closing ticket and auto-linking.`,
       );
 
       const result = await ticketService.closeTicket({
@@ -53,6 +53,7 @@ export async function handleTicketChannelUpdate(
       }
 
       logger.info(`Successfully closed ticket and auto-linked ${result.embeds?.length || 0} accounts`);
+
       return true;
     }
 
@@ -68,6 +69,12 @@ export async function handleTicketChannelUpdate(
       }
 
       logger.info(`Successfully reopened ticket`);
+      await ticketService.sendLog(
+        client,
+        guildId,
+        'Ticket Reopened',
+        `<@${ticketData.createdBy}> reopened a ticket <#${newChannel.id}>.`,
+      );
       return true;
     }
 

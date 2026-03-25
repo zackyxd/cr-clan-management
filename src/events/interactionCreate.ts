@@ -57,15 +57,28 @@ export const event = {
           ephemeral: true,
         };
 
+        // Check if error is a timeout
+        const isTimeout =
+          err instanceof Error && (err.message.includes('timeout') || err.message.includes('Connect Timeout'));
+
+        if (isTimeout) {
+          reply.content = '⏱️ Request timed out - external service is slow. Please try again.';
+        }
+
         if (interaction.replied || interaction.deferred) {
-          await interaction.followUp(reply);
+          await interaction.followUp(reply).catch(() => {
+            // Interaction may have expired, just log it
+            console.error(`Failed to send error follow-up for "${interaction.commandName}" - interaction expired`);
+          });
         } else if (
           typeof err === 'object' &&
           err !== null &&
           'code' in err &&
           (err as { code?: number }).code !== 10062
         ) {
-          await interaction.reply(reply);
+          await interaction.reply(reply).catch(() => {
+            console.error(`Failed to reply with error for "${interaction.commandName}" - interaction may have expired`);
+          });
         }
       }
     } else if (interaction.isButton() || interaction.isModalSubmit() || interaction.isStringSelectMenu()) {

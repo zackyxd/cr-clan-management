@@ -1,7 +1,15 @@
-import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction } from 'discord.js';
+import {
+  SlashCommandBuilder,
+  EmbedBuilder,
+  ChatInputCommandInteraction,
+  ButtonBuilder,
+  ButtonStyle,
+  ActionRowBuilder,
+} from 'discord.js';
 import { ticketService } from '../../features/tickets/service.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { Command } from '../../types/Command.js';
+import { makeCustomId } from '../../utils/customId.js';
 
 const command: Command = {
   data: new SlashCommandBuilder().setName('ticket').setDescription('View information about the current ticket'),
@@ -41,7 +49,7 @@ const command: Command = {
     // Build embed with ticket information
     const embed = new EmbedBuilder()
       .setTitle('🎫 Ticket Information')
-      .setColor(ticketData.isClosed ? EmbedColor.ERROR : EmbedColor.SUCCESS)
+      .setColor(ticketData.isClosed ? EmbedColor.WARNING : EmbedColor.SUCCESS)
       .addFields(
         {
           name: '📊 Status',
@@ -76,29 +84,29 @@ const command: Command = {
     // Add linked playertags if any
     if (ticketData.playertags && ticketData.playertags.length > 0) {
       embed.addFields({
-        name: '🎮 Linked Player Tags',
+        name: '🎮 Added Playertags',
         value: ticketData.playertags.map((tag) => `\`${tag}\``).join(', '),
         inline: false,
       });
     } else {
       embed.addFields({
-        name: '🎮 Linked Player Tags',
+        name: '🎮 Added Playertags',
         value: '_No player tags linked yet_',
         inline: false,
       });
     }
 
-    // Add ticket channel info
-    embed.addFields({
-      name: '📍 Channel',
-      value: `<#${channelId}>`,
-      inline: true,
-    });
+    const ticketButton = new ButtonBuilder()
+      .setLabel(`${ticketData.isClosed === true ? 'Reopen' : 'Close'} Ticket`)
+      .setCustomId(makeCustomId('b', 'ticket_openclose', guildId, { cooldown: 5, extra: [channelId] }))
+      .setStyle(ButtonStyle.Primary);
+
+    const ticketActionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(ticketButton);
 
     embed.setTimestamp();
     embed.setFooter({ text: `Ticket Channel ID: ${channelId}` });
 
-    await interaction.editReply({ embeds: [embed] });
+    await interaction.editReply({ embeds: [embed], components: [ticketActionRow] });
   },
 };
 

@@ -44,15 +44,6 @@ export interface AddPlayertagsParams {
 }
 
 /**
- * Parameters for updating ticket identifier
- */
-export interface UpdateIdentifierParams {
-  guildId: string;
-  settingKey: 'opened_identifier' | 'closed_identifier';
-  value: string;
-}
-
-/**
  * Parameters for closing a ticket
  */
 export interface CloseTicketParams {

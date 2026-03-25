@@ -8,7 +8,6 @@ import {
   DEFAULT_TICKET_OPENED_IDENTIFIER,
   DEFAULT_TICKET_CLOSED_IDENTIFIER,
   DEFAULT_DELETE_METHOD,
-  MAX_CLANS_PER_GUILD,
   MAX_FAMILY_CLANS_PER_GUILD,
 } from './constants.js';
 
@@ -184,7 +183,7 @@ export const FeatureRegistry: Record<string, Feature> = {
     displayName: 'Member Channels',
     description: 'Member channels feature handles everything related to member channels.',
     tableName: 'member_channel_settings',
-    defaultEnabled: false,
+    defaultEnabled: true,
     settings: [
       {
         key: 'category_id',
@@ -207,19 +206,25 @@ export const FeatureRegistry: Record<string, Feature> = {
         type: 'number',
         defaultValue: 2,
       },
-      {
-        key: 'auto_ping',
-        label: 'Auto Ping',
-        description: 'Automatically ping members every 12 hours since the last ping (on training days).',
-        type: 'toggle',
-        defaultValue: false,
-      },
+      // {
+      //   key: 'auto_ping',
+      //   label: 'Auto Ping',
+      //   description: 'Automatically ping members every 12 hours since the last ping (on training days).',
+      //   type: 'toggle',
+      //   defaultValue: false,
+      // },
       {
         key: 'send_logs',
         label: 'Send Logs',
         description: 'Allow the bot to send log information about member channels.',
         type: 'toggle',
         defaultValue: false,
+      },
+      {
+        key: 'delete_all_channels',
+        label: 'Delete All Channels',
+        description: 'Delete all current member channels that are not locked, irreversible action.',
+        type: 'action',
       },
     ],
   },
@@ -371,6 +376,9 @@ export async function fetchInfoValue(guildId: string, settingKey: string): Promi
         [guildId],
       );
       return parseInt(result.rows[0]?.count || '0', 10);
+    }
+    case 'max_player_links': {
+      return MAX_PLAYER_LINKS_PER_USER;
     }
     default:
       return 'N/A';

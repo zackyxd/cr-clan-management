@@ -85,16 +85,13 @@ export class InviteScheduler {
     const { id, guild_id, clantag, clan_name, messages } = expiredInvite;
 
     try {
-      // 1. Mark invite as expired
-      await clanInviteService.markInviteAsExpired(this.client, id, guild_id, clantag, clan_name);
-      logger.info(`Marked invite ${id} as expired for clan ${clantag} in guild ${guild_id}`);
-
-      // 2. Get clan and settings info
+      // 1. Get clan and settings info
       const settingsResult = await pool.query(
         `SELECT 
           cis.channel_id,
           cis.message_id,
           cis.ping_expired,
+          cis.delete_method,
           c.clan_name,
           c.clan_role_id
         FROM clan_invite_settings cis
@@ -109,8 +106,9 @@ export class InviteScheduler {
       const clanName = settings?.clan_name || clantag;
       const masterChannelId = settings?.channel_id;
       const masterMessageId = settings?.message_id;
+      const deleteMethod = settings?.delete_method;
 
-      // 3. Update the master list message AND send ping concurrently
+      // 2. Update the master list message AND send ping concurrently
       const updatePromises: Promise<void>[] = [];
 
       // Update master message
@@ -169,7 +167,7 @@ export class InviteScheduler {
       // Wait for both to complete
       await Promise.all(updatePromises);
 
-      // 4. Update tracked messages (from /send-invite or other sources)
+      // 3. Update tracked messages (from /send-invite or other sources)
       // Filter out null entries from array_agg when there are no tracked messages
       const validMessages = messages?.filter((msg) => msg.message_id && msg.channel_id) || [];
 
@@ -186,12 +184,15 @@ export class InviteScheduler {
             // For tracked messages, mark them as expired
             try {
               const message = await channel.messages.fetch(msg.message_id);
-              if (message.embeds.length > 0) {
+              if (message.embeds.length > 0 && deleteMethod === 'update') {
                 const embed = EmbedBuilder.from(message.embeds[0]);
                 embed.setDescription(`❌ Link for **${clanName}** has expired.`);
                 embed.setColor(EmbedColor.FAIL);
                 await message.edit({ embeds: [embed], components: [] });
                 logger.info(`Marked message ${msg.message_id} as expired in channel ${msg.channel_id}`);
+              } else if (message.embeds.length > 0 && deleteMethod === 'delete') {
+                await message.delete();
+                logger.info(`Deleted message ${msg.message_id} in channel ${msg.channel_id}`);
               }
             } catch (editErr: unknown) {
               const error = editErr as { code?: number };
@@ -206,6 +207,10 @@ export class InviteScheduler {
           }
         }
       }
+
+      // 4. Mark invite as expired (only after all processing succeeds)
+      await clanInviteService.markInviteAsExpired(this.client, id, guild_id, clantag, clan_name);
+      logger.info(`Successfully processed and marked invite ${id} as expired for clan ${clantag} in guild ${guild_id}`);
     } catch (error) {
       logger.error(`Error handling expired invite ${id}:`, error);
     }

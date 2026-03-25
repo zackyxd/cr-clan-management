@@ -13,6 +13,7 @@
     "migrate:dev:down": "dotenv -e .env.dev -- npx node-pg-migrate down 1",
     "migrate:dev:down-all": "dotenv -e .env.dev -- npx node-pg-migrate down $(ls migrations | wc -l)",
     "migrate:dev:reset": "dotenv -e .env.dev -- npx node-pg-migrate down $(ls migrations | wc -l) && dotenv -e .env.dev -- npx node-pg-migrate up $(ls migrations | wc -l)",
+    "migrate:dev:fresh": "dotenv -e .env.dev -- psql -f scripts/drop-all-tables.sql && npm run migrate:dev:up",
     "migrate:prod:up": "dotenv -e .env.prod npx node-pg-migrate up",
     "migrate:prod:down": "dotenv -e .env.prod -- npx node-pg-migrate down 1",
     "migrate:test:up": "dotenv -e .env.test --quiet -- npx node-pg-migrate up",

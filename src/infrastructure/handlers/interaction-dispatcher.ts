@@ -8,8 +8,9 @@ import { parseCustomId } from '../../utils/customId.js';
 import type { ParsedCustomId } from '../../types/ParsedCustomId.js';
 import { MemberChannelInteractionRouter } from '../../features/member-channels/router.js';
 import { ClanSettingsInteractionRouter } from '../../features/clan-settings/interactions/router.js';
-import { ServerSettingsInteractionRouter } from '../../features/server-settings/interactions/router.js';
-import { TicketInteractionRouter } from '../../features/tickets/interactions/router.js';
+import { ServerSettingsInteractionRouter } from '../../features/server-settings/router.js';
+import { TicketInteractionRouter } from '../../features/tickets/router.js';
+import { PlayerLinksInteractionRouter } from '../../features/player-links/router.js';
 import logger from '../../logger.js';
 import { ClanInvitesInteractionRouter } from '../../features/clan-invites/router.js';
 
@@ -46,6 +47,10 @@ export class InteractionDispatcher {
 
     // Clan Invite Actions - All start with 'clanInvite'
     ['clanInvite', ClanInvitesInteractionRouter],
+
+    // Links actions - All start with 'link' or 'players'
+    ['link', PlayerLinksInteractionRouter],
+    ['players', PlayerLinksInteractionRouter],
 
     // Add other features here as they're migrated:
     // ['playerLink', PlayerLinkingInteractionRouter],

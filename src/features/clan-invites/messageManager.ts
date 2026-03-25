@@ -253,6 +253,16 @@ export async function processInviteLinkUpdate(
     if (settingsResult.rows.length) {
       const { channel_id, message_id, pin_message, invites_enabled } = settingsResult.rows[0];
 
+      if (!channel_id) {
+        await dbClient.query('ROLLBACK');
+        return {
+          success: false,
+          embed: new EmbedBuilder()
+            .setDescription(`❌ Invite channel not set up. Please set the channel using \`/set-invite-channel\``)
+            .setColor(EmbedColor.FAIL),
+        };
+      }
+
       await repostInviteMessage({
         client,
         channelId: channel_id,

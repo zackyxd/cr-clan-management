@@ -14,12 +14,12 @@ import { BOTCOLOR } from '../../types/EmbedUtil.js';
 import logger from '../../logger.js';
 import { makeCustomId } from '../../utils/customId.js';
 import { buildSettingsOverview } from '../../config/serverSettingsBuilder.js';
+import { checkPerms } from '../../utils/checkPermissions.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('server-settings')
     .setDescription('Change settings for some of the bot features')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild),
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -30,19 +30,21 @@ const command: Command = {
       return;
     }
 
-    await interaction.deferReply();
-
-    const { embed, components } = await buildSettingsView(guild.id, interaction.user.id);
+    const allowed = await checkPerms(interaction, guild.id, 'command', 'higher', {
+      hideNoPerms: true,
+      // deferEphemeral: true,
+    });
+    if (!allowed) return;
 
     try {
-      interaction.editReply({
+      const { embed, components } = await buildSettingsView(guild.id, interaction.user.id);
+
+      await interaction.editReply({
         embeds: [embed],
         components: components,
       });
     } catch (error) {
-      logger.info(`Could not show /server-settings: ${error}`);
-      interaction.editReply({ content: `Error showing settings. @Zacky to fix` });
-      return;
+      logger.error(`Error in /server-settings:`, error);
     }
   },
 };
@@ -61,7 +63,7 @@ export async function buildSettingsView(guildId: string, ownerId: string) {
         FROM guild_features
         WHERE guild_id = $1
         `,
-      [guildId]
+      [guildId],
     );
 
     const guildFeatures = settingsRes.rows;
@@ -82,7 +84,7 @@ export async function buildSettingsView(guildId: string, ownerId: string) {
       // Goes to buttons/serverSettings
       const button = new ButtonBuilder()
         .setCustomId(
-          makeCustomId('b', 'serverSettings', guildId, { cooldown: 1, extra: [feature_name], ownerId: ownerId })
+          makeCustomId('b', 'serverSettings', guildId, { cooldown: 1, extra: [feature_name], ownerId: ownerId }),
         )
         .setLabel(`${formatted_name}`)
         .setStyle(ButtonStyle.Primary);

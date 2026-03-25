@@ -9,15 +9,16 @@ import {
   TextInputStyle,
   ActionRowBuilder,
 } from 'discord.js';
-import { ParsedCustomId } from '../../../types/ParsedCustomId.js';
-import { checkPerms } from '../../../utils/checkPermissions.js';
-import { buildSettingsView } from '../../../commands/settings_commands/serverSettings.js';
-import { buildFeatureEmbedAndComponents } from '../../../config/serverSettingsBuilder.js';
-import { FeatureRegistry } from '../../../config/featureRegistry.js';
-import logger from '../../../logger.js';
-import { getServerSettingsData, ServerSettingsData } from '../../../cache/serverSettingsDataCache.js';
-import { makeCustomId } from '../../../utils/customId.js';
-import { serverSettingsService } from '../service.js';
+import { ParsedCustomId } from '../../types/ParsedCustomId.js';
+import { checkPerms } from '../../utils/checkPermissions.js';
+import { buildSettingsView } from '../../commands/settings_commands/serverSettings.js';
+import { buildFeatureEmbedAndComponents } from '../../config/serverSettingsBuilder.js';
+import { FeatureRegistry } from '../../config/featureRegistry.js';
+import logger from '../../logger.js';
+import { getServerSettingsData, ServerSettingsData } from '../../cache/serverSettingsDataCache.js';
+import { makeCustomId } from '../../utils/customId.js';
+import { serverSettingsService } from './service.js';
+import { pool } from '../../db.js';
 
 export class ServerSettingsInteractionRouter {
   /**
@@ -324,7 +325,7 @@ export class ServerSettingsInteractionRouter {
     cacheData: ServerSettingsData,
   ): Promise<void> {
     const { settingKey, tableName, featureName } = cacheData;
-
+    console.log('cachedata:', cacheData);
     try {
       // Handle logs_channel_id - channel selector modal
       if (settingKey === 'logs_channel_id') {
@@ -373,6 +374,69 @@ export class ServerSettingsInteractionRouter {
             ),
           );
         return interaction.showModal(modal);
+      } else if (settingKey === 'max_player_links') {
+        const modal = new ModalBuilder()
+          .setTitle('Set Max Player Links')
+          .setCustomId(
+            makeCustomId('m', `serverSetting_${settingKey}`, guildId, { extra: [tableName || '', featureName || ''] }),
+          )
+          .addComponents(
+            new ActionRowBuilder<TextInputBuilder>().addComponents(
+              new TextInputBuilder()
+                .setCustomId('input')
+                .setLabel('Maximum number of player links per user')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('Enter a number (minimum: 1)')
+                .setMinLength(1)
+                .setMaxLength(2)
+                .setRequired(true),
+            ),
+          );
+        return interaction.showModal(modal);
+      } else if (settingKey === 'opened_identifier') {
+        const modal = new ModalBuilder()
+          .setTitle('Set Ticket Opened Text')
+          .setCustomId(
+            makeCustomId('m', `serverSetting_${settingKey}`, guildId, {
+              extra: [tableName || '', featureName || ''],
+            }),
+          )
+          .addComponents(
+            new ActionRowBuilder<TextInputBuilder>().addComponents(
+              new TextInputBuilder()
+                .setCustomId('input')
+                .setLabel('Text for opened tickets')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('e.g., ticket')
+                .setMinLength(1)
+                .setMaxLength(20)
+                .setRequired(true),
+            ),
+          );
+        return interaction.showModal(modal);
+      } else if (settingKey === 'closed_identifier') {
+        const modal = new ModalBuilder()
+          .setTitle('Set Ticket Closed Text')
+          .setCustomId(
+            makeCustomId('m', `serverSetting_${settingKey}`, guildId, {
+              extra: [tableName || '', featureName || ''],
+            }),
+          )
+          .addComponents(
+            new ActionRowBuilder<TextInputBuilder>().addComponents(
+              new TextInputBuilder()
+                .setCustomId('input')
+                .setLabel('Text for closed tickets')
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder('e.g., closed-ticket')
+                .setMinLength(1)
+                .setMaxLength(20)
+                .setRequired(true),
+            ),
+          );
+        return interaction.showModal(modal);
+      } else if (settingKey === '') {
+        return;
       }
 
       // // Generic text input modal for other settings
@@ -431,13 +495,90 @@ export class ServerSettingsInteractionRouter {
    * Handle custom actions (like destructive operations)
    */
   private static async handleCustomAction(
-    _interaction: ButtonInteraction,
-    _guildId: string,
+    interaction: ButtonInteraction,
+    guildId: string,
     cacheData: ServerSettingsData,
   ): Promise<void> {
-    const { settingKey, tableName } = cacheData;
-    console.log('Custom action:', settingKey, 'in table:', tableName);
-    // TODO: Implement custom action logic
+    const { settingKey } = cacheData;
+    console.log('Custom action:', settingKey);
+
+    switch (settingKey) {
+      case 'delete_all_channels': {
+        const userId = interaction.user.id;
+
+        // Use same confirmation count as individual deletes (default: 2)
+        const settingsRes = await pool.query(
+          `SELECT delete_confirm_count FROM member_channel_settings WHERE guild_id = $1`,
+          [guildId],
+        );
+        const requiredConfirms = settingsRes.rows[0]?.delete_confirm_count || 2;
+
+        // Update all unlocked channels where user hasn't confirmed yet (single query)
+        const updateRes = await pool.query(
+          `UPDATE member_channels 
+           SET current_bulk_delete_count = current_bulk_delete_count + 1,
+               bulk_delete_confirmed_by = array_append(bulk_delete_confirmed_by, $2)
+           WHERE guild_id = $1 
+             AND is_locked = false 
+             AND NOT ($2 = ANY(bulk_delete_confirmed_by))
+           RETURNING channel_id, current_bulk_delete_count`,
+          [guildId, userId],
+        );
+
+        const newConfirmationCount = updateRes.rowCount || 0;
+
+        if (newConfirmationCount === 0) {
+          await interaction.followUp({
+            content: '❌ No unlocked channels found or all channels already confirmed by you.',
+            ephemeral: true,
+          });
+          return;
+        }
+
+        // Get channels that now have enough confirmations and mark them for deletion (single query)
+        const toDeleteRes = await pool.query(
+          `UPDATE member_channels 
+           SET is_deleted = true, deleted_at = NOW() 
+           WHERE guild_id = $1 
+             AND is_locked = false 
+             AND current_bulk_delete_count >= $2
+             AND is_deleted = false
+           RETURNING channel_id`,
+          [guildId, requiredConfirms],
+        );
+
+        const deletedCount = toDeleteRes.rowCount || 0;
+
+        // Loop through channels to delete them from Discord
+        for (const row of toDeleteRes.rows) {
+          setTimeout(async () => {
+            try {
+              const discordChannel = await interaction.client.channels.fetch(row.channel_id);
+              if (discordChannel && 'delete' in discordChannel) {
+                await discordChannel.delete('Bulk delete from server settings');
+              }
+            } catch (error) {
+              logger.error(`Failed to delete channel ${row.channel_id}:`, error);
+            }
+          }, 5000);
+        }
+
+        // Build response message
+        let responseMessage = '';
+        if (deletedCount > 0) {
+          responseMessage += `✅ **Marked for deletion:** ${deletedCount} channel(s) (deleting in 5 seconds)\n`;
+        }
+        if (newConfirmationCount > 0) {
+          responseMessage += `⚠️ **Confirmation added to:** ${newConfirmationCount} channel(s) (${requiredConfirms} confirmations needed per channel)\n`;
+        }
+
+        await interaction.followUp({
+          content: responseMessage || '✅ Bulk delete operation complete.',
+          ephemeral: true,
+        });
+        break;
+      }
+    }
   }
 
   /**
@@ -526,12 +667,26 @@ export class ServerSettingsInteractionRouter {
       }
     }
 
+    if (settingKey === 'max_player_links') {
+      const numValue = parseInt(inputValue, 10);
+      if (isNaN(numValue) || numValue < 1 || numValue > 10) {
+        await interaction.editReply({ content: '❌ Please enter a valid number (minimum: 1, maximum: 10).' });
+        return;
+      }
+    }
+
+    // Normalize ticket identifiers to lowercase
+    let finalValue = inputValue;
+    if (settingKey === 'opened_identifier' || settingKey === 'closed_identifier') {
+      finalValue = inputValue.toLowerCase();
+    }
+
     // Update via service
     const result = await serverSettingsService.updateTextSetting({
       guildId,
       settingKey,
       tableName,
-      value: inputValue,
+      value: finalValue,
     });
 
     if (!result.success) {

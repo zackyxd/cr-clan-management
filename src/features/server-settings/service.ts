@@ -43,7 +43,7 @@ export class ServerSettingsService {
         `INSERT INTO guild_features (guild_id, feature_name, is_enabled)
          VALUES ($1, $2, $3)
          ON CONFLICT (guild_id, feature_name) DO UPDATE SET is_enabled = EXCLUDED.is_enabled`,
-        [guildId, featureName, newValue]
+        [guildId, featureName, newValue],
       );
 
       logger.info(`Feature '${featureName}' ${newValue ? 'enabled' : 'disabled'} for guild ${guildId}`);
@@ -83,7 +83,7 @@ export class ServerSettingsService {
          SET ${settingKey} = NOT ${settingKey}
          WHERE guild_id = $1
          RETURNING ${settingKey}`,
-        [guildId]
+        [guildId],
       );
 
       const newValue = result.rows[0]?.[settingKey];
@@ -114,7 +114,7 @@ export class ServerSettingsService {
          SET show_inactive = NOT show_inactive
          WHERE guild_id = $1
          RETURNING show_inactive, channel_id, message_id, pin_message`,
-        [guildId]
+        [guildId],
       );
 
       if (result.rows.length === 0) {
@@ -159,7 +159,7 @@ export class ServerSettingsService {
          SET pin_message = NOT pin_message
          WHERE guild_id = $1
          RETURNING pin_message, channel_id, message_id`,
-        [guildId]
+        [guildId],
       );
 
       if (rows.length === 0) {
@@ -226,7 +226,7 @@ export class ServerSettingsService {
              END
            WHERE guild_id = $1
            RETURNING delete_method`,
-          [guildId]
+          [guildId],
         );
 
         const newValue = result.rows[0]?.delete_method;
@@ -308,7 +308,7 @@ export class ServerSettingsService {
   async updateInviteMessageAfterToggle(
     guildId: string,
     client: Client,
-    inviteData: { channelId: string; messageId: string; pinMessage: boolean }
+    inviteData: { channelId: string; messageId: string; pinMessage: boolean },
   ): Promise<void> {
     try {
       // Update the invite message

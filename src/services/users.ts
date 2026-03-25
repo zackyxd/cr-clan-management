@@ -44,7 +44,9 @@ export async function linkUser(
   if (currentUserLinkCount >= maxLinks) {
     return {
       embed: new EmbedBuilder()
-        .setDescription(`<@${originalDiscordId}> already has the maximum **${maxLinks}** linked accounts allowed.`)
+        .setDescription(
+          `<@${originalDiscordId}> already has the maximum **${maxLinks}** linked accounts allowed. Could not link \`${playertag}\`.`,
+        )
         .setColor(EmbedColor.FAIL),
     };
   }

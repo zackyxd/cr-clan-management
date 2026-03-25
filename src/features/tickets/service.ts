@@ -3,21 +3,51 @@ import { CR_API, FetchError } from '../../api/CR_API.js';
 import { formatPlayerData } from '../../api/FORMAT_DATA.js';
 import { linkUser } from '../../services/users.js';
 import logger from '../../logger.js';
-import type { EmbedBuilder } from 'discord.js';
+import { Client, EmbedBuilder, NewsChannel, TextChannel } from 'discord.js';
 import type {
   TicketResponse,
   AddPlayertagsParams,
-  UpdateIdentifierParams,
   CloseTicketParams,
   TicketFeatureCheck,
   TicketData,
 } from './types.js';
+import { EmbedColor } from '../../types/EmbedUtil.js';
 
 /**
  * Core service class for managing ticket functionality
  * Handles all business logic for ticket operations
  */
 export class TicketService {
+  async sendLog(client: Client, guildId: string, title: string, description: string): Promise<void> {
+    try {
+      const settingsResult = await pool.query(
+        `SELECT ts.send_logs, ss.logs_channel_id 
+         FROM ticket_settings ts
+         JOIN server_settings ss ON ss.guild_id = ts.guild_id
+         WHERE ts.guild_id = $1`,
+        [guildId],
+      );
+      const { send_logs, logs_channel_id } = settingsResult.rows[0] || {};
+
+      if (!send_logs || !logs_channel_id) return;
+      const channel = await client.channels.fetch(logs_channel_id);
+      if (!channel || !(channel instanceof TextChannel || channel instanceof NewsChannel)) {
+        logger.warn(`Log channel ${logs_channel_id} not found or not text-based`);
+        return;
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle(title)
+        .setDescription(description)
+        .setColor(EmbedColor.LOGS)
+        .setTimestamp();
+
+      await channel.send({ embeds: [embed] });
+    } catch (error) {
+      logger.error('Error sending ticket log:', error);
+    }
+  }
+
   /**
    * Check if ticket feature is enabled for a guild
    */
@@ -168,30 +198,6 @@ export class TicketService {
   }
 
   /**
-   * Update ticket identifier (opened or closed)
-   */
-  async updateIdentifier(params: UpdateIdentifierParams): Promise<TicketResponse> {
-    const { guildId, settingKey, value } = params;
-
-    try {
-      await pool.query(`UPDATE ticket_settings SET ${settingKey} = $1 WHERE guild_id = $2`, [
-        value.toLowerCase(),
-        guildId,
-      ]);
-
-      logger.info(`Updated ${settingKey} to '${value}' for guild ${guildId}`);
-
-      return { success: true };
-    } catch (error) {
-      logger.error(`Error updating ${settingKey}:`, error);
-      return {
-        success: false,
-        error: `Failed to update ${settingKey}`,
-      };
-    }
-  }
-
-  /**
    * Close a ticket and auto-link users
    */
   async closeTicket(params: CloseTicketParams): Promise<TicketResponse> {
@@ -248,9 +254,29 @@ export class TicketService {
         }
       }
 
-      // Auto-link all playertags
+      // Get max_player_links from link_settings
+      const maxLinkRes = await dbClient.query(`SELECT max_player_links FROM link_settings WHERE guild_id = $1`, [
+        guildId,
+      ]);
+      const maxLinks = maxLinkRes.rows[0]?.max_player_links ?? 10;
+
+      // Check how many accounts the user already has linked
+      const userLinkCountRes = await dbClient.query(
+        `SELECT COUNT(*)::int AS link_count FROM user_playertags WHERE guild_id = $1 AND discord_id = $2`,
+        [guildId, ticketData.createdBy],
+      );
+      const currentUserLinkCount = userLinkCountRes.rows[0]?.link_count ?? 0;
+      const availableSlots = maxLinks - currentUserLinkCount;
+
+      // Auto-link playertags up to the max limit
       const embeds: EmbedBuilder[] = [];
-      for (const playertag of ticketData.playertags) {
+      const tagsToLink = ticketData.playertags.slice(0, availableSlots);
+      const tagsExceedingLimit = ticketData.playertags.slice(availableSlots);
+      await channel.send({
+        content: `Ticket identified as closed, linking playertags to <@${ticketData.createdBy}>...`,
+        embeds: [],
+      });
+      for (const playertag of tagsToLink) {
         const { embed, components } = await linkUser(dbClient, guildId, ticketData.createdBy, playertag);
 
         if (components && components.length > 0) {
@@ -268,10 +294,25 @@ export class TicketService {
         embeds.push(embed);
       }
 
+      // If some tags couldn't be linked due to max limit, send a message
+      if (tagsExceedingLimit.length > 0) {
+        const limitEmbed = new EmbedBuilder()
+          .setDescription(
+            `⚠️ Could not link the following playertags because <@${ticketData.createdBy}> has reached the maximum of **${maxLinks}** linked accounts:\n\n${tagsExceedingLimit.map((tag) => `\`${tag}\``).join(', ')}`,
+          )
+          .setColor(0xffa500);
+        await channel.send({ embeds: [limitEmbed] });
+      }
+
       await dbClient.query('COMMIT');
 
       logger.info(`Closed ticket and auto-linked ${ticketData.playertags.length} accounts in guild ${guildId}`);
-
+      await ticketService.sendLog(
+        client,
+        guildId,
+        '📪 Ticket Closed',
+        `The ticket for <@${ticketData.createdBy}> has been closed.\nLinked accounts were:\n${ticketData.playertags.map((tag) => `\`${tag}\``).join('\n')}`,
+      );
       return {
         success: true,
         embeds,
@@ -296,7 +337,7 @@ export class TicketService {
       await pool.query(
         `
         UPDATE tickets
-        SET is_closed = FALSE, closed_at = NOW()
+        SET is_closed = FALSE, closed_at = null
         WHERE guild_id = $1 AND channel_id = $2
         `,
         [guildId, channelId],

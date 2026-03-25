@@ -15,13 +15,14 @@ import fastq from 'fastq';
 import { CR_API, FetchError, isFetchError, PlayerResult } from '../../api/CR_API.js';
 import { formatPlayerData } from '../../api/FORMAT_DATA.js';
 import { playerEmbedCache } from '../../cache/playerEmbedCache.js';
+import { makeCustomId } from '../../utils/customId.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('players')
     .setDescription("Check out a player's linked accounts in a server")
     .addUserOption((option) =>
-      option.setName('user').setDescription('The @user you would like to check').setRequired(true)
+      option.setName('user').setDescription('The @user you would like to check').setRequired(true),
     ),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const guild = interaction.guild;
@@ -53,7 +54,7 @@ const command: Command = {
       WHERE guild_id = $1
       AND discord_id = $2
       `,
-      [guild.id, discordId]
+      [guild.id, discordId],
     );
 
     const playertagData = userPlayertagsQuery.rows;
@@ -71,7 +72,7 @@ const command: Command = {
 
     // Add all playertags to queue and collect results
     const results: (PlayerResult | FetchError)[] = await Promise.all(
-      playertagData.map((row) => queue.push(row.playertag))
+      playertagData.map((row) => queue.push(row.playertag)),
     );
     // Sort by expLevel -> Name
     results.sort((a, b) => {
@@ -80,8 +81,8 @@ const command: Command = {
 
       if (bLevel !== aLevel) return bLevel - aLevel;
 
-      const aName = 'error' in a ? a.tag ?? '' : a.name;
-      const bName = 'error' in b ? b.tag ?? '' : b.name;
+      const aName = 'error' in a ? (a.tag ?? '') : a.name;
+      const bName = 'error' in b ? (b.tag ?? '') : b.name;
 
       return aName.localeCompare(bName);
     });
@@ -89,7 +90,7 @@ const command: Command = {
     // console.log(results);
 
     const select = new StringSelectMenuBuilder()
-      .setCustomId(`players:${interaction.user.id}`)
+      .setCustomId(makeCustomId(`s`, `players_select`, guild.id, { extra: [discordId] }))
       .setPlaceholder('Select a player');
 
     const embedMap = new Map<string, EmbedBuilder>();
@@ -106,7 +107,7 @@ const command: Command = {
           if (!firstEmbed) firstEmbed = embed;
           embedMap.set(player.tag, embed);
           select.addOptions(
-            new StringSelectMenuOptionBuilder().setLabel(player.name).setDescription(player.tag).setValue(player.tag)
+            new StringSelectMenuOptionBuilder().setLabel(player.name).setDescription(player.tag).setValue(player.tag),
           );
         }
       } else {
@@ -118,7 +119,7 @@ const command: Command = {
               new StringSelectMenuOptionBuilder()
                 .setLabel(player.reason || 'Error')
                 .setDescription(player.tag || 'Unknown')
-                .setValue(player.tag ?? player.reason ?? 'unknown')
+                .setValue(player.tag ?? player.reason ?? 'unknown'),
             );
             if (!firstEmbed) firstEmbed = player.embed;
           }
@@ -126,7 +127,6 @@ const command: Command = {
       }
     }
     playerEmbedCache.set(interaction.id, embedMap);
-
     const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
     // TODO fix needing firstEmbed to do this, it should always exist
     if (!firstEmbed) {
@@ -139,14 +139,17 @@ const command: Command = {
     await interaction.editReply({ embeds: [firstEmbed], components: [row] });
 
     // Remove components after 5 minutes so select menu doesn't stay forever
-    setTimeout(async () => {
-      try {
-        await interaction.editReply({ components: [] });
-      } catch (error) {
-        // Message might have been deleted or interaction expired
-        console.warn(`Could not remove components from /players command: ${error}`);
-      }
-    }, 5 * 60 * 1000);
+    setTimeout(
+      async () => {
+        try {
+          await interaction.editReply({ components: [] });
+        } catch (error) {
+          // Message might have been deleted or interaction expired
+          console.warn(`Could not remove components from /players command: ${error}`);
+        }
+      },
+      5 * 60 * 1000,
+    );
   },
 };
 
