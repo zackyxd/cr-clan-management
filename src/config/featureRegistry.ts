@@ -38,8 +38,8 @@ export interface Feature {
 export const FeatureRegistry: Record<string, Feature> = {
   global: {
     name: 'global',
-    displayName: 'Global',
-    description: 'Global settings that affect the entire bot functionality.',
+    displayName: 'Server Info',
+    description: 'View server statistics and configure global bot settings.',
     tableName: 'server_settings',
     defaultEnabled: true,
     settings: [
@@ -49,6 +49,13 @@ export const FeatureRegistry: Record<string, Feature> = {
         description: 'The channel where all bot logs are sent.',
         type: 'channel',
         defaultValue: '',
+      },
+      {
+        key: 'send_logs',
+        label: 'Audit Logs',
+        description: 'Log all setting changes made via /server-settings.',
+        type: 'toggle',
+        defaultValue: false,
       },
       {
         key: 'linked_clans_count',

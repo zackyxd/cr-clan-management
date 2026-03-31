@@ -97,15 +97,25 @@ export class TicketInteractionRouter {
     console.log('handle modal for tickets');
     switch (action) {
       case 'ticketPlayertagsOpenModal': {
-        // Anyone can submit playertags - no permission check needed
-        // Check if ticket is closed first to determine defer mode
-        const res = await pool.query(`SELECT is_closed FROM tickets WHERE guild_id = $1 AND channel_id = $2`, [
-          guildId,
-          interaction.channelId,
-        ]);
-        const isClosed = res.rows[0]?.is_closed === true;
+        // Check ticket status and ownership to determine defer mode
+        const res = await pool.query(
+          `SELECT is_closed, created_by FROM tickets WHERE guild_id = $1 AND channel_id = $2`,
+          [guildId, interaction.channelId],
+        );
+        const ticketData = res.rows[0];
+        const isClosed = ticketData?.is_closed === true;
+        const existingOwner = ticketData?.created_by;
 
-        // Defer with ephemeral if closed, non-ephemeral if open
+        // If ticket has an owner and it's not the current user, defer ephemeral and show error
+        if (existingOwner && existingOwner !== interaction.user.id) {
+          await interaction.deferReply({ ephemeral: true });
+          await interaction.editReply({
+            content: 'Someone has already uploaded their playertags to this ticket. Please make your own ticket.',
+          });
+          return;
+        }
+
+        // Defer with ephemeral if closed, non-ephemeral if open or no owner yet
         await interaction.deferReply({ ephemeral: isClosed });
         await this.handleModalSubmit(interaction, guildId);
         break;
@@ -587,7 +597,7 @@ export class TicketInteractionRouter {
   static async changeTicketStatus(interaction: ButtonInteraction, guildId: string, channelId: string): Promise<void> {
     // Get current ticket status
     const ticketData = await ticketService.getTicketData(guildId, channelId);
-
+    console.log(ticketData);
     if (!ticketData) {
       await interaction.editReply({
         content: 'Ticket not found.',

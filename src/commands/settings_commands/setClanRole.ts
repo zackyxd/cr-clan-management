@@ -37,12 +37,12 @@ const command: Command = {
     if (!allowed) return;
 
     const roleSelected = interaction.options.getRole('role');
-    const abbreviation = interaction.options.getString('abbreviation')?.toLowerCase();
+    const abbreviation = interaction.options.getString('abbreviation');
 
     const clanRes = await pool.query(
       `SELECT clantag, clan_name, clan_role_id
        FROM clans
-       WHERE guild_id = $1 AND abbreviation = $2`,
+       WHERE guild_id = $1 AND abbreviation = LOWER($2)`,
       [guild.id, abbreviation],
     );
     const row = clanRes.rows[0];

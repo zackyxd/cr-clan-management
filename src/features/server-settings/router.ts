@@ -56,6 +56,8 @@ export class ServerSettingsInteractionRouter {
             return;
           }
 
+          console.log(cacheData);
+
           // Check ownership
           if (cacheData.ownerId !== interaction.user.id) {
             await interaction.editReply({ content: 'You can only interact with settings you opened.' });
@@ -262,7 +264,12 @@ export class ServerSettingsInteractionRouter {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _tableName: string,
   ): Promise<void> {
-    const result = await serverSettingsService.toggleFeature(guildId, featureName);
+    const result = await serverSettingsService.toggleFeature(
+      interaction.client,
+      guildId,
+      featureName,
+      interaction.user.id,
+    );
 
     if (!result.success) {
       await interaction.editReply({
@@ -294,7 +301,9 @@ export class ServerSettingsInteractionRouter {
       guildId,
       settingKey,
       tableName,
+      featureName: featureName || 'unknown',
       client: interaction.client,
+      userId: interaction.user.id,
     });
 
     if (!result.success) {
@@ -481,6 +490,9 @@ export class ServerSettingsInteractionRouter {
       guildId,
       settingKey,
       tableName,
+      featureName: featureName || 'unknown',
+      client: interaction.client,
+      userId: interaction.user.id,
     });
 
     if (!result.success) {
@@ -638,7 +650,10 @@ export class ServerSettingsInteractionRouter {
         guildId,
         settingKey,
         tableName,
+        featureName,
         channelId: selectedChannel!.id,
+        client: interaction.client,
+        userId: interaction.user.id,
       });
 
       if (!result.success) {
@@ -690,7 +705,10 @@ export class ServerSettingsInteractionRouter {
       guildId,
       settingKey,
       tableName,
+      featureName,
       value: finalValue,
+      client: interaction.client,
+      userId: interaction.user.id,
     });
 
     if (!result.success) {

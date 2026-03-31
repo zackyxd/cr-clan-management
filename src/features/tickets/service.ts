@@ -119,17 +119,27 @@ export class TicketService {
         [guildId, channelId],
       );
 
-      console.log(rows[0], userId);
-      // Check if ticket exists and if user is the creator
-      if (rows.length > 0 && rows[0].created_by !== userId) {
-        logger.warn(`User ${userId} attempted to add tags to ticket created by ${rows[0].created_by}`);
+      // Check if ticket exists
+      if (rows.length === 0) {
+        logger.warn(`Ticket not found for guild ${guildId}, channel ${channelId}`);
+        return {
+          success: false,
+          error: 'Ticket not found. Please ensure this is a valid ticket channel.',
+        };
+      }
+
+      const ticketData = rows[0];
+      const currentTags: string[] = ticketData?.playertags ?? [];
+      const existingOwner = ticketData?.created_by;
+
+      // Check if ticket already has an owner and it's not the current user
+      if (existingOwner && existingOwner !== userId) {
+        logger.warn(`User ${userId} attempted to add tags to ticket owned by ${existingOwner}`);
         return {
           success: false,
           error: 'Someone has already uploaded their playertags to this ticket. Please make your own ticket.',
         };
       }
-
-      const currentTags: string[] = rows[0]?.playertags ?? [];
       const validTags: string[] = [];
       const embeds: EmbedBuilder[] = [];
       const invalidEmbeds: EmbedBuilder[] = [];
@@ -161,20 +171,20 @@ export class TicketService {
 
       // Update database
       if (uniqueValidTags.length > 0) {
+        // If no existing owner, set the current user as owner and add playertags
+        // If owner exists (same user), just add playertags
         await pool.query(
           `
-          INSERT INTO tickets (guild_id, channel_id, playertags, created_by)
-          VALUES ($1, $2, $3, $4)
-          ON CONFLICT (guild_id, channel_id)
-          DO UPDATE SET playertags = (
-            SELECT ARRAY(
-              SELECT DISTINCT unnest(t.playertags || EXCLUDED.playertags)
-              ORDER BY 1
-            )
-            FROM tickets t
-            WHERE t.guild_id = EXCLUDED.guild_id
-              AND t.channel_id = EXCLUDED.channel_id
-            )
+          UPDATE tickets
+          SET 
+            playertags = (
+              SELECT ARRAY(
+                SELECT DISTINCT unnest(playertags || $3::text[])
+                ORDER BY 1
+              )
+            ),
+            created_by = COALESCE(created_by, $4)
+          WHERE guild_id = $1 AND channel_id = $2
           `,
           [guildId, channelId, uniqueValidTags, userId],
         );
@@ -228,7 +238,7 @@ export class TicketService {
         };
       }
 
-      // Get channel
+      // Get channel first (needed for both empty and regular tickets)
       const guild = await client.guilds.fetch(guildId);
       const channel = await guild.channels.fetch(channelId);
 
@@ -237,6 +247,31 @@ export class TicketService {
         return {
           success: false,
           error: 'Channel not found or not text-based',
+        };
+      }
+
+      // If no owner or no playertags, just close the ticket without linking
+      if (!ticketData.createdBy || ticketData.playertags.length === 0) {
+        await dbClient.query('COMMIT');
+
+        logger.info(`Closed empty ticket in guild ${guildId}, channel ${channelId}`);
+
+        // Send message in channel
+        await channel.send({
+          content: '✅ Ticket has been closed. No accounts were linked because no playertags were entered.',
+        });
+
+        // Send log
+        await this.sendLog(
+          client,
+          guildId,
+          '📪 Ticket Closed',
+          `An empty ticket <#${channelId}> was closed (no playertags were entered).`,
+        );
+
+        return {
+          success: true,
+          embeds: [],
         };
       }
 
@@ -351,6 +386,43 @@ export class TicketService {
       return {
         success: false,
         error: 'Failed to reopen ticket',
+      };
+    }
+  }
+
+  /**
+   * Create a new ticket record in the database
+   */
+  async createTicket(guildId: string, channelId: string, channelName: string): Promise<TicketResponse> {
+    try {
+      // Check if ticket already exists (in case of race condition)
+      const existing = await pool.query(`SELECT channel_id FROM tickets WHERE guild_id = $1 AND channel_id = $2`, [
+        guildId,
+        channelId,
+      ]);
+
+      if (existing.rows.length > 0) {
+        logger.debug(`Ticket already exists for channel ${channelId}`);
+        return { success: true };
+      }
+
+      // Insert new ticket with initial channel name, no owner yet
+      await pool.query(
+        `
+        INSERT INTO tickets (guild_id, channel_id, initial_ticket_name)
+        VALUES ($1, $2, $3)
+        `,
+        [guildId, channelId, channelName],
+      );
+
+      logger.info(`Created new ticket for guild ${guildId}, channel ${channelId}`);
+
+      return { success: true };
+    } catch (error) {
+      logger.error('Error creating ticket:', error);
+      return {
+        success: false,
+        error: 'Failed to create ticket',
       };
     }
   }

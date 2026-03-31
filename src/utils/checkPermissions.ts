@@ -64,7 +64,15 @@ function deferInteraction(interaction: InteractionTypes, ephemeral = false) {
     });
   }
 }
-
+/**
+ *
+ * @param interaction interaction needed to check perms
+ * @param guildId
+ * @param interactionType
+ * @param level type needed, usually 'either' to allow both.
+ * @param opts hideNoPerms=true for hiding if no perms, deferEphemeral if secret, skipDefer=true for modals
+ * @returns
+ */
 export async function checkPerms(
   interaction: InteractionTypes,
   guildId: string,

@@ -250,6 +250,11 @@ export async function buildSettingsOverview(
     }
   }
 
+  // Push the row if it has components
+  if (currentRow.components.length > 0) {
+    actionRows.push(currentRow);
+  }
+
   embed.setDescription(description);
   return { embed, components: actionRows };
 }

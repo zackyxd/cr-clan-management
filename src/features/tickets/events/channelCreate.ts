@@ -36,6 +36,10 @@ export async function handleTicketChannelCreate(channel: TextChannel, guildId: s
       return false;
     }
 
+    // Create ticket record in database
+    await ticketService.createTicket(guildId, channel.id, channel.name);
+    logger.info(`Created ticket record for channel ${channel.id} in guild ${guildId}`);
+
     // Delay to ensure channel is fully created
     setTimeout(async () => {
       await sendTicketButton(channel, guildId);

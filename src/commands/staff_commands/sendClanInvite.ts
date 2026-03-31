@@ -43,7 +43,7 @@ const command: Command = {
     const clanData = await pool.query(
       `SELECT clan_name, clantag, invites_enabled 
        FROM clans 
-       WHERE guild_id = $1 AND (clantag = $2 OR UPPER(abbreviation) = UPPER($3))`,
+       WHERE guild_id = $1 AND (clantag = $2 OR abbreviation = LOWER($3))`,
       [guild.id, normalizedTag, rawInput],
     );
 

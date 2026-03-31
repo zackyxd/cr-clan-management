@@ -1,5 +1,5 @@
 import { pool } from '../../db.js';
-import { TextChannel, NewsChannel, Client } from 'discord.js';
+import { TextChannel, NewsChannel, Client, EmbedBuilder } from 'discord.js';
 import { updateInviteMessage, repostInviteMessage } from '../clan-invites/messageManager.js';
 import { getServerSettingsData } from '../../cache/serverSettingsDataCache.js';
 import logger from '../../logger.js';
@@ -11,6 +11,8 @@ import type {
   SwapSettingParams,
 } from './types.js';
 import type { ServerSettingsData } from '../../cache/serverSettingsDataCache.js';
+import { BOTCOLOR } from '../../types/EmbedUtil.js';
+import { FeatureRegistry } from '../../config/featureRegistry.js';
 
 /**
  * Core service class for managing server settings functionality
@@ -25,9 +27,47 @@ export class ServerSettingsService {
   }
 
   /**
+   * Send audit log (fire-and-forget - does not block operation)
+   * @param client Discord client
+   * @param guildId Guild ID
+   * @param title Log title
+   * @param description Log description
+   */
+  async sendLog(client: Client, guildId: string, title: string, description: string): Promise<void> {
+    try {
+      const settingsResult = await pool.query(
+        `SELECT logs_channel_id, send_logs FROM server_settings WHERE guild_id = $1`,
+        [guildId],
+      );
+
+      const { logs_channel_id, send_logs } = settingsResult.rows[0] || {};
+
+      if (!logs_channel_id || !send_logs) {
+        return;
+      }
+
+      const channel = await client.channels.fetch(logs_channel_id);
+      if (!channel || !(channel instanceof TextChannel || channel instanceof NewsChannel)) {
+        console.log(`Couldn't find valid logs channel for guild ${guildId} for server settings.`);
+        return;
+      }
+
+      const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor(BOTCOLOR);
+      await channel.send({ embeds: [embed] });
+    } catch (error) {
+      logger.error('Error sending server settings log:', error);
+    }
+  }
+
+  /**
    * Toggle a feature on/off
    */
-  async toggleFeature(guildId: string, featureName: string): Promise<ServerSettingsResponse> {
+  async toggleFeature(
+    client: Client,
+    guildId: string,
+    featureName: string,
+    userId: string,
+  ): Promise<ServerSettingsResponse> {
     try {
       // Get current feature status
       const res = await pool.query(`SELECT is_enabled FROM guild_features WHERE guild_id = $1 AND feature_name = $2`, [
@@ -46,7 +86,17 @@ export class ServerSettingsService {
         [guildId, featureName, newValue],
       );
 
-      logger.info(`Feature '${featureName}' ${newValue ? 'enabled' : 'disabled'} for guild ${guildId}`);
+      logger.info(
+        `Feature '${FeatureRegistry[featureName].displayName}' ${newValue ? 'enabled' : 'disabled'} for guild ${guildId}`,
+      );
+
+      // Fire-and-forget audit log (don't block the operation)
+      this.sendLog(
+        client,
+        guildId,
+        '🎯 Feature Toggled',
+        `**Feature:** ${FeatureRegistry[featureName].displayName}\n**Status:** ${!newValue ? 'Enabled' : 'Disabled'}  → ${newValue ? 'Enabled' : 'Disabled'}\n**Changed by:** <@${userId}>`,
+      ).catch((err) => logger.error('Failed to log feature toggle:', err));
 
       return {
         success: true,
@@ -65,7 +115,7 @@ export class ServerSettingsService {
    * Toggle a generic setting
    */
   async toggleSetting(params: ToggleSettingParams): Promise<ServerSettingsResponse> {
-    const { guildId, settingKey, tableName, client } = params;
+    const { guildId, settingKey, tableName, featureName, client, userId } = params;
 
     try {
       // Handle special cases
@@ -89,6 +139,19 @@ export class ServerSettingsService {
       const newValue = result.rows[0]?.[settingKey];
 
       logger.info(`Setting '${settingKey}' toggled to ${newValue} in table '${tableName}' for guild ${guildId}`);
+
+      // Get feature display name and setting label from registry
+      const featureDisplayName = FeatureRegistry[featureName]?.displayName || featureName;
+      const settingLabel =
+        FeatureRegistry[featureName]?.settings.find((s) => s.key === settingKey)?.label || settingKey;
+
+      // Fire-and-forget audit log
+      this.sendLog(
+        client,
+        guildId,
+        '⚙️ Setting Changed',
+        `**Feature:** ${featureDisplayName}\n**Setting:** ${settingLabel}\n**Status:** ${newValue ? 'Disabled → Enabled' : 'Enabled → Disabled'}\n**Changed by:** <@${userId}>`,
+      ).catch((err) => logger.error('Failed to log setting change:', err));
 
       return {
         success: true,
@@ -192,6 +255,7 @@ export class ServerSettingsService {
           }
         } catch (err) {
           logger.error('Failed to pin/unpin message:', err);
+          await interaction.followUp({ content: '⚠️ Failed to update message pin status on Discord. Please check the bot permissions and try again.' });
         }
       }
 
@@ -214,7 +278,7 @@ export class ServerSettingsService {
    * Swap a setting value (like delete_method)
    */
   async swapSetting(params: SwapSettingParams): Promise<ServerSettingsResponse> {
-    const { guildId, settingKey, tableName } = params;
+    const { guildId, settingKey, tableName, featureName, client, userId } = params;
 
     try {
       if (settingKey === 'delete_method') {
@@ -232,6 +296,19 @@ export class ServerSettingsService {
         const newValue = result.rows[0]?.delete_method;
 
         logger.info(`Setting '${settingKey}' swapped to ${newValue} in table '${tableName}' for guild ${guildId}`);
+
+        // Get feature display name and setting label from registry
+        const featureDisplayName = FeatureRegistry[featureName]?.displayName || featureName;
+        const settingLabel =
+          FeatureRegistry[featureName]?.settings.find((s) => s.key === settingKey)?.label || settingKey;
+
+        // Fire-and-forget audit log
+        this.sendLog(
+          client,
+          guildId,
+          '🔄 Setting Changed',
+          `**Feature:** ${featureDisplayName}\n**Setting:** ${settingLabel}\n**New Value:** ${newValue}\n**Changed by:** <@${userId}>`,
+        ).catch((err) => logger.error('Failed to log setting swap:', err));
 
         return {
           success: true,
@@ -258,12 +335,25 @@ export class ServerSettingsService {
    * Update a channel-based setting (logs_channel_id, category_id)
    */
   async updateChannelSetting(params: UpdateChannelSettingParams): Promise<ServerSettingsResponse> {
-    const { guildId, settingKey, tableName, channelId } = params;
+    const { guildId, settingKey, tableName, featureName, channelId, client, userId } = params;
 
     try {
       await pool.query(`UPDATE ${tableName} SET ${settingKey} = $1 WHERE guild_id = $2`, [channelId, guildId]);
 
       logger.info(`${settingKey} updated to ${channelId} for guild ${guildId}`);
+
+      // Get feature display name and setting label from registry
+      const featureDisplayName = FeatureRegistry[featureName]?.displayName || featureName;
+      const settingLabel =
+        FeatureRegistry[featureName]?.settings.find((s) => s.key === settingKey)?.label || settingKey;
+
+      // Fire-and-forget audit log
+      this.sendLog(
+        client,
+        guildId,
+        '📝 Setting Updated',
+        `**Feature:** ${featureDisplayName}\n**Setting:** ${settingLabel}\n**New Value:** <#${channelId}>\n**Changed by:** <@${userId}>`,
+      ).catch((err) => logger.error('Failed to log channel setting update:', err));
 
       return {
         success: true,
@@ -282,12 +372,25 @@ export class ServerSettingsService {
    * Update a text-based setting
    */
   async updateTextSetting(params: UpdateTextSettingParams): Promise<ServerSettingsResponse> {
-    const { guildId, settingKey, tableName, value } = params;
+    const { guildId, settingKey, tableName, featureName, value, client, userId } = params;
 
     try {
       await pool.query(`UPDATE ${tableName} SET ${settingKey} = $1 WHERE guild_id = $2`, [value, guildId]);
 
       logger.info(`${settingKey} updated to '${value}' for guild ${guildId}`);
+
+      // Get feature display name and setting label from registry
+      const featureDisplayName = FeatureRegistry[featureName]?.displayName || featureName;
+      const settingLabel =
+        FeatureRegistry[featureName]?.settings.find((s) => s.key === settingKey)?.label || settingKey;
+
+      // Fire-and-forget audit log
+      this.sendLog(
+        client,
+        guildId,
+        '📝 Setting Updated',
+        `**Feature:** ${featureDisplayName}\n**Setting:** ${settingLabel}\n**New Value:** ${value}\n**Changed by:** <@${userId}>`,
+      ).catch((err) => logger.error('Failed to log text setting update:', err));
 
       return {
         success: true,

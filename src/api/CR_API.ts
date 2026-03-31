@@ -60,6 +60,14 @@ export async function fetchData<T>(url: string, tag: string, kind: 'player' | 'c
           tag,
           embed: new EmbedBuilder().setDescription(`❌ This ${kind} tag **${tag}** does not exist.`).setColor('Red'),
         };
+      } else if (status === 403) {
+        return {
+          error: true,
+          statusCode: 403,
+          reason: 'Forbidden - Invalid or missing API key',
+          tag,
+          embed: new EmbedBuilder().setDescription('🔒 **API Authentication Failed**').setColor('Red'),
+        };
       }
 
       return {

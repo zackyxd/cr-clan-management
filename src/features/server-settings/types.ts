@@ -22,8 +22,11 @@ export interface UpdateChannelSettingParams {
   guildId: string;
   settingKey: string;
   tableName: string;
+  featureName: string;
   channelId: string;
   channelType?: 'text' | 'category';
+  client: Client;
+  userId: string;
 }
 
 /**
@@ -33,7 +36,10 @@ export interface UpdateTextSettingParams {
   guildId: string;
   settingKey: string;
   tableName: string;
+  featureName: string;
   value: string;
+  client: Client;
+  userId: string;
 }
 
 /**
@@ -43,7 +49,9 @@ export interface ToggleSettingParams {
   guildId: string;
   settingKey: string;
   tableName: string;
-  client?: Client;
+  featureName: string;
+  client: Client;
+  userId: string;
 }
 
 /**
@@ -53,4 +61,7 @@ export interface SwapSettingParams {
   guildId: string;
   settingKey: string;
   tableName: string;
+  featureName: string;
+  client: Client;
+  userId: string;
 }
