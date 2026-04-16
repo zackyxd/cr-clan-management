@@ -16,7 +16,7 @@ export type FetchError = {
   error: true;
   statusCode: number;
   reason: string;
-  tag?: string;
+  tag: string;
   embed?: EmbedBuilder;
 };
 
@@ -25,9 +25,15 @@ export function isFetchError(obj: any): obj is FetchError {
   return obj && typeof obj === 'object' && 'error' in obj;
 }
 
-export async function fetchData<T>(url: string, tag: string, kind: 'player' | 'clan'): Promise<T | FetchError> {
+export async function fetchData<T>(
+  url: string,
+  tag: string,
+  kind: 'player' | 'clan',
+  endpoint?: string,
+  identifier?: string
+): Promise<T | FetchError> {
   try {
-    const data = await limitedGet<T>(url);
+    const data = await limitedGet<T>(url, endpoint, identifier);
     if (!data) {
       // fallback if Axios/Bottleneck somehow returns null/undefined
       return {
@@ -101,7 +107,7 @@ export type PlayerResult = Player | FetchError;
 export async function getPlayer(playertag: string): Promise<PlayerResult> {
   const normalizedTag = normalizeTag(playertag);
   const url = `players/${encodeURIComponent(normalizedTag)}`;
-  const data = await fetchData<z.infer<typeof PlayerSchema>>(url, normalizedTag, 'player');
+  const data = await fetchData<z.infer<typeof PlayerSchema>>(url, normalizedTag, 'player', 'getPlayer', normalizedTag);
   if ('error' in data) {
     return data; // already a FetchError with embed + tag
   }
@@ -187,7 +193,7 @@ type ClanResult = Clan | FetchError;
 export async function getClan(clantag: string): Promise<ClanResult> {
   const normalizedTag = normalizeTag(clantag);
   const url = `https://proxy.royaleapi.dev/v1/clans/${encodeURIComponent(clantag)}`;
-  const rawData = await fetchData<{ [key: string]: unknown }>(url, normalizedTag, 'clan');
+  const rawData = await fetchData<{ [key: string]: unknown }>(url, normalizedTag, 'clan', 'getClan', normalizedTag);
 
   if ('error' in rawData) {
     return rawData as FetchError; // already a FetchError with embed + tag
@@ -259,54 +265,106 @@ export async function getClan(clantag: string): Promise<ClanResult> {
 //   return parsed.data.items;
 // }
 
-// const RiverRaceParticipantSchema = z.object({
-//   tag: z.string(),
-//   name: z.string(),
-//   fame: z.number(),
-//   repairPoints: z.number(),
-//   boatAttacks: z.number(),
-//   decksUsed: z.number(),
-//   decksUsedToday: z.number(),
-// });
+const RiverRaceParticipantSchema = z.object({
+  tag: z.string(),
+  name: z.string(),
+  fame: z.number(),
+  repairPoints: z.number(),
+  boatAttacks: z.number(),
+  decksUsed: z.number(),
+  decksUsedToday: z.number(),
+});
 
-// const RiverRaceClanSchema = z.object({
-//   tag: z.string(),
-//   name: z.string(),
-//   badgeId: z.number(),
-//   fame: z.number(),
-//   repairPoints: z.number(),
-//   periodPoints: z.number().optional(), // Sometimes only present for clan
-//   clanScore: z.number().optional(), // Sometimes only present for clan
-//   participants: z.array(RiverRaceParticipantSchema),
-// });
+const RiverRaceClanSchema = z.object({
+  tag: z.string(),
+  name: z.string(),
+  badgeId: z.number(),
+  fame: z.number(),
+  repairPoints: z.number(),
+  periodPoints: z.number().optional(), // Sometimes only present for clan
+  clanScore: z.number().optional(), // Sometimes only present for clan
+  participants: z.array(RiverRaceParticipantSchema),
+});
 
-// const CurrentRiverRaceSchema = z.object({
-//   state: z.string(),
-//   clan: RiverRaceClanSchema,
-//   clans: z.array(RiverRaceClanSchema),
-// });
+const CurrentRiverRaceSchema = z.object({
+  state: z.string(),
+  clan: RiverRaceClanSchema,
+  clans: z.array(RiverRaceClanSchema),
+  sectionIndex: z.number(),
+  periodIndex: z.number(),
+  periodType: z.string(),
+});
 
-// type CurrentRiverRace = z.infer<typeof CurrentRiverRaceSchema>;
-// type CurrentRiverRaceResult = CurrentRiverRace | FetchError;
+export type CurrentRiverRace = z.infer<typeof CurrentRiverRaceSchema>;
+type CurrentRiverRaceResult = CurrentRiverRace | FetchError;
 
-// export async function getCurrentRiverRace(clantag: string): Promise<CurrentRiverRaceResult> {
-//   clantag = normalizeTag(clantag);
-//   const url = `https://proxy.royaleapi.dev/v1/clans/${encodeURIComponent(clantag)}/currentriverrace`;
-//   const data = await fetchData(url);
-//   if (isFetchError(data)) {
-//     return data; // Error data
-//   }
+export async function getCurrentRiverRace(clantag: string): Promise<CurrentRiverRaceResult> {
+  clantag = normalizeTag(clantag);
+  const url = `https://proxy.royaleapi.dev/v1/clans/${encodeURIComponent(clantag)}/currentriverrace`;
+  const data = await fetchData(url, clantag, 'clan', 'getCurrentRiverRace', clantag);
+  if (isFetchError(data)) {
+    return data; // Error data
+  }
 
-//   const parsed = CurrentRiverRaceSchema.safeParse(data);
-//   if (!parsed.success) {
-//     return {
-//       error: true,
-//       statusCode: 400,
-//       reason: 'Invalid current river race structure',
-//     };
-//   }
-//   return parsed.data;
-// }
+  const parsed = CurrentRiverRaceSchema.safeParse(data);
+  if (!parsed.success) {
+    return {
+      error: true,
+      statusCode: 400,
+      reason: 'Invalid current river race structure',
+      tag: clantag,
+      embed: new EmbedBuilder()
+        .setDescription(
+          '⚠️ API current river race data format may have changed. Requires <@272201620446511104> to fix.',
+        )
+        .setColor('Red'),
+    };
+  }
+  return parsed.data;
+}
+
+const RiverRaceLogStandingSchema = z.object({
+  rank: z.number(),
+  trophyChange: z.number(),
+  clan: RiverRaceClanSchema, // clan is an object, not an array
+});
+
+const RiverRaceLogItemSchema = z.object({
+  seasonId: z.number(),
+  sectionIndex: z.number(),
+  createdDate: z.string(),
+  standings: z.array(RiverRaceLogStandingSchema),
+});
+
+const RiverRaceLogSchema = z.object({
+  items: z.array(RiverRaceLogItemSchema),
+});
+
+type CurrentRiverRaceLogSchema = z.infer<typeof RiverRaceLogSchema>;
+export type CurrentRiverRaceLogResult = CurrentRiverRaceLogSchema | FetchError;
+
+export async function getRiverRaceLog(clantag: string): Promise<CurrentRiverRaceLogResult> {
+  clantag = normalizeTag(clantag);
+  const url = `https://proxy.royaleapi.dev/v1/clans/${encodeURIComponent(clantag)}/riverracelog`;
+  const data = await fetchData(url, clantag, 'clan', 'getRiverRaceLog', clantag);
+  if (isFetchError(data)) {
+    return data; // Error data
+  }
+
+  const parsed = RiverRaceLogSchema.safeParse(data);
+  if (!parsed.success) {
+    return {
+      error: true,
+      statusCode: 400,
+      reason: 'Invalid river race log structure',
+      tag: clantag,
+      embed: new EmbedBuilder()
+        .setDescription('⚠️ API river race log data format may have changed. Requires <@272201620446511104> to fix.')
+        .setColor('Red'),
+    };
+  }
+  return parsed.data;
+}
 
 // async function main() {
 //   // const apiTest = await getPlayer('    J2oY2QGoY    ');
@@ -323,7 +381,8 @@ export const CR_API = {
   getPlayer,
   getClan,
   // getClanMembers,
-  // getCurrentRiverRace,
+  getCurrentRiverRace,
+  getRiverRaceLog,
   // getBattleLog,
   normalizeTag,
 };

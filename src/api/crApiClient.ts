@@ -2,6 +2,9 @@ import axios from 'axios';
 import Bottleneck from 'bottleneck';
 import axiosRetry from 'axios-retry';
 import 'dotenv-flow/config';
+import { logApiResponse } from './dev-logger.js';
+import { loadMockData, isMockingEnabled } from './mock-loader.js';
+
 // --- Bottleneck rate limiter ---
 // Example: 10 requests per second (Clash Royale API is 10/s per token)
 const limiter = new Bottleneck({
@@ -39,10 +42,32 @@ axiosRetry(crAxios, {
 
 // --- Wrap axios calls with Bottleneck ---
 // typed wrapper returns only .data
-async function getWithLimit<T = unknown>(url: string): Promise<T> {
+async function getWithLimit<T = unknown>(
+  url: string,
+  endpoint?: string,
+  identifier?: string
+): Promise<T> {
+  // Check for mock data first
+  if (isMockingEnabled() && endpoint && identifier) {
+    const mockData = await loadMockData<T>(endpoint, identifier);
+    if (mockData) return mockData;
+  }
+
+  // Make real API call
   const res = await crAxios.get<T>(url);
-  return res.data; // only the payload
+  const data = res.data;
+
+  // Log response in dev mode
+  if (endpoint && identifier) {
+    await logApiResponse(endpoint, identifier, data);
+  }
+
+  return data;
 }
 
 // Bottleneck wrap
-export const limitedGet = limiter.wrap(getWithLimit) as <T>(url: string) => Promise<T>;
+export const limitedGet = limiter.wrap(getWithLimit) as <T>(
+  url: string,
+  endpoint?: string,
+  identifier?: string
+) => Promise<T>;

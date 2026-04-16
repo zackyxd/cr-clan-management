@@ -8,7 +8,7 @@ const command: Command = {
   data: new SlashCommandBuilder()
     .setName('delete-clan')
     .setDescription('(Management) Unlink a clan from your server')
-    .addStringOption((option) => option.setName('clantag-abbrev').setDescription('#ABC123').setRequired(true))
+    .addStringOption((option) => option.setName('clantag').setDescription('#ABC123').setRequired(true))
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const guild = interaction.guild;
@@ -25,26 +25,26 @@ const command: Command = {
     });
     if (!allowed) return;
 
-    const clantagAbbrev = interaction.options.getString('clantag-abbrev') as string;
+    const clantag = interaction.options.getString('clantag') as string;
 
-    const normalizedTag = normalizeTag(clantagAbbrev);
+    const normalizedTag = normalizeTag(clantag);
     const client = await pool.connect();
     await client.query('BEGIN');
     try {
       const result = await client.query(
         `DELETE FROM clans WHERE guild_id = $1 AND (clantag = $2 OR abbreviation = LOWER($3))`,
-        [guild.id, normalizedTag, clantagAbbrev],
+        [guild.id, normalizedTag, clantag],
       );
       if (result.rowCount === 0) {
         await interaction.editReply({
-          content: `❌ No clan found with tag or abbreviation **${clantagAbbrev}**.`,
+          content: `❌ No clan found with tag or abbreviation **${clantag}**.`,
         });
         await client.query('ROLLBACK');
         return;
       }
       await client.query('COMMIT');
       await interaction.editReply({
-        content: `✅ Clan with tag or abbreviation **${clantagAbbrev}** has been unlinked.`,
+        content: `✅ Clan with tag or abbreviation **${clantag}** has been unlinked.`,
       });
     } catch (error) {
       await client.query('ROLLBACK');
