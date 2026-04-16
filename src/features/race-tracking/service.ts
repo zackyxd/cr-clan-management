@@ -10,7 +10,7 @@ import { CR_API, getCurrentRiverRace, getRiverRaceLog, isFetchError } from '../.
 import type { CurrentRiverRace, CurrentRiverRaceLogResult } from '../../api/CR_API.js';
 import type { RaceAttacksData, RaceHistoryData, RaceStatsData, RaceUpdateResult, RiverRace } from './types.js';
 
-const periodTypeMap: { [key: string]: string } = {
+export const periodTypeMap: { [key: string]: string } = {
   training: 'Training',
   warDay: 'War Day',
   colosseum: 'Colosseum',
@@ -23,34 +23,154 @@ const periodTypeMap: { [key: string]: string } = {
  * Returns list of participants with attacks remaining, flagging cross-clan attackers.
  *
  * @param guildId - Discord guild ID
- * @param clantag - Clan tag (normalized with #)
+ * @param raceData - Current river race data from API
+ * @param seasonId - Season ID
+ * @param warWeek - War week number
  * @returns Processed attack data ready for display
  */
-export async function getRaceAttacks(guildId: string, clantag: string): Promise<RaceAttacksData | null> {
-  // TODO: Implement
-  // 1. ALWAYS fetch fresh data for requested clan (getCurrentRiverRace)
-  // 2. Update race record and participant tracking
-  // 3. Query participants with cross-clan totals computed via SQL:
-  //    SELECT
-  //      rpt.player_tag,
-  //      rpt.decks_used_today as decks_in_this_clan,
-  //      -- Compute total across all guild races (uses recent cache for other clans)
-  //      (SELECT COALESCE(SUM(rpt2.decks_used_today), 0)
-  //       FROM race_participant_tracking rpt2
-  //       JOIN river_races rr2 ON rpt2.race_id = rr2.race_id
-  //       WHERE rpt2.playertag = rpt.playertag
-  //         AND rr2.guild_id = $1
-  //         AND rr2.end_time IS NULL
-  //         AND rr2.current_day > 0
-  //         AND rr2.last_check > NOW() - INTERVAL '5 minutes'
-  //      ) as total_decks_today_all_clans
-  //    FROM race_participant_tracking rpt
-  //    WHERE rpt.race_id = $2
-  // 4. Calculate attacks remaining (4 - total_decks_today_all_clans)
-  // 5. Get linked Discord users
-  // 6. Return formatted data
+export async function getRaceAttacks(
+  guildId: string,
+  raceData: CurrentRiverRace,
+  seasonId: number | null,
+  warWeek: number,
+): Promise<RaceAttacksData | null> {
+  const clanData = await CR_API.getClan(raceData.clan.tag);
+  if (isFetchError(clanData)) {
+    console.error(`[getRaceAttacks] Failed to fetch clan data for ${raceData.clan.tag}:`, clanData.reason);
+    return null;
+  }
 
-  throw new Error('Not implemented yet');
+  const members = clanData.memberList;
+  if (!members || members.length === 0) {
+    console.log(`[getRaceAttacks] No members found for clan ${raceData.clan.tag}`);
+    return null;
+  }
+
+  const memberTags = new Set(members.map((m) => m.tag));
+  const activeMembers = raceData.clan.participants.filter((p) => memberTags.has(p.tag) || p.decksUsedToday > 0);
+
+  if (activeMembers.length === 0) {
+    return null;
+  }
+
+  // Get cross-clan attack totals from DB
+  const playerTags = activeMembers.map((m) => m.tag);
+
+  const attacksQuery = await pool.query(
+    `
+    SELECT 
+      rpt.playertag,
+      rpt.player_name,
+      rpt.clans_attacked_in,
+      rpt.clan_names_attacked_in,
+      u.is_replace_me,
+      u.is_attacking_late,
+      up.discord_id,
+      -- Compute total across all guild clans
+      (SELECT COALESCE(SUM(rpt2.decks_used_today), 0)
+       FROM race_participant_tracking rpt2
+       JOIN river_races rr2 ON rpt2.race_id = rr2.race_id
+       WHERE rpt2.playertag = rpt.playertag
+         AND rr2.guild_id = $1
+         AND rr2.current_week = (SELECT current_week FROM river_races WHERE clantag = $2 AND guild_id = $1 LIMIT 1)
+      ) as total_attacks
+    FROM race_participant_tracking rpt
+    JOIN river_races rr ON rpt.race_id = rr.race_id
+    LEFT JOIN user_playertags up ON rpt.playertag = up.playertag AND up.guild_id = $1
+    LEFT JOIN users u ON up.discord_id = u.discord_id AND u.guild_id = $1
+    WHERE rr.guild_id = $1
+      AND rr.clantag = $2
+      AND rpt.playertag = ANY($3)
+  `,
+    [guildId, raceData.clan.tag, playerTags],
+  );
+
+  // Build map of player attack data
+  const playerAttackMap = new Map<
+    string,
+    {
+      totalDecks: number;
+      clansAttackedIn: string[];
+      clanNamesAttackedIn: string[];
+      isReplacementPlayer: boolean;
+      isAttackingLate: boolean;
+      discordId: string | null;
+    }
+  >();
+  for (const row of attacksQuery.rows) {
+    playerAttackMap.set(row.playertag, {
+      totalDecks: row.total_attacks,
+      clansAttackedIn: row.clans_attacked_in || [],
+      clanNamesAttackedIn: row.clan_names_attacked_in || [],
+      isReplacementPlayer: row.is_replace_me || false,
+      isAttackingLate: row.is_attacking_late || false,
+      discordId: row.discord_id || null,
+    });
+  }
+
+  // Include ALL active members (those who haven't done 4 attacks OR split attacks across clans)
+  const playersNeedingAttacks = activeMembers
+    .map((member) => {
+      const attackData = playerAttackMap.get(member.tag);
+      const totalAttacks = attackData?.totalDecks || 0;
+      const clanTagsAttacked = attackData?.clansAttackedIn || [];
+      const clansAttackedNames = attackData?.clanNamesAttackedIn || [];
+      const isInClan = memberTags.has(member.tag);
+
+      // Check if they're in this clan but attacked elsewhere
+      const hasAttackedElsewhere = isInClan && member.decksUsedToday === 0 && clansAttackedNames.length > 0;
+
+      return {
+        playertag: member.tag,
+        playerName: member.name,
+        attacksUsedToday: member.decksUsedToday,
+        attacksRemaining: 4 - totalAttacks,
+        fame: member.fame,
+        totalDecksUsed: member.decksUsed,
+        clansAttackedIn: clansAttackedNames,
+        isSplitAttacker: clanTagsAttacked.length > 1,
+        isInClan,
+        hasAttackedElsewhere,
+        isReplacementPlayer: attackData?.isReplacementPlayer || false,
+        isAttackingLate: attackData?.isAttackingLate || false,
+        discordUserId: attackData?.discordId || undefined,
+      };
+    })
+    .filter((p) => p.attacksRemaining > 0 || p.isSplitAttacker || p.hasAttackedElsewhere); // Show if incomplete OR split attacker OR wrong clan
+
+  // Sort by attacks remaining (most needed first), then alphabetically by name
+  const participants = playersNeedingAttacks.sort((a, b) => {
+    if (b.attacksRemaining !== a.attacksRemaining) {
+      return b.attacksRemaining - a.attacksRemaining;
+    }
+    return a.playerName.localeCompare(b.playerName);
+  });
+
+  // Calculate totals
+  const totalDecksUsed = raceData.clan.participants.reduce((sum, p) => sum + p.decksUsed, 0);
+  const totalDecksUsedToday = raceData.clan.participants.reduce((sum, p) => sum + p.decksUsedToday, 0);
+  const totalAttacksRemaining = 200 - totalDecksUsedToday;
+
+  // Count unique participants who attacked today (max 50)
+  const participantsWhoAttacked = raceData.clan.participants.filter((p) => p.decksUsedToday > 0).length;
+  const availableAttackers = 50 - participantsWhoAttacked;
+
+  return {
+    clanInfo: {
+      clantag: raceData.clan.tag,
+      name: raceData.clan.name,
+      fame: raceData.clan.fame,
+      totalDecksUsed,
+      totalDecksUsedToday,
+    },
+    participants,
+    totalAttacksRemaining,
+    availableAttackers,
+    raceDay: getWarDay(raceData),
+    raceState: raceData.periodType,
+    seasonId,
+    warWeek,
+  };
 }
 
 /**
@@ -359,21 +479,25 @@ export async function updateParticipantTracking(
       `
       SELECT
         rpt.playertag,
-        array_agg(DISTINCT rpt.clantag) as clans
+        array_agg(DISTINCT rpt.clantag) as clans,
+        array_agg(DISTINCT rpt.clan_name) as clan_names
       FROM race_participant_tracking rpt
       JOIN river_Races rr on rpt.race_id = rr.race_id
       WHERE rr.guild_id = $1
         AND rr.current_week = (SELECT current_week FROM river_races WHERE race_id = $2)
         AND rpt.playertag = ANY($3)
-        AND rpt.decks_used > 0
+        AND rpt.decks_used_today > 0
       GROUP BY rpt.playertag
     `,
       [guildId, raceId, activeTags],
     );
 
-    const playerClanMap = new Map<string, string[]>();
+    const playerClanMap = new Map<string, { tags: string[]; names: string[] }>();
     for (const row of clanAttackMap.rows) {
-      playerClanMap.set(row.playertag, row.clans);
+      playerClanMap.set(row.playertag, {
+        tags: row.clans || [],
+        names: row.clan_names || [],
+      });
     }
 
     // Build bulk upset values (multi-row insert)
@@ -381,21 +505,38 @@ export async function updateParticipantTracking(
     const placeholders: string[] = [];
     let paramIndex = 1;
 
-    for (const p of participants) {
-      // Skip if player hasn't attacked at all (either today or in previous war days)
-      if (p.decksUsedToday === 0) continue;
+    // Get clan name from race data
+    const clanNameQuery = await client.query(`SELECT clan_name FROM river_races WHERE race_id = $1`, [raceId]);
+    const currentClanName = clanNameQuery.rows[0]?.clan_name || '';
 
-      // get clans this player attacked in, ensure current clan included
-      const clansAttacked = playerClanMap.get(p.tag) || [];
-      if (!clansAttacked.includes(clantag)) {
-        clansAttacked.push(clantag);
+    for (const p of participants) {
+      // get clans this player attacked in, ensure current clan included IF they attacked
+      const clanData = playerClanMap.get(p.tag) || { tags: [], names: [] };
+      const clansAttackedTags = [...clanData.tags];
+      const clansAttackedNames = [...clanData.names];
+
+      // Only add current clan to the list if they actually attacked here
+      if (p.decksUsedToday > 0 && !clansAttackedTags.includes(clantag)) {
+        clansAttackedTags.push(clantag);
+        clansAttackedNames.push(currentClanName);
       }
 
-      values.push(raceId, p.tag, p.name, clantag, p.fame, p.decksUsed, p.decksUsedToday, clansAttacked);
-      placeholders.push(
-        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7})`,
+      values.push(
+        raceId,
+        p.tag,
+        p.name,
+        clantag,
+        currentClanName,
+        p.fame,
+        p.decksUsed,
+        p.decksUsedToday,
+        clansAttackedTags,
+        clansAttackedNames,
       );
-      paramIndex += 8;
+      placeholders.push(
+        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}, $${paramIndex + 9})`,
+      );
+      paramIndex += 10;
     }
 
     if (placeholders.length > 0) {
@@ -403,15 +544,17 @@ export async function updateParticipantTracking(
       await client.query(
         `
         INSERT into race_participant_tracking
-          (race_id, playertag, player_name, clantag, fame, decks_used, decks_used_today, clans_attacked_in)
+          (race_id, playertag, player_name, clantag, clan_name, fame, decks_used, decks_used_today, clans_attacked_in, clan_names_attacked_in)
         VALUES ${placeholders.join(', ')}
         ON CONFLICT (race_id, playertag, clantag)
         DO UPDATE SET 
           player_name = EXCLUDED.player_name,
+          clan_name = EXCLUDED.clan_name,
           fame = EXCLUDED.fame,
           decks_used = EXCLUDED.decks_used,
           decks_used_today = EXCLUDED.decks_used_today,
           clans_attacked_in = EXCLUDED.clans_attacked_in,
+          clan_names_attacked_in = EXCLUDED.clan_names_attacked_in,
           last_updated = NOW()
         `,
         values,
@@ -437,18 +580,18 @@ export async function updateParticipantTracking(
  */
 export async function getLinkedPlayers(guildId: string, playerTags: string[]): Promise<Map<string, string>> {
   // TODO: Implement
-  // Join users_playertags table to get discord user_ids
+  // Join user_playertags table to get discord user_ids
   // Return as Map for easy lookup
 
   const linkedPlayers = new Map<string, string>();
 
   const result = await pool.query(
-    `SELECT playertag, user_id FROM users_playertags WHERE guild_id = $1 AND playertag = ANY($2)`,
+    `SELECT playertag, discord_id FROM user_playertags WHERE guild_id = $1 AND playertag = ANY($2)`,
     [guildId, playerTags],
   );
 
   for (const row of result.rows) {
-    linkedPlayers.set(row.playertag, row.user_id);
+    linkedPlayers.set(row.playertag, row.discord_id);
   }
 
   return linkedPlayers;

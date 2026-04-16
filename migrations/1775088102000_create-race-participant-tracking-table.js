@@ -22,10 +22,12 @@ export const up = (pgm) => {
       playertag: { type: 'varchar(20)', notNull: true },
       player_name: { type: 'varchar(50)', notNull: true },
       clantag: { type: 'varchar(20)', notNull: true },
+      clan_name: { type: 'varchar(50)' },
       fame: { type: 'integer', default: 0 },
       decks_used: { type: 'integer', default: 0 },
       decks_used_today: { type: 'integer', default: 0 },
       clans_attacked_in: { type: 'text[]', default: pgm.func("'{}'::text[]") },
+      clan_names_attacked_in: { type: 'text[]', default: pgm.func("'{}'::text[]") },
       last_updated: { type: 'timestamptz', notNull: true, default: pgm.func('current_timestamp') },
     },
     {

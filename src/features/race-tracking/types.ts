@@ -52,10 +52,12 @@ export interface RaceParticipant {
   player_tag: string;
   player_name: string;
   clan_tag: string;
+  clan_name: string;
   fame: number;
   decks_used: number; // Cumulative total for entire race
   decks_used_today: number; // Today's attacks only (resets on rollover)
-  clans_attacked_in: string[]; // Clans where they have decks_used >= 1
+  clans_attacked_in: string[]; // Clan tags where they have decks_used >= 1
+  clan_names_attacked_in: string[]; // Clan names where they have decks_used >= 1
   last_updated: Date;
 }
 
@@ -81,7 +83,7 @@ export interface RaceNudge {
 // Service layer return types
 export interface RaceAttacksData {
   clanInfo: {
-    tag: string;
+    clantag: string;
     name: string;
     fame: number;
     totalDecksUsed: number;
@@ -89,20 +91,27 @@ export interface RaceAttacksData {
   };
   participants: ParticipantWithAttacks[];
   totalAttacksRemaining: number;
+  availableAttackers: number; // 50 - number who attacked
   raceDay: number;
   raceState: string;
+  seasonId: number | null;
+  warWeek: number;
 }
 
 export interface ParticipantWithAttacks {
-  playerTag: string;
+  playertag: string;
   playerName: string;
   attacksUsedToday: number;
   attacksRemaining: number;
   fame: number;
   totalDecksUsed: number;
-  clansAttackedIn: string[]; // Array of clan tags if split attacks
+  clansAttackedIn: string[]; // Array of clan names if split attacks
   isSplitAttacker: boolean; // True if attacked in multiple clans
-  discordUserId?: string; // If player is linked
+  discordUserId?: string; // If player is linked  isReplacementPlayer?: boolean; // Marked as "replace me"
+  isAttackingLate?: boolean; // Marked as "attacking late"}
+  isReplacementPlayer?: boolean; // Marked as "replace me"
+  isInClan: boolean; // True if player is currently in the clan (based on users table)
+  hasAttackedElsewhere: boolean; // True if player has attacksUsedToday > 0 in another clan
 }
 
 export type RaceStatsData = TrainingStatsData | WarDayStatsData | ColosseumStatsData;

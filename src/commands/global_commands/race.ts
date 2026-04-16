@@ -55,10 +55,9 @@ const command: Command = {
         .setColor(BOTCOLOR)
         .setURL(`https://cwstats.com/clan/${normalizedTag.substring(1)}/race`)
         .setAuthor({
-          name: `W${warWeek} D${warDay} S${seasonId || '---'}`,
+          name: `Season ${seasonId || '---'} | Week ${warWeek} | Day ${warDay}`,
         });
       let description = '';
-      console.log(stats.clans);
 
       stats.clans.forEach((clan, index) => {
         const escapedName = escapeMarkdown(clan.name);
@@ -82,7 +81,7 @@ const command: Command = {
         .setTitle(`War Day`)
         .setColor(BOTCOLOR)
         .setURL(`https://cwstats.com/clan/${normalizedTag.substring(1)}/race`)
-        .setAuthor({ name: `W${warWeek} D${warDay} S${seasonId || '---'}` });
+        .setAuthor({ name: `Season ${seasonId || '---'} | Week ${warWeek} | Day ${warDay}` });
       let description = '';
       stats.clans.forEach((clan, index) => {
         const escapedName = escapeMarkdown(clan.name);
@@ -112,7 +111,7 @@ const command: Command = {
         .setTitle('Colosseum')
         .setColor(BOTCOLOR)
         .setURL(`https://cwstats.com/clan/${normalizedTag.substring(1)}/race`)
-        .setAuthor({ name: `W${warWeek} D${warDay} S${seasonId || '---'}` });
+        .setAuthor({ name: `Season ${seasonId || '---'} | Week ${warWeek} | Day ${warDay}` });
       let description = '';
       stats.clans.forEach((clan, index) => {
         const escapedName = escapeMarkdown(clan.name);
