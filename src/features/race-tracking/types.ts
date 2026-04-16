@@ -132,6 +132,8 @@ interface WarDayStatsData {
     boatPoints: number;
     participantCount: number;
     attacksUsedToday: number;
+    projectedFame: number;
+    projectedRank: string;
   }>;
 }
 
@@ -146,6 +148,8 @@ interface ColosseumStatsData {
     fame: number;
     participantCount: number;
     attacksUsedToday: number;
+    projectedFame: number;
+    projectedRank: string;
   }>;
 }
 

@@ -94,44 +94,105 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
   }
 
   if (periodTypeMap[data.periodType] === 'Colosseum') {
-    // TODO rank off projected? Calculate here or in /race?
-    return {
-      type: 'colosseum',
-      day: getWarDay(data),
-      clans: data.clans.map((clan) => ({
+    const warDay = getWarDay(data);
+
+    // Calculate projected fame for each clan and sort by it
+    const clansWithProjected = data.clans.map((clan) => {
+      const attacksUsedToday = clan.participants.reduce((sum, p) => sum + p.decksUsedToday, 0);
+
+      let totalDecksUsed = 0;
+      if (warDay !== 1) {
+        totalDecksUsed = warDay * 200 - 200;
+      }
+      const average = clan.fame / (attacksUsedToday + totalDecksUsed);
+      const projectedFameRaw =
+        clan.fame + Math.round(200 * (4 - warDay) * average) + Math.round((200 - attacksUsedToday) * average);
+      const projectedFame = Math.round(projectedFameRaw / 50) * 50;
+
+      return {
         clantag: clan.tag,
         name: clan.name,
         fame: clan.fame,
         participantCount: clan.participants.filter((p) => p.decksUsedToday > 0).length,
-        attacksUsedToday: clan.participants.reduce((sum, p) => sum + p.decksUsedToday, 0),
+        attacksUsedToday,
+        projectedFame,
+      };
+    });
+
+    // Sort by projected fame descending
+    const sorted = clansWithProjected.sort((a, b) => b.projectedFame - a.projectedFame);
+
+    // Add ranks
+    return {
+      type: 'colosseum',
+      day: warDay,
+      clans: sorted.map((clan, index) => ({
+        ...clan,
+        projectedRank: getOrdinal(index + 1),
       })),
     };
   }
 
   // War Day
-  const sorted = [...data.clans].sort(function (a, b) {
-    const fameA = a.periodPoints ?? 0;
-    const fameB = b.periodPoints ?? 0;
-    if (fameA === fameB) {
+  const warDay = getWarDay(data);
+
+  // Calculate projected fame for each clan
+  const clansWithProjected = data.clans.map((clan) => {
+    const attacksUsedToday = clan.participants.reduce((sum, p) => sum + p.decksUsedToday, 0);
+    const average = (clan.periodPoints ?? 0) / attacksUsedToday;
+    const projectedFameRaw = (clan.periodPoints ?? 0) + Math.round((200 - attacksUsedToday) * average);
+    const projectedFame = Math.round(projectedFameRaw / 50) * 50;
+
+    return {
+      clantag: clan.tag,
+      name: clan.name,
+      fame: clan.periodPoints ?? 0,
+      boatPoints: clan.fame,
+      participantCount: clan.participants.filter((p) => p.decksUsedToday > 0).length,
+      attacksUsedToday,
+      projectedFame,
+    };
+  });
+
+  // Sort by projected fame descending for ranking
+  const sortedByProjected = [...clansWithProjected].sort((a, b) => b.projectedFame - a.projectedFame);
+
+  // Also sort by current fame for current rank
+  const sortedByFame = [...clansWithProjected].sort((a, b) => {
+    if (a.fame === b.fame) {
       return -1; // A comes first
     }
-    return fameB - fameA; // Descending order
+    return b.fame - a.fame; // Descending order
   });
 
   return {
     type: 'warDay',
-    day: getWarDay(data),
+    day: warDay,
     week: getWarWeek(data),
-    clans: sorted.map((clan, index) => ({
-      clantag: clan.tag,
-      name: clan.name,
-      rank: index + 1,
-      fame: clan.periodPoints ?? 0,
-      boatPoints: clan.fame,
-      participantCount: clan.participants.filter((p) => p.decksUsedToday > 0).length,
-      attacksUsedToday: clan.participants.reduce((sum, p) => sum + p.decksUsedToday, 0),
-    })),
+    clans: sortedByFame.map((clan, index) => {
+      // Find projected rank for this clan
+      const projectedRankNum = sortedByProjected.findIndex((c) => c.clantag === clan.clantag) + 1;
+      return {
+        ...clan,
+        rank: index + 1,
+        projectedRank: getOrdinal(projectedRankNum),
+      };
+    }),
   };
+}
+
+function getOrdinal(num: number): string {
+  const suffixes = ['th', 'st', 'nd', 'rd'];
+  const value = num % 100;
+
+  // Handle special cases for 11th, 12th, 13th
+  if (value >= 11 && value <= 13) {
+    return num + 'th';
+  }
+
+  // Get the last digit and use appropriate suffix
+  const lastDigit = num % 10;
+  return num + (suffixes[lastDigit] || 'th');
 }
 
 /**
@@ -282,9 +343,6 @@ export async function updateParticipantTracking(
   //       - Do NOT compute or store total_decks_today_all_clans (computed dynamically)
   // 2. Handle players who left clan (remove from tracking or mark inactive)
 
-  console.log(`[updateParticipantTracking] Called for clan ${clantag}, raceId ${raceId}`);
-  console.log(`[updateParticipantTracking] Total participants received: ${participants.length}`);
-
   if (!participants || participants.length === 0) {
     console.log('No participants to track for', clantag);
     return;
@@ -296,7 +354,6 @@ export async function updateParticipantTracking(
 
     // Get active tags
     const activeTags = participants.map((p) => p.tag);
-    console.log(`[updateParticipantTracking] Active tags: ${activeTags.length}`, activeTags.slice(0, 5));
 
     const clanAttackMap = await client.query(
       `
@@ -314,9 +371,6 @@ export async function updateParticipantTracking(
       [guildId, raceId, activeTags],
     );
 
-    console.log(`[updateParticipantTracking] Clan attack map rows: ${clanAttackMap.rows.length}`);
-    console.log('[updateParticipantTracking] Clan attack map:', clanAttackMap.rows);
-
     const playerClanMap = new Map<string, string[]>();
     for (const row of clanAttackMap.rows) {
       playerClanMap.set(row.playertag, row.clans);
@@ -328,10 +382,6 @@ export async function updateParticipantTracking(
     let paramIndex = 1;
 
     for (const p of participants) {
-      console.log(
-        `[updateParticipantTracking] Processing ${p.name} (${p.tag}): decksUsed=${p.decksUsed}, decksUsedToday=${p.decksUsedToday}`,
-      );
-
       // Skip if player hasn't attacked at all (either today or in previous war days)
       if (p.decksUsedToday === 0) continue;
 
@@ -348,8 +398,6 @@ export async function updateParticipantTracking(
       paramIndex += 8;
     }
 
-    console.log(`[updateParticipantTracking] Placeholders count: ${placeholders.length}`);
-    console.log(`[updateParticipantTracking] Values array length: ${values.length}`);
     if (placeholders.length > 0) {
       // Single multi-row upsert
       await client.query(
@@ -441,7 +489,6 @@ function getWarWeek(raceData: CurrentRiverRace): number {
 }
 
 function getWarDay(raceData: CurrentRiverRace): number {
-  console.log(raceData.periodType, raceData.periodIndex);
   switch (raceData.periodType) {
     case 'training':
       return (raceData.periodIndex % 7) + 1;

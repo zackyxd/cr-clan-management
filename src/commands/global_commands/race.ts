@@ -95,10 +95,8 @@ const command: Command = {
         }
         // TODO emoji
         const average: string = (clan.fame / clan.attacksUsedToday).toFixed(2);
-        const projectedFameRaw = clan.fame + Math.round((200 - clan.attacksUsedToday) * Number(average));
-        const projectedFame = Math.round(projectedFameRaw / 50) * 50;
         description += `:fame: ${clan.fame.toLocaleString()}\n`;
-        description += `:projected: ${projectedFame.toLocaleString()}\n`;
+        description += `:projected: ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
         description += `:attacksLeft: ${200 - clan.attacksUsedToday}\n`;
         description += `:average: ${average ? average : '-1'}\n\n`;
       });
@@ -126,18 +124,9 @@ const command: Command = {
           description += `${index + 1}. **[${escapedName}](<https://www.cwstats.com/clan/${clantag}/log>)**\n`;
         }
 
-        let totalDecksUsed: number = 0;
-        if (warDay !== 1) {
-          totalDecksUsed = warDay * 200 - 200;
-        }
-        const average: string = (clan.fame / (clan.attacksUsedToday + totalDecksUsed)).toFixed(2);
-        const projectedFameRaw =
-          clan.fame +
-          Math.round(200 * (4 - warDay) * Number(average)) +
-          Math.round((200 - clan.attacksUsedToday) * Number(average));
-        const projectedFame = Math.round(projectedFameRaw / 50) * 50;
+        const average: string = (clan.fame / clan.attacksUsedToday).toFixed(2);
         description += `:fame: ${clan.fame.toLocaleString()}\n`;
-        description += `:projected: ${projectedFame.toLocaleString()}\n`;
+        description += `:projected: ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
         description += `:attacksLeft: ${200 - clan.attacksUsedToday}\n`;
         description += `:average: ${average ? average : '-1'}\n\n`;
       });
