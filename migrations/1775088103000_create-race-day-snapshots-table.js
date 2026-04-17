@@ -21,7 +21,7 @@ export const up = (pgm) => {
       },
       race_day: { type: 'integer', notNull: true },
       snapshot_time: { type: 'timestamptz', notNull: true, default: pgm.func('current_timestamp') },
-      snapshot_data: { type: 'jsonb', notNull: true },
+      snapshot_data: { type: 'jsonb', notNull: true }, // Contains: rawApiData (CurrentRiverRace) + embedData (pre-computed attacks/race display)
     },
     {
       constraints: {

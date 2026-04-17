@@ -66,13 +66,14 @@ export async function getRaceAttacks(
       u.is_replace_me,
       u.is_attacking_late,
       up.discord_id,
-      -- Compute total across all guild clans
+      -- Compute total across all guild clans FOR CURRENT DAY ONLY
       (SELECT COALESCE(SUM(rpt2.decks_used_today), 0)
        FROM race_participant_tracking rpt2
        JOIN river_races rr2 ON rpt2.race_id = rr2.race_id
        WHERE rpt2.playertag = rpt.playertag
          AND rr2.guild_id = $1
          AND rr2.current_week = (SELECT current_week FROM river_races WHERE clantag = $2 AND guild_id = $1 LIMIT 1)
+         AND rpt2.current_day = (SELECT current_day FROM river_races WHERE clantag = $2 AND guild_id = $1 LIMIT 1)
       ) as total_attacks
     FROM race_participant_tracking rpt
     JOIN river_races rr ON rpt.race_id = rr.race_id
@@ -81,6 +82,7 @@ export async function getRaceAttacks(
     WHERE rr.guild_id = $1
       AND rr.clantag = $2
       AND rpt.playertag = ANY($3)
+      AND rpt.current_day = (SELECT current_day FROM river_races WHERE clantag = $2 AND guild_id = $1 LIMIT 1)
   `,
     [guildId, raceData.clan.tag, playerTags],
   );
@@ -113,7 +115,7 @@ export async function getRaceAttacks(
     .map((member) => {
       const attackData = playerAttackMap.get(member.tag);
       const totalAttacks = attackData?.totalDecks || 0;
-      const clanTagsAttacked = attackData?.clansAttackedIn || [];
+      const clantagsAttacked = attackData?.clansAttackedIn || [];
       const clansAttackedNames = attackData?.clanNamesAttackedIn || [];
       const isInClan = memberTags.has(member.tag);
 
@@ -128,7 +130,7 @@ export async function getRaceAttacks(
         fame: member.fame,
         totalDecksUsed: member.decksUsed,
         clansAttackedIn: clansAttackedNames,
-        isSplitAttacker: clanTagsAttacked.length > 1,
+        isSplitAttacker: clantagsAttacked.length > 1,
         isInClan,
         hasAttackedElsewhere,
         isReplacementPlayer: attackData?.isReplacementPlayer || false,
@@ -316,6 +318,158 @@ function getOrdinal(num: number): string {
 }
 
 /**
+ * Create a snapshot of the current race day.
+ * Stores both raw API data and computed embed data for display.
+ *
+ * @param raceId - Race ID
+ * @param guildId - Discord guild ID
+ * @param raceData - Raw API response from getCurrentRiverRace
+ * @param seasonId - Season ID (nullable)
+ * @param warWeek - War week number
+ * @param day - Race day to snapshot
+ * @returns True if snapshot created successfully
+ */
+export async function createDaySnapshot(
+  raceId: number,
+  guildId: string,
+  raceData: CurrentRiverRace,
+  seasonId: number | null,
+  warWeek: number,
+  day: number,
+): Promise<boolean> {
+  try {
+    if (!raceData) {
+      console.log(`[Snapshot] No race data available to create snapshot for race ${raceId} day ${day}`);
+      return false;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Check if snapshot already exists
+      const existing = await client.query(
+        `SELECT snapshot_id FROM race_day_snapshots WHERE race_id = $1 AND race_day = $2`,
+        [raceId, day],
+      );
+
+      if (existing.rows.length > 0) {
+        console.log(`[Snapshot] Snapshot already exists for race ${raceId} day ${day}`);
+        await client.query('ROLLBACK');
+        return false;
+      }
+
+      // Get the attacks data (what /attacks would show)
+      const attacksData = await getRaceAttacks(guildId, raceData, seasonId, warWeek);
+      if (!attacksData) {
+        console.error(`[Snapshot] Failed to get race attacks data for race ${raceId} day ${day}`);
+        await client.query('ROLLBACK');
+        return false;
+      }
+
+      const raceStatsData = await getRaceStats(guildId, raceData);
+      if (!raceStatsData) {
+        console.error(`[Snapshot] Failed to get race stats data for race ${raceId} day ${day}`);
+        await client.query('ROLLBACK');
+        return false;
+      }
+
+      // Group participants by attacks remaining (same as /attacks command)
+      const grouped = new Map<number, typeof attacksData.participants>();
+      for (const p of attacksData.participants) {
+        const key = p.attacksRemaining;
+        if (!grouped.has(key)) {
+          grouped.set(key, []);
+        }
+        grouped.get(key)!.push(p);
+      }
+
+      // Build groups array for snapshot
+      const groups = Array.from(grouped.entries())
+        .sort((a, b) => b[0] - a[0]) // Sort by attacks remaining descending
+        .map(([attacksRemaining, players]) => ({
+          attacksRemaining,
+          count: players.length,
+          players: players
+            .sort((a, b) => a.playerName.localeCompare(b.playerName))
+            .map((player) => {
+              const emojis: string[] = [];
+              if (player.isSplitAttacker) emojis.push('☠️');
+              if (player.hasAttackedElsewhere) emojis.push('🚫');
+              if (player.isReplacementPlayer) emojis.push('⚠️');
+              if (player.isAttackingLate) emojis.push('⏰');
+              if (!player.isInClan) emojis.push('❌');
+
+              return {
+                name: player.playerName,
+                emojis,
+                clansAttackedIn:
+                  player.clansAttackedIn.length > 1 || player.hasAttackedElsewhere ? player.clansAttackedIn : undefined,
+              };
+            }),
+        }));
+
+      // Build legend (only items that are present)
+      const legend: string[] = [];
+      if (attacksData.participants.some((p) => p.isSplitAttacker)) legend.push('☠️ Split Attacker');
+      if (attacksData.participants.some((p) => p.hasAttackedElsewhere)) legend.push('🚫 Do Not Attack');
+      if (attacksData.participants.some((p) => p.isReplacementPlayer)) legend.push('⚠️ Replace Me');
+      if (attacksData.participants.some((p) => p.isAttackingLate)) legend.push('⏰ Attacking Late');
+      if (attacksData.participants.some((p) => !p.isInClan)) legend.push('❌ Left Clan');
+
+      console.log(raceStatsData);
+      // Build complete snapshot data (raw + computed)
+      const snapshotData = {
+        rawApiData: raceData, // Store raw API response
+        embedData: {
+          // Pre-computed embed data for fast display
+          attacks: {
+            clanName: attacksData.clanInfo.name,
+            clantag: attacksData.clanInfo.clantag,
+            seasonId: attacksData.seasonId,
+            warWeek: attacksData.warWeek,
+            raceDay: attacksData.raceDay,
+            availableAttackers: attacksData.availableAttackers,
+            totalAttacksRemaining: attacksData.totalAttacksRemaining,
+            groups,
+            legend,
+          },
+          // TODO: Add race stats data when /race is implemented
+          race: {
+            type: raceStatsData.type,
+            day: raceStatsData.day,
+            week: raceStatsData.week,
+            clans: raceStatsData.clans,
+          },
+        },
+      };
+
+      // Store snapshot
+      await client.query(
+        `
+        INSERT INTO race_day_snapshots
+        (race_id, race_day, snapshot_time, snapshot_data)
+        VALUES ($1, $2, NOW(), $3)
+      `,
+        [raceId, day, JSON.stringify(snapshotData)],
+      );
+
+      await client.query('COMMIT');
+      console.log(`[Snapshot] Created snapshot for race ${raceId} day ${day} with ${groups.length} groups`);
+      return true;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error(`[Snapshot] Error creating snapshot:`, error);
+    return false;
+  }
+}
+
+/**
  * Get historical race data for a specific day.
  *
  * @param guildId - Discord guild ID
@@ -381,6 +535,23 @@ export async function initializeOrUpdateRace(guildId: string, clantag: string): 
 
   if (raceRes.rows.length > 0) {
     raceId = raceRes.rows[0].race_id;
+
+    // Get the existing race data to detect rollover
+    const existingRace = await pool.query(`SELECT current_day, current_data FROM river_races WHERE race_id = $1`, [
+      raceId,
+    ]);
+
+    const oldDay = existingRace.rows[0]?.current_day || 0;
+    const oldRaceData = existingRace.rows[0]?.current_data;
+
+    // Detect day rollover using isNewWarDay function
+    if (oldRaceData && isNewWarDay(oldRaceData, raceData)) {
+      console.log(`[Rollover] Day rollover detected for ${clantag}: Day ${oldDay} → Day ${oldDay + 1}`);
+
+      // Create snapshot BEFORE updating to preserve old day's data
+      await createDaySnapshot(raceId, guildId, oldRaceData, seasonId, warWeek, oldDay);
+    }
+
     await pool.query(
       `
       UPDATE river_races
@@ -485,6 +656,7 @@ export async function updateParticipantTracking(
       JOIN river_Races rr on rpt.race_id = rr.race_id
       WHERE rr.guild_id = $1
         AND rr.current_week = (SELECT current_week FROM river_races WHERE race_id = $2)
+        AND rpt.current_day = (SELECT current_day FROM river_races WHERE race_id = $2)
         AND rpt.playertag = ANY($3)
         AND rpt.decks_used_today > 0
       GROUP BY rpt.playertag
@@ -506,8 +678,11 @@ export async function updateParticipantTracking(
     let paramIndex = 1;
 
     // Get clan name from race data
-    const clanNameQuery = await client.query(`SELECT clan_name FROM river_races WHERE race_id = $1`, [raceId]);
+    const clanNameQuery = await client.query(`SELECT clan_name, current_day FROM river_races WHERE race_id = $1`, [
+      raceId,
+    ]);
     const currentClanName = clanNameQuery.rows[0]?.clan_name || '';
+    const currentDay = clanNameQuery.rows[0]?.current_day || 0;
 
     for (const p of participants) {
       // get clans this player attacked in, ensure current clan included IF they attacked
@@ -527,6 +702,7 @@ export async function updateParticipantTracking(
         p.name,
         clantag,
         currentClanName,
+        currentDay,
         p.fame,
         p.decksUsed,
         p.decksUsedToday,
@@ -534,9 +710,9 @@ export async function updateParticipantTracking(
         clansAttackedNames,
       );
       placeholders.push(
-        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}, $${paramIndex + 9})`,
+        `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}, $${paramIndex + 9}, $${paramIndex + 10})`,
       );
-      paramIndex += 10;
+      paramIndex += 11;
     }
 
     if (placeholders.length > 0) {
@@ -544,12 +720,13 @@ export async function updateParticipantTracking(
       await client.query(
         `
         INSERT into race_participant_tracking
-          (race_id, playertag, player_name, clantag, clan_name, fame, decks_used, decks_used_today, clans_attacked_in, clan_names_attacked_in)
+          (race_id, playertag, player_name, clantag, clan_name, current_day, fame, decks_used, decks_used_today, clans_attacked_in, clan_names_attacked_in)
         VALUES ${placeholders.join(', ')}
         ON CONFLICT (race_id, playertag, clantag)
         DO UPDATE SET 
           player_name = EXCLUDED.player_name,
           clan_name = EXCLUDED.clan_name,
+          current_day = EXCLUDED.current_day,
           fame = EXCLUDED.fame,
           decks_used = EXCLUDED.decks_used,
           decks_used_today = EXCLUDED.decks_used_today,
@@ -638,4 +815,49 @@ function getWarDay(raceData: CurrentRiverRace): number {
     default:
       return (raceData.periodIndex % 7) - 2;
   }
+}
+
+/**
+ * Detect if a new war day has started by comparing previous and current race data.
+ *
+ * @param previousRaceData - Previous race data from database
+ * @param newRaceData - New race data from API
+ * @returns True if a new war day has started
+ */
+function isNewWarDay(previousRaceData: CurrentRiverRace, newRaceData: CurrentRiverRace): boolean {
+  // TODO: Implement day rollover detection logic
+  // Compare newRaceData vs previousRaceData to detect if day changed
+  // Consider: periodIndex changes, decksUsedToday resets, etc.
+  console.log('Checking for new war day...');
+
+  let oldAttacks = 0;
+  let newAttacks = 0;
+  for (const clan of previousRaceData.clans) {
+    oldAttacks += clan.participants.reduce((sum, p) => sum + p.decksUsedToday, 0);
+  }
+  for (const clan of newRaceData.clans) {
+    newAttacks += clan.participants.reduce((sum, p) => sum + p.decksUsedToday, 0);
+  }
+
+  if (newAttacks - oldAttacks === 0) {
+    // No change in attacks, check if periodIndex changed (handles edge case of no attacks for any clan)
+    if (newRaceData.periodIndex !== previousRaceData.periodIndex) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  return newAttacks < oldAttacks;
+}
+
+/**
+ * Test wrapper for rollover detection - exposed for testing purposes.
+ *
+ * @param oldData - Old race data (from fixture or DB)
+ * @param newData - New race data (from fixture or API)
+ * @returns Detection result
+ */
+export function testRolloverDetection(oldData: CurrentRiverRace, newData: CurrentRiverRace): boolean {
+  return isNewWarDay(oldData, newData);
 }

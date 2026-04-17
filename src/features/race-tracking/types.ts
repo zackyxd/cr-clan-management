@@ -53,6 +53,7 @@ export interface RaceParticipant {
   player_name: string;
   clan_tag: string;
   clan_name: string;
+  current_day: number; // Race day (0=training, 1-4=war days)
   fame: number;
   decks_used: number; // Cumulative total for entire race
   decks_used_today: number; // Today's attacks only (resets on rollover)
@@ -66,7 +67,48 @@ export interface RaceDaySnapshot {
   race_id: number;
   race_day: number;
   snapshot_time: Date;
-  snapshot_data: CurrentRiverRace;
+  snapshot_data: SnapshotData; // Complete snapshot with raw + computed data
+}
+
+// Complete snapshot data structure
+export interface SnapshotData {
+  rawApiData: any; // Raw CurrentRiverRace response for debugging/recomputation
+  embedData: SnapshotEmbedData; // Pre-computed embed display data
+}
+
+// Snapshot embed data - stores exactly what was displayed at rollover
+export interface SnapshotEmbedData {
+  // Attacks embed data (copy of what /attacks showed)
+  attacks: {
+    clanName: string;
+    clantag: string;
+    seasonId: number | null;
+    warWeek: number;
+    raceDay: number;
+    availableAttackers: number;
+    totalAttacksRemaining: number;
+    groups: Array<{
+      attacksRemaining: number;
+      count: number;
+      players: Array<{
+        name: string;
+        emojis: string[]; // Status indicators: '☠️', '🚫', '⚠️', '⏰', '❌'
+        clansAttackedIn?: string[]; // Only if split attacker or wrong clan
+      }>;
+    }>;
+    legend: string[]; // Footer legend items actually shown
+  };
+  // Race stats embed data (what /race showed) - optional depending on race type
+  race?: {
+    periodType: 'Training' | 'War Day' | 'Colosseum';
+    clanName: string;
+    totalFame: number;
+    totalDecksUsed: number;
+    totalDecksUsedToday: number;
+    rank?: number;
+    projectedRank?: string;
+    // Can add more fields as /race gets implemented
+  };
 }
 
 export interface RaceNudge {
@@ -105,13 +147,15 @@ export interface ParticipantWithAttacks {
   attacksRemaining: number;
   fame: number;
   totalDecksUsed: number;
+  clantag: string; // The clan where this participant entry was recorded
+  clanName: string; // The clan name where this participant entry was recorded
   clansAttackedIn: string[]; // Array of clan names if split attacks
   isSplitAttacker: boolean; // True if attacked in multiple clans
-  discordUserId?: string; // If player is linked  isReplacementPlayer?: boolean; // Marked as "replace me"
-  isAttackingLate?: boolean; // Marked as "attacking late"}
+  isInClan: boolean; // True if player is currently in the clan (based on clan member list)
+  hasAttackedElsewhere: boolean; // True if player is in clan but attacked in another clan
   isReplacementPlayer?: boolean; // Marked as "replace me"
-  isInClan: boolean; // True if player is currently in the clan (based on users table)
-  hasAttackedElsewhere: boolean; // True if player has attacksUsedToday > 0 in another clan
+  isAttackingLate?: boolean; // Marked as "attacking late"
+  discordUserId?: string; // If player is linked
 }
 
 export type RaceStatsData = TrainingStatsData | WarDayStatsData | ColosseumStatsData;
@@ -149,6 +193,7 @@ interface WarDayStatsData {
 interface ColosseumStatsData {
   type: 'colosseum';
   day: number;
+  week: number;
   clans: Array<{
     clantag: string;
     name: string;

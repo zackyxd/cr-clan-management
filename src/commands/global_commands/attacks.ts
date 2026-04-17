@@ -60,9 +60,6 @@ const command: Command = {
     let currentAttacksGroup = -1;
 
     for (const participant of filteredParticipants) {
-      if (participant.playertag === '#RUQPYRVP') {
-        console.log(participant);
-      }
       // Add section header when entering new attack count group
       if (participant.attacksRemaining !== currentAttacksGroup) {
         currentAttacksGroup = participant.attacksRemaining;
@@ -104,6 +101,7 @@ const command: Command = {
 
       // Show which clans they attacked in if they have attacks elsewhere
       if (participant.clansAttackedIn.length > 1 || participant.hasAttackedElsewhere) {
+        console.log(participant);
         line += ` — *Attacked in: ${participant.clansAttackedIn.join(' & ')}*`;
       }
 

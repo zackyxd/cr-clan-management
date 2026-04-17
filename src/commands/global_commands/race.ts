@@ -99,7 +99,6 @@ const command: Command = {
         description += `:attacksLeft: ${200 - clan.attacksUsedToday}\n`;
         description += `:average: ${average ? average : '-1'}\n\n`;
       });
-      console.log(description);
       embed.setDescription(description);
       await interaction.editReply({ embeds: [embed] });
       return;
@@ -129,7 +128,6 @@ const command: Command = {
         description += `:attacksLeft: ${200 - clan.attacksUsedToday}\n`;
         description += `:average: ${average ? average : '-1'}\n\n`;
       });
-      console.log(description);
       embed.setDescription(description);
       await interaction.editReply({ embeds: [embed] });
       return;

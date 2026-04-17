@@ -23,6 +23,7 @@ export const up = (pgm) => {
       player_name: { type: 'varchar(50)', notNull: true },
       clantag: { type: 'varchar(20)', notNull: true },
       clan_name: { type: 'varchar(50)' },
+      current_day: { type: 'integer', notNull: true, default: 0 }, // Race day (0=training, 1-4=war days)
       fame: { type: 'integer', default: 0 },
       decks_used: { type: 'integer', default: 0 },
       decks_used_today: { type: 'integer', default: 0 },
@@ -40,6 +41,7 @@ export const up = (pgm) => {
   pgm.createIndex('race_participant_tracking', 'race_id');
   pgm.createIndex('race_participant_tracking', 'playertag');
   pgm.createIndex('race_participant_tracking', ['race_id', 'decks_used_today']);
+  pgm.createIndex('race_participant_tracking', ['race_id', 'current_day']); // For day-specific queries and cleanup
 };
 
 /**
