@@ -18,10 +18,9 @@ export const up = (pgm) => {
     race_nudge_interval_hours: { type: 'integer', default: 2 },
     race_nudge_count_per_day: { type: 'integer', default: 4 },
     race_custom_nudge_message: { type: 'text', default: null },
-
-    // Auto-post settings
-    race_auto_post_enabled: { type: 'boolean', default: false },
-    race_auto_post_channel_id: { type: 'varchar(30)', default: null },
+    
+    // Auto-post end-of-day stats to staff channel
+    eod_stats_enabled: { type: 'boolean', default: false },
   });
 };
 
@@ -36,9 +35,7 @@ export const down = (pgm) => {
     'race_nudge_start_time',
     'race_nudge_interval_hours',
     'race_nudge_count_per_day',
-    'race_attack_warning_threshold',
     'race_custom_nudge_message',
-    'race_auto_post_enabled',
-    'race_auto_post_channel_id',
+    'eod_stats_enabled',
   ]);
 };

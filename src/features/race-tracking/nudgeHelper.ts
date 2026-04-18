@@ -1,0 +1,73 @@
+import { pool } from '../../db.js';
+import { DEFAULT_NUDGE_MESSAGE } from '../../config/constants.js';
+import logger from '../../logger.js';
+import { NewsChannel, TextChannel, type Client } from 'discord.js';
+
+/**
+ * Get the effective nudge message for a clan (custom or default)
+ */
+export async function getNudgeMessage(guildId: string, clantag: string, raceDay?: number): Promise<string> {
+  try {
+    const result = await pool.query(
+      `SELECT race_custom_nudge_message FROM clans WHERE guild_id = $1 AND clantag = $2`,
+      [guildId, clantag],
+    );
+
+    const customMessage = result.rows[0]?.race_custom_nudge_message;
+    const message = customMessage || DEFAULT_NUDGE_MESSAGE;
+
+    // Replace {clanName} placeholder with actual clan name
+    return message.replace(/{clanName}/g, String(raceDay || '?'));
+  } catch (error) {
+    logger.error('Error getting nudge message:', error);
+    return DEFAULT_NUDGE_MESSAGE.replace(/{clanName}/g, String(raceDay || '?'));
+  }
+}
+
+/**
+ * Reset custom nudge message to default on new war day
+ * Called when isNewWarDay() returns true
+ */
+export async function resetCustomNudgeMessageOnNewDay(client: Client, guildId: string, clantag: string): Promise<void> {
+  try {
+    // Check if clan had a custom message
+    const result = await pool.query(
+      `SELECT race_custom_nudge_message, clan_name, staff_channel_id 
+       FROM clans WHERE guild_id = $1 AND clantag = $2`,
+      [guildId, clantag],
+    );
+
+    const hadCustomMessage = result.rows[0]?.race_custom_nudge_message;
+    const clanName = result.rows[0]?.clan_name;
+    const staffChannelId = result.rows[0]?.staff_channel_id;
+
+    if (!hadCustomMessage) {
+      // No custom message to reset
+      return;
+    }
+
+    // Reset to default (null = use default)
+    await pool.query(`UPDATE clans SET race_custom_nudge_message = NULL WHERE guild_id = $1 AND clantag = $2`, [
+      guildId,
+      clantag,
+    ]);
+
+    // Send notification to staff channel
+    if (staffChannelId) {
+      try {
+        const channel = await client.channels.fetch(staffChannelId);
+        if (channel && (channel instanceof TextChannel || channel instanceof NewsChannel)) {
+          await channel.send({
+            content: `🔄 **${clanName}**: Custom nudge message has been reset to default for the new war day.\n\nTo set a new custom message, use \`/clan-settings\` → **Custom Nudge Message**.`,
+          });
+        }
+      } catch (channelError) {
+        logger.error('Error sending custom message reset notification:', channelError);
+      }
+    }
+
+    logger.info(`Reset custom nudge message for clan ${clantag} in guild ${guildId} on new war day`);
+  } catch (error) {
+    logger.error('Error resetting custom nudge message:', error);
+  }
+}

@@ -14,6 +14,8 @@ import {
   TextInputBuilder,
   TextInputStyle,
   RoleSelectMenuBuilder,
+  ChannelSelectMenuBuilder,
+  ChannelType,
   LabelBuilder,
   NewsChannel,
   TextChannel,
@@ -69,6 +71,18 @@ export class ClanSettingsInteractionRouter {
 
       case 'clanSettings_clan_role_id':
         await this.handleClanRoleModal(interaction);
+        break;
+
+      case 'race_nudge_channel_id':
+        await this.handleChannelModal(interaction, 'race_nudge_channel_id');
+        break;
+
+      case 'clanSettings_staff_channel_id':
+        await this.handleChannelModal(interaction, 'staff_channel_id');
+        break;
+
+      case 'clanSettings_race_custom_nudge_message':
+        await this.handleCustomNudgeMessageModal(interaction);
         break;
 
       default:
@@ -336,6 +350,10 @@ export class ClanSettingsInteractionRouter {
           await this.handleNudgeEnabledToggle(interaction, guildId, clantag, clanName);
           break;
 
+        case 'eod_stats_enabled':
+          await this.handleEodStatsEnabledToggle(interaction, guildId, clantag, clanName);
+          break;
+
         case 'invites_enabled':
           await this.handleInvitesEnabledToggle(interaction, guildId, clantag, clanName);
           break;
@@ -364,7 +382,12 @@ export class ClanSettingsInteractionRouter {
     clantag: string,
     clanName: string,
   ): Promise<void> {
-    const result = await clanSettingsService.toggleFamilyClan(guildId, clantag);
+    const result = await clanSettingsService.toggleFamilyClan(
+      interaction.client,
+      guildId,
+      clantag,
+      interaction.user.id,
+    );
 
     if (!result.success) {
       const embed = new EmbedBuilder()
@@ -386,11 +409,38 @@ export class ClanSettingsInteractionRouter {
     clantag: string,
     clanName: string,
   ): Promise<void> {
-    const result = await clanSettingsService.toggleNudgeEnabled(guildId, clantag);
+    const result = await clanSettingsService.toggleNudgeEnabled(
+      interaction.client,
+      guildId,
+      clantag,
+      interaction.user.id,
+    );
 
     if (!result.success) {
       await interaction.reply({
         content: result.error || 'Failed to toggle nudge setting',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await this.updateClanSettingsView(interaction, guildId, clantag, clanName);
+  }
+
+  /**
+   * Handle end-of-day stats enabled toggle
+   */
+  private static async handleEodStatsEnabledToggle(
+    interaction: ButtonInteraction,
+    guildId: string,
+    clantag: string,
+    clanName: string,
+  ): Promise<void> {
+    const result = await clanSettingsService.toggleEodStatsEnabled(interaction, guildId, clantag, interaction.user.id);
+
+    if (!result.success) {
+      await interaction.reply({
+        content: result.error || 'Failed to toggle end-of-day stats setting',
         ephemeral: true,
       });
       return;
@@ -474,6 +524,70 @@ export class ClanSettingsInteractionRouter {
       console.error('[updateClanSettingsView] Failed to update view:', error);
       // Silently fail - Discord API might be temporarily unavailable
     }
+  }
+
+  /**
+   * Handle custom nudge message modal submission
+   */
+  private static async handleCustomNudgeMessageModal(interaction: ModalSubmitInteraction): Promise<void> {
+    const parsed = parseCustomId(interaction.customId);
+    const { guildId, extra } = parsed;
+    const clantag = extra[0];
+
+    if (!clantag) {
+      await interaction.reply({
+        content: 'Missing clan tag. Please try again.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Get custom message from modal input (may be empty to reset to default)
+    const customMessage = interaction.fields.getTextInputValue('input')?.trim() || '';
+
+    // Check permissions
+    const allowed = await checkPerms(interaction, guildId, 'modal', 'either', { hideNoPerms: true });
+    if (!allowed) return;
+
+    // Update custom message using service
+    const result = await clanSettingsService.updateCustomNudgeMessage(
+      interaction.client,
+      guildId,
+      clantag,
+      customMessage,
+      interaction.user.id,
+    );
+
+    if (!result.success) {
+      await interaction.followUp({
+        content: result.error || '❌ Failed to update custom nudge message.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    // Get clan name and update the view
+    const clanName = await clanSettingsService.getClanName(guildId, clantag);
+
+    if (!interaction.message) {
+      await interaction.followUp({
+        content: customMessage
+          ? '✅ Custom nudge message updated! (Resets on new war day)'
+          : '✅ Nudge message reset to default!',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    // Update the clan settings view
+    // await this.updateClanSettingsView(interaction, guildId, clantag, clanName);
+
+    await interaction.followUp({
+      content: customMessage
+        ? '✅ Custom nudge message updated! (Resets on new war day)'
+        : '✅ Nudge message reset to default!',
+      flags: MessageFlags.Ephemeral,
+    });
   }
 
   /**
@@ -599,7 +713,13 @@ export class ClanSettingsInteractionRouter {
     if (!allowed) return;
 
     // Update clan role using service
-    const result = await clanSettingsService.updateClanRole(guildId, clantag, role.id);
+    const result = await clanSettingsService.updateClanRole(
+      interaction.client,
+      guildId,
+      clantag,
+      role.id,
+      interaction.user.id,
+    );
 
     if (!result.success) {
       await interaction.followUp({
@@ -690,12 +810,60 @@ export class ClanSettingsInteractionRouter {
         await this.showClanRoleModal(interaction, guildId, clantag, clanName);
         break;
 
+      case 'race_nudge_channel_id':
+        await this.showChannelModal(interaction, guildId, clantag, clanName, 'race_nudge_channel_id', 'Nudge Channel');
+        break;
+
+      case 'staff_channel_id':
+        await this.showChannelModal(interaction, guildId, clantag, clanName, 'staff_channel_id', 'Staff Channel');
+        break;
+
+      case 'race_custom_nudge_message':
+        await this.showCustomNudgeMessageModal(interaction, guildId, clantag);
+        break;
+
       default:
         await interaction.reply({
           content: `Unknown modal type: ${action}`,
           ephemeral: true,
         });
     }
+  }
+
+  /**
+   * Show custom nudge message modal
+   */
+  private static async showCustomNudgeMessageModal(
+    interaction: ButtonInteraction,
+    guildId: string,
+    clantag: string,
+  ): Promise<void> {
+    // Get current custom message if it exists
+    const currentResult = await pool.query(
+      `SELECT race_custom_nudge_message FROM clans WHERE guild_id = $1 AND clantag = $2`,
+      [guildId, clantag],
+    );
+    const currentMessage = currentResult.rows[0]?.race_custom_nudge_message || '';
+
+    const modal = new ModalBuilder()
+      .setTitle('Custom Nudge Message')
+      .setCustomId(makeCustomId('m', 'clanSettings_race_custom_nudge_message', guildId, { extra: [clantag] }))
+      .addLabelComponents(
+        new LabelBuilder()
+          .setLabel('Custom message for race nudges')
+          .setDescription('Leave blank to use default. Resets daily on new war day. Use {day} for race day number.')
+          .setTextInputComponent(
+            new TextInputBuilder()
+              .setCustomId('input')
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(false)
+              .setMaxLength(250)
+              .setPlaceholder('Leave blank for default message')
+              .setValue(currentMessage),
+          ),
+      );
+
+    await interaction.showModal(modal);
   }
 
   /**
@@ -740,6 +908,131 @@ export class ClanSettingsInteractionRouter {
       );
 
     await interaction.showModal(modal);
+  }
+
+  /**
+   * Show channel select modal
+   */
+  private static async showChannelModal(
+    interaction: ButtonInteraction,
+    guildId: string,
+    clantag: string,
+    clanName: string,
+    settingKey: 'race_nudge_channel_id' | 'staff_channel_id',
+    title: string,
+  ): Promise<void> {
+    const modal = new ModalBuilder()
+      .setTitle(`Set ${title}`)
+      .setCustomId(makeCustomId('m', `clanSettings_${settingKey}`, guildId, { extra: [clantag, clanName] }))
+      .addLabelComponents(
+        new LabelBuilder()
+          .setLabel('Channel Select')
+          .setChannelSelectMenuComponent(
+            new ChannelSelectMenuBuilder()
+              .setCustomId('input')
+              .setMaxValues(1)
+              .setChannelTypes([ChannelType.GuildText, ChannelType.GuildAnnouncement]),
+          ),
+      );
+
+    await interaction.showModal(modal);
+  }
+
+  /**
+   * Handle channel modal submission
+   */
+  private static async handleChannelModal(
+    interaction: ModalSubmitInteraction,
+    settingKey: 'race_nudge_channel_id' | 'staff_channel_id',
+  ): Promise<void> {
+    const parsed = parseCustomId(interaction.customId);
+    const { guildId, extra } = parsed;
+    const clantag = extra[0];
+
+    if (!clantag) {
+      await interaction.reply({
+        content: 'Missing clan tag. Please try again.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Get the channel ID from the modal input
+    const channelSelected = interaction.fields.getSelectedChannels('input')?.first();
+    if (!channelSelected || !channelSelected.id) {
+      await interaction.followUp({ content: '❌ Please select a valid channel.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    // Validate that the channel exists and is text-based
+    const channel = await interaction.guild?.channels.fetch(channelSelected.id).catch(() => null);
+    if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement)) {
+      await interaction.followUp({
+        content: '❌ Could not find that channel or it is not a text channel.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    // Check permissions
+    const allowed = await checkPerms(interaction, guildId, 'modal', 'either', { hideNoPerms: true });
+    if (!allowed) return;
+
+    // Update channel using service
+    const result = await clanSettingsService.updateClanSetting(
+      interaction.client,
+      guildId,
+      clantag,
+      settingKey,
+      channel.id,
+      interaction.user.id,
+    );
+
+    if (!result.success) {
+      await interaction.followUp({
+        content: result.error || `❌ Failed to update ${settingKey}.`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    // Get clan name and update the view
+    const clanName = await clanSettingsService.getClanName(guildId, clantag);
+
+    if (!interaction.message) {
+      await interaction.followUp({
+        content: '✅ Channel updated successfully!',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    // Find the select menu row in the current message
+    const selectMenuRowBuilder = getSelectMenuRowBuilder(interaction.message.components);
+
+    // Build new button rows with updated settings
+    const { embed, components: newButtonRows } = await buildClanSettingsView(
+      guildId,
+      clanName,
+      clantag,
+      interaction.user.id,
+    );
+
+    // Update the original message
+    try {
+      await interaction.message.edit({
+        embeds: [embed],
+        components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
+      });
+    } catch (error) {
+      console.error(`[handleChannelModal] Failed to edit message:`, error);
+      // Continue anyway to send confirmation
+    }
+
+    await interaction.followUp({
+      content: '✅ Channel updated successfully!',
+      flags: MessageFlags.Ephemeral,
+    });
   }
 
   /**

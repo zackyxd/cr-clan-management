@@ -29,6 +29,30 @@ export const CLAN_FEATURE_SETTINGS = [
     type: 'toggle',
   },
   {
+    key: 'race_nudge_channel_id',
+    label: 'Nudge Channel',
+    description: 'Channel where nudge pings will be sent.',
+    type: 'channel',
+  },
+  {
+    key: 'race_custom_nudge_message',
+    label: 'Custom Nudge Message',
+    description: 'Customize the nudge message (resets to default on new war days).',
+    type: 'modal',
+  },
+  {
+    key: 'eod_stats_enabled',
+    label: 'End-of-Day Stats',
+    description: 'Automatically post race snapshots at end of each day.',
+    type: 'toggle',
+  },
+  {
+    key: 'staff_channel_id',
+    label: 'Staff Channel',
+    description: 'Channel for end-of-day stats and staff updates.',
+    type: 'channel',
+  },
+  {
     key: 'invites_enabled',
     label: 'Invites',
     description: "Show this clan's invite in the invites channel and ability to generate them for members.",
@@ -59,6 +83,10 @@ export const CLAN_FEATURE_SETTINGS = [
 // The default features
 export const DEFAULT_CLAN_SETTINGS = {
   nudge_enabled: false,
+  race_nudge_channel_id: '',
+  race_custom_nudge_message: '',
+  eod_stats_enabled: false,
+  staff_channel_id: '',
   invites_enabled: true,
   abbreviation: '',
   clan_role_id: '',
@@ -68,7 +96,7 @@ export const DEFAULT_CLAN_SETTINGS = {
 // Build the clan settings view when a clan is selected in /clan-settings
 export async function buildClanSettingsView(guildId: string, clanName: string, clantag: string, ownerId: string) {
   const res = await pool.query(
-    `SELECT family_clan, nudge_enabled, invites_enabled, clan_role_id, abbreviation 
+    `SELECT family_clan, nudge_enabled, race_nudge_channel_id, race_custom_nudge_message, eod_stats_enabled, staff_channel_id, invites_enabled, clan_role_id, abbreviation 
      FROM clans WHERE guild_id = $1 AND clantag = $2`,
     [guildId, clantag],
   );
@@ -79,6 +107,10 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
   const settings: Record<string, boolean | string> = {
     family_clan: dbRow.family_clan || false,
     nudge_enabled: dbRow.nudge_enabled || false,
+    race_nudge_channel_id: dbRow.race_nudge_channel_id || '',
+    race_custom_nudge_message: dbRow.race_custom_nudge_message || '',
+    eod_stats_enabled: dbRow.eod_stats_enabled || false,
+    staff_channel_id: dbRow.staff_channel_id || '',
     invites_enabled: dbRow.invites_enabled || false,
     clan_role_id: dbRow.clan_role_id || '',
     abbreviation: dbRow.abbreviation || '',
@@ -98,8 +130,15 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
       displayValue = value ? '✅ Enabled' : '❌ Disabled';
     } else if (settingConfig.type === 'role') {
       displayValue = value ? `<@&${value}>` : '*None*';
+    } else if (settingConfig.type === 'channel') {
+      displayValue = value ? `<#${value}>` : '*None*';
     } else if (settingConfig.type === 'text' || settingConfig.type === 'modal') {
-      displayValue = value ? `__${value}__` : '*None*';
+      // Special case for custom nudge message - don't show full text
+      if (settingConfig.key === 'race_custom_nudge_message') {
+        displayValue = value ? '*Click button below to view*' : '*Using default message.*';
+      } else {
+        displayValue = value ? `__${value}__` : '*None*';
+      }
     }
 
     description += `* **${settingConfig.label}: ${displayValue}**\n  * ${settingConfig.description}\n\n`;
@@ -132,7 +171,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
         .setLabel(`Edit ${settingConfig.label}`)
         .setCustomId(makeCustomId('b', 'clanSettingsOpenModal', guildId, { extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Secondary);
-    } else if (settingConfig.type === 'role') {
+    } else if (settingConfig.type === 'role' || settingConfig.type === 'channel') {
       const cacheKey = storeClanSettingsData({
         settingKey: settingConfig.key,
         clantag,

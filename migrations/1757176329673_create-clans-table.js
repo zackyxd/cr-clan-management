@@ -9,28 +9,32 @@ export const shorthands = undefined;
  * @returns {Promise<void> | void}
  */
 export const up = (pgm) => {
-  pgm.createTable('clans', {
-    guild_id: { type: 'varchar(30)', references: 'guilds(guild_id)', onDelete: 'CASCADE', notNull: true },
-    clantag: { type: 'varchar(20)', notNull: true },
-    clan_name: { type: 'varchar(25)' },
-    clan_trophies: { type: 'integer', notNull: true },
+  pgm.createTable(
+    'clans',
+    {
+      guild_id: { type: 'varchar(30)', references: 'guilds(guild_id)', onDelete: 'CASCADE', notNull: true },
+      clantag: { type: 'varchar(20)', notNull: true },
+      clan_name: { type: 'varchar(25)' },
+      clan_trophies: { type: 'integer', notNull: true },
 
-    // Clan Settings - Individual columns instead of JSONB
-    abbreviation: { type: 'varchar(10)' },
-    family_clan: { type: 'boolean', default: false },
-    nudge_enabled: { type: 'boolean', default: false },
-    invites_enabled: { type: 'boolean', default: false },
-    clan_role_id: { type: 'varchar(30)' }, // Discord role ID
+      // Clan Settings - Individual columns instead of JSONB
+      abbreviation: { type: 'varchar(10)' },
+      family_clan: { type: 'boolean', default: false },
+      nudge_enabled: { type: 'boolean', default: false },
+      invites_enabled: { type: 'boolean', default: false },
+      clan_role_id: { type: 'varchar(30)' }, // Discord role ID
+      staff_channel_id: { type: 'varchar(30)' }, // Channel for end-of-day stats and staff updates
 
-    // Clan Link Settings
-    show_clan_link: { type: 'boolean', default: true }
-  },
+      // Clan Link Settings
+      show_clan_link: { type: 'boolean', default: true },
+    },
     {
       constraints: {
         primaryKey: ['guild_id', 'clantag'],
-        unique: ['guild_id', 'abbreviation']
-      }
-    });
+        unique: ['guild_id', 'abbreviation'],
+      },
+    },
+  );
 };
 
 /**

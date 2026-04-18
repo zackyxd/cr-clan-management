@@ -19,4 +19,7 @@ export const SESSION_CLEANUP_INTERVAL_MINUTES = 5;
 // Clan invite settings
 export const DEFAULT_DELETE_METHOD = 'update';
 
+// Race nudge settings
+export const DEFAULT_NUDGE_MESSAGE = `You have attacks left in {clanName}!`;
+
 // Add more constants as needed

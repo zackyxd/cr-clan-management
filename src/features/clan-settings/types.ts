@@ -14,6 +14,10 @@ export interface ClanSettingsData {
 export interface ClanSettings {
   family_clan: boolean;
   nudge_enabled: boolean;
+  race_nudge_channel_id?: string;
+  race_custom_nudge_message?: string;
+  staff_channel_id?: string;
+  eod_stats_enabled: boolean;
   invites_enabled: boolean;
   clan_role_id?: string;
   abbreviation?: string;

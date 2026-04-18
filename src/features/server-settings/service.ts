@@ -94,7 +94,7 @@ export class ServerSettingsService {
       this.sendLog(
         client,
         guildId,
-        '🎯 Feature Toggled',
+        '🎯 Server Feature Toggled',
         `**Feature:** ${FeatureRegistry[featureName].displayName}\n**Status:** ${!newValue ? 'Enabled' : 'Disabled'}  → ${newValue ? 'Enabled' : 'Disabled'}\n**Changed by:** <@${userId}>`,
       ).catch((err) => logger.error('Failed to log feature toggle:', err));
 
@@ -127,6 +127,10 @@ export class ServerSettingsService {
         return await this.togglePinMessage(guildId, client);
       }
 
+      if (settingKey === 'send_logs') {
+        return await this.toggleSendLogs(guildId, client, userId);
+      }
+
       // Generic toggle for most settings
       const result = await pool.query(
         `UPDATE ${tableName}
@@ -149,7 +153,7 @@ export class ServerSettingsService {
       this.sendLog(
         client,
         guildId,
-        '⚙️ Setting Changed',
+        '⚙️ Server Setting Changed',
         `**Feature:** ${featureDisplayName}\n**Setting:** ${settingLabel}\n**Status:** ${newValue ? 'Disabled → Enabled' : 'Enabled → Disabled'}\n**Changed by:** <@${userId}>`,
       ).catch((err) => logger.error('Failed to log setting change:', err));
 
@@ -255,7 +259,10 @@ export class ServerSettingsService {
           }
         } catch (err) {
           logger.error('Failed to pin/unpin message:', err);
-          await interaction.followUp({ content: '⚠️ Failed to update message pin status on Discord. Please check the bot permissions and try again.' });
+          await interaction.followUp({
+            content:
+              '⚠️ Failed to update message pin status on Discord. Please check the bot permissions and try again.',
+          });
         }
       }
 
@@ -270,6 +277,79 @@ export class ServerSettingsService {
       return {
         success: false,
         error: 'Failed to toggle pin_message',
+      };
+    }
+  }
+
+  /**
+   * Toggle send_logs setting with security audit
+   * If disabling logs, this logs the action BEFORE turning off logging
+   */
+  private async toggleSendLogs(guildId: string, client: Client, userId: string): Promise<ServerSettingsResponse> {
+    try {
+      // Get current value BEFORE toggling
+      const currentResult = await pool.query(
+        `SELECT send_logs, logs_channel_id FROM server_settings WHERE guild_id = $1`,
+        [guildId],
+      );
+
+      const currentSendLogs = currentResult.rows[0]?.send_logs ?? false;
+      const logsChannelId = currentResult.rows[0]?.logs_channel_id;
+
+      // If currently enabled and about to be disabled, log it FIRST
+      if (currentSendLogs && logsChannelId) {
+        try {
+          const channel = await client.channels.fetch(logsChannelId);
+          if (channel && (channel instanceof TextChannel || channel instanceof NewsChannel)) {
+            const embed = new EmbedBuilder()
+              .setTitle('⚠️ Audit Logging Disabled')
+              .setDescription(`**Setting:** Send Logs\n**Status:** Enabled → Disabled\n**Changed by:** <@${userId}>`)
+              .setColor(BOTCOLOR)
+              .setTimestamp();
+            await channel.send({ embeds: [embed] });
+          }
+        } catch (logError) {
+          logger.error('Failed to send final audit log before disabling:', logError);
+        }
+      } else if (!currentSendLogs && logsChannelId) {
+        // If currently disabled and about to be enabled, log it as well
+        try {
+          const channel = await client.channels.fetch(logsChannelId);
+          if (channel && (channel instanceof TextChannel || channel instanceof NewsChannel)) {
+            const embed = new EmbedBuilder()
+              .setTitle('⚠️ Audit Logging Enabled')
+              .setDescription(`**Setting:** Send Logs\n**Status:** Disabled → Enabled\n**Changed by:** <@${userId}>`)
+              .setColor(BOTCOLOR)
+              .setTimestamp();
+            await channel.send({ embeds: [embed] });
+          }
+        } catch (logError) {
+          logger.error('Failed to send final audit log before enabling:', logError);
+        }
+      }
+
+      // Now toggle the setting
+      const result = await pool.query(
+        `UPDATE server_settings
+         SET send_logs = NOT send_logs
+         WHERE guild_id = $1
+         RETURNING send_logs`,
+        [guildId],
+      );
+
+      const newValue = result.rows[0]?.send_logs;
+
+      logger.info(`send_logs ${newValue ? 'enabled' : 'disabled'} for guild ${guildId}`);
+
+      return {
+        success: true,
+        newValue,
+      };
+    } catch (error) {
+      logger.error(`Error toggling send_logs:`, error);
+      return {
+        success: false,
+        error: 'Failed to toggle send_logs',
       };
     }
   }
