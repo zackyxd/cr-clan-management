@@ -516,8 +516,8 @@ export class MemberChannelService {
       const membersList = Array.from(finalData.accounts.entries())
         .map(([discordId, players]) => {
           if (Array.isArray(players)) {
-            const playerTags = players.map((p) => `${p.name} (${p.tag})`).join(', ');
-            return `* <@${discordId}>: ${playerTags}`;
+            const playertags = players.map((p) => `${p.name} (${p.tag})`).join(', ');
+            return `* <@${discordId}>: ${playertags}`;
           } else if (players && 'type' in players && players.type === 'any') {
             return `* <@${discordId}>: Any ${players.count} accounts`;
           }
@@ -750,8 +750,8 @@ export class MemberChannelService {
         const addedList = addedMembers
           .map((member) => {
             if (Array.isArray(member.players)) {
-              const playerTags = member.players.map((p) => `${p.name} (${p.tag})`).join(', ');
-              return `* <@${member.discordId}>: ${playerTags}`;
+              const playertags = member.players.map((p) => `${p.name} (${p.tag})`).join(', ');
+              return `* <@${member.discordId}>: ${playertags}`;
             } else if (member.players && 'type' in member.players && member.players.type === 'any') {
               return `* <@${member.discordId}>: Any ${member.players.count} accounts`;
             }

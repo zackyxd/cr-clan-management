@@ -4,6 +4,11 @@ import { pool } from '../../db.js';
 import { Command } from '../../types/Command.js';
 import { getRaceAttacks, initializeOrUpdateRace, periodTypeMap } from '../../features/race-tracking/index.js';
 import { BOTCOLOR } from '../../types/EmbedUtil.js';
+import {
+  enrichParticipantsWithLinks,
+  formatParticipantsList,
+  buildFooterLegend,
+} from '../../features/race-tracking/attacksFormatter.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -42,71 +47,15 @@ const command: Command = {
       return;
     }
 
-    // Build embed description
-    const lines: string[] = [];
+    // Enrich participants (no linking for /attacks - display only)
+    const enrichedParticipants = await enrichParticipantsWithLinks(guild.id, attacksData.participants, {
+      mentionUsers: false, // Don't ping in /attacks
+    });
 
-    // Filter out completed non-violators and count groups
-    const filteredParticipants = attacksData.participants.filter(
-      (p) => p.attacksRemaining > 0 || p.isSplitAttacker || p.hasAttackedElsewhere,
-    );
-
-    // Count participants per attack group
-    const groupCounts = new Map<number, number>();
-    for (const participant of filteredParticipants) {
-      groupCounts.set(participant.attacksRemaining, (groupCounts.get(participant.attacksRemaining) || 0) + 1);
-    }
-
-    // Group by attacks remaining
-    let currentAttacksGroup = -1;
-
-    for (const participant of filteredParticipants) {
-      // Add section header when entering new attack count group
-      if (participant.attacksRemaining !== currentAttacksGroup) {
-        currentAttacksGroup = participant.attacksRemaining;
-        const count = groupCounts.get(currentAttacksGroup) || 0;
-        if (lines.length > 0) lines.push(''); // Blank line between groups
-        lines.push(`__**${currentAttacksGroup} Attack${currentAttacksGroup !== 1 ? 's' : ''} (${count})**__`);
-      }
-
-      // Build player line
-      let line = '* ';
-
-      // Player name (no pinging in /attacks, only in nudges)
-      line += participant.playerName;
-
-      // Add emojis for special statuses
-      if (participant.isSplitAttacker) {
-        line += ' ☠️';
-      }
-      if (participant.hasAttackedElsewhere) {
-        line += ' 🚫';
-      }
-      if (participant.isReplacementPlayer) {
-        line += ' ⚠️';
-      }
-      if (participant.isAttackingLate) {
-        line += ' ⏰';
-      }
-      if (!participant.isInClan) {
-        line += ' ❌';
-      }
-
-      // Show attacks used today in this clan
-      if (
-        participant.attacksUsedToday > 0 &&
-        (participant.isSplitAttacker || participant.isReplacementPlayer || participant.isAttackingLate)
-      ) {
-        line += ` (Used ${participant.attacksUsedToday} in clan)`;
-      }
-
-      // Show which clans they attacked in if they have attacks elsewhere
-      if (participant.clansAttackedIn.length > 1 || participant.hasAttackedElsewhere) {
-        console.log(participant);
-        line += ` — *Attacked in: ${participant.clansAttackedIn.join(' & ')}*`;
-      }
-
-      lines.push(line);
-    }
+    // Format participant lines
+    const lines = formatParticipantsList(enrichedParticipants, {
+      mentionUsers: false,
+    });
 
     if (lines.length === 0) {
       const embed = new EmbedBuilder()
@@ -123,19 +72,8 @@ const command: Command = {
       return;
     }
 
-    // Build footer text based on what's actually present
-    const footerParts: string[] = [];
-    const hasSplitAttackers = filteredParticipants.some((p) => p.isSplitAttacker);
-    const hasAttackedElsewhere = filteredParticipants.some((p) => p.hasAttackedElsewhere);
-    const hasReplacementPlayers = filteredParticipants.some((p) => p.isReplacementPlayer);
-    const hasAttackingLate = filteredParticipants.some((p) => p.isAttackingLate);
-    const hasLeftClan = filteredParticipants.some((p) => !p.isInClan);
-
-    if (hasSplitAttackers) footerParts.push('☠️ = Split attacker\n');
-    if (hasAttackedElsewhere) footerParts.push('🚫 = Do not attack (started elsewhere)\n');
-    if (hasReplacementPlayers) footerParts.push('⚠️ = Replace me\n');
-    if (hasAttackingLate) footerParts.push('⏰ = Attacking late\n');
-    if (hasLeftClan) footerParts.push('❌ = Left clan\n');
+    // Build footer legend
+    const footerText = buildFooterLegend(enrichedParticipants, { mentionUsers: false });
 
     const description = `:playersLeft: ${attacksData.availableAttackers}\n:decksLeft: ${attacksData.totalAttacksRemaining}\n\n`;
 
@@ -148,8 +86,8 @@ const command: Command = {
       .setDescription(`## ${periodTypeMap[raceData.periodType] || ''} Attacks\n${lines.join('\n')}\n\n${description}`)
       .setURL(`https://cwstats.com/clan/${attacksData.clanInfo.clantag.substring(1)}/race`);
 
-    if (footerParts.length > 0) {
-      embed.setFooter({ text: footerParts.join('') });
+    if (footerText) {
+      embed.setFooter({ text: footerText });
     }
 
     await interaction.editReply({ embeds: [embed] });

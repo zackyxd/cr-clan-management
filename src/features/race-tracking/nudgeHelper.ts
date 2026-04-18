@@ -5,22 +5,38 @@ import { NewsChannel, TextChannel, type Client } from 'discord.js';
 
 /**
  * Get the effective nudge message for a clan (custom or default)
+ * @param guildId - Guild ID
+ * @param clantag - Clan tag
+ * @param raceDay - Optional race day number to replace {day} placeholder
+ * @param customMessage - Optional custom message (if already fetched from DB). Pass null to explicitly use default.
  */
-export async function getNudgeMessage(guildId: string, clantag: string, raceDay?: number): Promise<string> {
-  try {
-    const result = await pool.query(
-      `SELECT race_custom_nudge_message FROM clans WHERE guild_id = $1 AND clantag = $2`,
-      [guildId, clantag],
-    );
+export async function getNudgeMessage(
+  guildId: string,
+  clantag: string,
+  clanName: string,
+  raceDay?: number,
+  customMessage?: string | null,
+): Promise<string> {
+  let message: string;
 
-    const customMessage = result.rows[0]?.race_custom_nudge_message;
-    const message = customMessage || DEFAULT_NUDGE_MESSAGE;
+  try {
+    // If customMessage is explicitly provided (even if null), use it
+    if (customMessage !== undefined) {
+      message = customMessage || DEFAULT_NUDGE_MESSAGE;
+    } else {
+      // Otherwise, fetch from database
+      const result = await pool.query(
+        `SELECT race_custom_nudge_message FROM clans WHERE guild_id = $1 AND clantag = $2`,
+        [guildId, clantag],
+      );
+      message = result.rows[0]?.race_custom_nudge_message || DEFAULT_NUDGE_MESSAGE;
+    }
 
     // Replace {clanName} placeholder with actual clan name
-    return message.replace(/{clanName}/g, String(raceDay || '?'));
+    return message.replace(/{clanName}/g, String(clanName || '?'));
   } catch (error) {
     logger.error('Error getting nudge message:', error);
-    return DEFAULT_NUDGE_MESSAGE.replace(/{clanName}/g, String(raceDay || '?'));
+    return DEFAULT_NUDGE_MESSAGE.replace(/{clanName}/g, String(clanName || '?'));
   }
 }
 

@@ -63,7 +63,6 @@ export class ClanSettingsInteractionRouter {
    */
   static async handleModal(interaction: ModalSubmitInteraction, parsed: ParsedCustomId): Promise<void> {
     const { action } = parsed;
-
     switch (action) {
       case 'clanSettings_abbreviation':
         await this.handleAbbreviationModal(interaction);
@@ -73,7 +72,7 @@ export class ClanSettingsInteractionRouter {
         await this.handleClanRoleModal(interaction);
         break;
 
-      case 'race_nudge_channel_id':
+      case 'clanSettings_race_nudge_channel_id':
         await this.handleChannelModal(interaction, 'race_nudge_channel_id');
         break;
 

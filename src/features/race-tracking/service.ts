@@ -54,7 +54,7 @@ export async function getRaceAttacks(
   }
 
   // Get cross-clan attack totals from DB
-  const playerTags = activeMembers.map((m) => m.tag);
+  const playertags = activeMembers.map((m) => m.tag);
 
   const attacksQuery = await pool.query(
     `
@@ -84,7 +84,7 @@ export async function getRaceAttacks(
       AND rpt.playertag = ANY($3)
       AND rpt.current_day = (SELECT current_day FROM river_races WHERE clantag = $2 AND guild_id = $1 LIMIT 1)
   `,
-    [guildId, raceData.clan.tag, playerTags],
+    [guildId, raceData.clan.tag, playertags],
   );
 
   // Build map of player attack data
@@ -752,19 +752,19 @@ export async function updateParticipantTracking(
  * Get Discord user IDs for linked player tags.
  *
  * @param guildId - Discord guild ID
- * @param playerTags - Array of player tags to look up
+ * @param playertags - Array of player tags to look up
  * @returns Map of playerTag -> userId
  */
-export async function getLinkedPlayers(guildId: string, playerTags: string[]): Promise<Map<string, string>> {
+export async function getLinkedPlayers(guildId: string, playertags: string[]): Promise<Map<string, string>> {
   // TODO: Implement
-  // Join user_playertags table to get discord user_ids
+  // Join user_playertags table to get discord ids
   // Return as Map for easy lookup
 
   const linkedPlayers = new Map<string, string>();
 
   const result = await pool.query(
     `SELECT playertag, discord_id FROM user_playertags WHERE guild_id = $1 AND playertag = ANY($2)`,
-    [guildId, playerTags],
+    [guildId, playertags],
   );
 
   for (const row of result.rows) {
