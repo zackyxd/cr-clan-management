@@ -54,7 +54,7 @@ const command: Command = {
 
       if (!row) {
         const embed = new EmbedBuilder()
-          .setDescription(`❌ Clan with abbreviation \`${clanArg}\` not found. Please assign it manually first.`)
+          .setDescription(`❌ Clan with abbreviation \`${clanArg}\` not found.`)
           .setColor(EmbedColor.FAIL);
         await interaction.editReply({ embeds: [embed] });
         return;

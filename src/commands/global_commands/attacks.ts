@@ -2,7 +2,12 @@ import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags, EmbedBu
 import { getCurrentRiverRace, isFetchError, normalizeTag } from '../../api/CR_API.js';
 import { pool } from '../../db.js';
 import { Command } from '../../types/Command.js';
-import { getRaceAttacks, initializeOrUpdateRace, periodTypeMap } from '../../features/race-tracking/index.js';
+import {
+  getRaceAttacks,
+  initializeOrUpdateRace,
+  periodTypeMap,
+  getDayForDisplay,
+} from '../../features/race-tracking/index.js';
 import { BOTCOLOR } from '../../types/EmbedUtil.js';
 import {
   enrichParticipantsWithLinks,
@@ -40,8 +45,8 @@ const command: Command = {
       return;
     }
 
-    const { raceData, seasonId, warWeek } = result;
-    const attacksData = await getRaceAttacks(guild.id, raceData, seasonId, warWeek);
+    const { raceId, raceData, seasonId, warWeek } = result;
+    const attacksData = await getRaceAttacks(guild.id, raceId, raceData, seasonId, warWeek);
     if (!attacksData) {
       await interaction.editReply('❌ Failed to fetch attacks data. Please try again later.');
       return;
@@ -53,15 +58,20 @@ const command: Command = {
     });
 
     // Format participant lines
-    const lines = formatParticipantsList(enrichedParticipants, {
-      mentionUsers: false,
-    });
+    const lines = formatParticipantsList(
+      enrichedParticipants,
+      attacksData.totalAttacksRemaining,
+      attacksData.availableAttackers,
+      {
+        mentionUsers: false,
+      },
+    );
 
     if (lines.length === 0) {
       const embed = new EmbedBuilder()
         .setTitle(`${attacksData.clanInfo.name}`)
         .setAuthor({
-          name: `Season ${attacksData.seasonId ?? '---'} | Week ${attacksData.warWeek} | Day ${attacksData.raceDay}`,
+          name: `Season ${attacksData.seasonId ?? '---'} | Week ${attacksData.warWeek} | Day ${getDayForDisplay(attacksData.raceDay)}`,
         })
         .setColor(BOTCOLOR)
         .setDescription(
@@ -75,15 +85,15 @@ const command: Command = {
     // Build footer legend
     const footerText = buildFooterLegend(enrichedParticipants, { mentionUsers: false });
 
-    const description = `:playersLeft: ${attacksData.availableAttackers}\n:decksLeft: ${attacksData.totalAttacksRemaining}\n\n`;
+    // const description = `:playersLeft: ${attacksData.availableAttackers}\n:decksLeft: ${attacksData.totalAttacksRemaining}\n\n`;
 
     const embed = new EmbedBuilder()
       .setTitle(`${attacksData.clanInfo.name}`)
       .setAuthor({
-        name: `Season ${attacksData.seasonId ?? '---'} | Week ${attacksData.warWeek} | Day ${attacksData.raceDay}`,
+        name: `Season ${attacksData.seasonId ?? '---'} | Week ${attacksData.warWeek} | Day ${getDayForDisplay(attacksData.raceDay)}`,
       })
       .setColor(BOTCOLOR)
-      .setDescription(`## ${periodTypeMap[raceData.periodType] || ''} Attacks\n${lines.join('\n')}\n\n${description}`)
+      .setDescription(`## ${periodTypeMap[raceData.periodType] || ''} Attacks\n${lines.join('\n')}`)
       .setURL(`https://cwstats.com/clan/${attacksData.clanInfo.clantag.substring(1)}/race`);
 
     if (footerText) {

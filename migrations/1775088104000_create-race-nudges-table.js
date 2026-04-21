@@ -18,6 +18,7 @@ export const up = (pgm) => {
       onDelete: 'CASCADE',
     },
     clantag: { type: 'varchar(20)', notNull: true },
+    race_week: { type: 'integer', notNull: true},
     race_day: { type: 'integer', notNull: true },
     nudge_time: { type: 'timestamptz', notNull: true, default: pgm.func('current_timestamp') },
     nudge_type: { type: 'varchar(50)', notNull: true, default: 'automatic' },

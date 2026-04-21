@@ -87,3 +87,15 @@ export async function resetCustomNudgeMessageOnNewDay(client: Client, guildId: s
     logger.error('Error resetting custom nudge message:', error);
   }
 }
+
+export async function trackNudge(
+  raceId: number,
+  clantag: string,
+  raceWeek: number,
+  raceDay: number,
+  nudgeType: 'manual' | 'automatic',
+  message: string,
+  playersNudged: array,
+) {
+  return 1;
+}

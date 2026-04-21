@@ -138,6 +138,7 @@ export interface RaceAttacksData {
   raceState: string;
   seasonId: number | null;
   warWeek: number;
+  raceId: number;
 }
 
 export interface ParticipantWithAttacks {
@@ -153,6 +154,7 @@ export interface ParticipantWithAttacks {
   isSplitAttacker: boolean; // True if attacked in multiple clans
   isInClan: boolean; // True if player is currently in the clan (based on clan member list)
   hasAttackedElsewhere: boolean; // True if player is in clan but attacked in another clan
+  pingUser: boolean; // Whether user should be pinged (from users table)
   isReplacementPlayer?: boolean; // Marked as "replace me"
   isAttackingLate?: boolean; // Marked as "attacking late"
   discordUserId?: string; // If player is linked

@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
 import { pool } from '../../db.js';
 import { Command } from '../../types/Command.js';
+import { getDayForDisplay } from '../../features/race-tracking/service.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -43,7 +44,7 @@ const command: Command = {
 
       if (snapshotQuery.rows.length === 0) {
         await interaction.editReply({
-          content: `❌ No snapshot found for ${clantag} Day ${day}.\n\nUse \`/test-snapshot\` to create one.`,
+          content: `❌ No snapshot found for ${clantag} Day ${getDayForDisplay(day)}.\n\nUse \`/test-snapshot\` to create one.`,
         });
         return;
       }
@@ -56,7 +57,7 @@ const command: Command = {
       const embed = new EmbedBuilder()
         .setTitle(`📸 Snapshot: ${attacks.clanName}`)
         .setDescription(
-          `**Day ${day}** | Season ${attacks.seasonId || 'Unknown'} | Week ${attacks.warWeek}\n` +
+          `**Season ${attacks.seasonId || 'Unknown'} | Week ${attacks.warWeek} | Day ${getDayForDisplay(day)}**\n` +
             `Captured: <t:${Math.floor(new Date(snapshot.snapshot_time).getTime() / 1000)}:R>`,
         )
         .setColor(0x3498db);

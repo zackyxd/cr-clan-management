@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, PermissionFlagsBits, EmbedBuilder } from 'discord.js';
 import { pool } from '../../db.js';
-import { createDaySnapshot } from '../../features/race-tracking/service.js';
+import { createDaySnapshot, getDayForDisplay } from '../../features/race-tracking/service.js';
 import { Command } from '../../types/Command.js';
 
 const command: Command = {
@@ -56,7 +56,7 @@ const command: Command = {
 
       if (existingSnapshot.rows.length > 0) {
         await interaction.editReply({
-          content: `⚠️ Snapshot already exists for **${race.clan_name}** Day ${dayToSnapshot}.\n\nUse \`/view-snapshot\` to inspect it.`,
+          content: `⚠️ Snapshot already exists for **${race.clan_name}** Day ${getDayForDisplay(dayToSnapshot)}.\n\nUse \`/view-snapshot\` to inspect it.`,
         });
         return;
       }
@@ -90,7 +90,7 @@ const command: Command = {
 
         const embed = new EmbedBuilder()
           .setTitle(`✅ Snapshot Created`)
-          .setDescription(`**${race.clan_name}** - Day ${dayToSnapshot}`)
+          .setDescription(`**${race.clan_name}** - Day ${getDayForDisplay(dayToSnapshot)}`)
           .setColor(0x00ff00)
           .addFields(
             { name: 'Snapshot ID', value: `${snapshot.snapshot_id}`, inline: true },

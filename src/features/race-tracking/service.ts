@@ -17,6 +17,17 @@ export const periodTypeMap: { [key: string]: string } = {
 };
 
 /**
+ * Convert internal day number to display-friendly number.
+ * Training days are stored as negative (-1 to -7), convert to positive for display.
+ *
+ * @param day - Internal day number
+ * @returns Positive day number for display
+ */
+export function getDayForDisplay(day: number): number {
+  return Math.abs(day);
+}
+
+/**
  * Get attack information for a clan's race.
  * Uses HYBRID approach: Fresh data for requested clan, recent cache for cross-clan totals.
  *
@@ -30,6 +41,7 @@ export const periodTypeMap: { [key: string]: string } = {
  */
 export async function getRaceAttacks(
   guildId: string,
+  raceId: number,
   raceData: CurrentRiverRace,
   seasonId: number | null,
   warWeek: number,
@@ -56,13 +68,17 @@ export async function getRaceAttacks(
   // Get cross-clan attack totals from DB
   const playertags = activeMembers.map((m) => m.tag);
 
+  const currentDay = getWarDay(raceData);
+
   const attacksQuery = await pool.query(
     `
     SELECT 
+      rpt.race_id,
       rpt.playertag,
       rpt.player_name,
       rpt.clans_attacked_in,
       rpt.clan_names_attacked_in,
+      u.ping_user,
       u.is_replace_me,
       u.is_attacking_late,
       up.discord_id,
@@ -72,20 +88,22 @@ export async function getRaceAttacks(
        JOIN river_races rr2 ON rpt2.race_id = rr2.race_id
        WHERE rpt2.playertag = rpt.playertag
          AND rr2.guild_id = $1
-         AND rr2.current_week = (SELECT current_week FROM river_races WHERE clantag = $2 AND guild_id = $1 LIMIT 1)
-         AND rpt2.current_day = (SELECT current_day FROM river_races WHERE clantag = $2 AND guild_id = $1 LIMIT 1)
+         AND rr2.current_week = $2
+         AND rpt2.current_day = $3
       ) as total_attacks
     FROM race_participant_tracking rpt
-    JOIN river_races rr ON rpt.race_id = rr.race_id
     LEFT JOIN user_playertags up ON rpt.playertag = up.playertag AND up.guild_id = $1
     LEFT JOIN users u ON up.discord_id = u.discord_id AND u.guild_id = $1
-    WHERE rr.guild_id = $1
-      AND rr.clantag = $2
-      AND rpt.playertag = ANY($3)
-      AND rpt.current_day = (SELECT current_day FROM river_races WHERE clantag = $2 AND guild_id = $1 LIMIT 1)
+    WHERE rpt.race_id = $4
+      AND rpt.playertag = ANY($5)
   `,
-    [guildId, raceData.clan.tag, playertags],
+    [guildId, warWeek, currentDay, raceId, playertags],
   );
+
+  console.log(`[getRaceAttacks] Query returned ${attacksQuery.rows.length} rows for ${playertags.length} players`);
+  if (attacksQuery.rows.length > 0) {
+    console.log('[getRaceAttacks] Sample row:', attacksQuery.rows[0]);
+  }
 
   // Build map of player attack data
   const playerAttackMap = new Map<
@@ -94,6 +112,7 @@ export async function getRaceAttacks(
       totalDecks: number;
       clansAttackedIn: string[];
       clanNamesAttackedIn: string[];
+      pingUser: boolean;
       isReplacementPlayer: boolean;
       isAttackingLate: boolean;
       discordId: string | null;
@@ -104,6 +123,7 @@ export async function getRaceAttacks(
       totalDecks: row.total_attacks,
       clansAttackedIn: row.clans_attacked_in || [],
       clanNamesAttackedIn: row.clan_names_attacked_in || [],
+      pingUser: row.ping_user ?? true,
       isReplacementPlayer: row.is_replace_me || false,
       isAttackingLate: row.is_attacking_late || false,
       discordId: row.discord_id || null,
@@ -133,6 +153,7 @@ export async function getRaceAttacks(
         isSplitAttacker: clantagsAttacked.length > 1,
         isInClan,
         hasAttackedElsewhere,
+        pingUser: attackData?.pingUser ?? true,
         isReplacementPlayer: attackData?.isReplacementPlayer || false,
         isAttackingLate: attackData?.isAttackingLate || false,
         discordUserId: attackData?.discordId || undefined,
@@ -172,6 +193,7 @@ export async function getRaceAttacks(
     raceState: raceData.periodType,
     seasonId,
     warWeek,
+    raceId: attacksQuery.rows[0].race_id,
   };
 }
 
@@ -360,7 +382,7 @@ export async function createDaySnapshot(
       }
 
       // Get the attacks data (what /attacks would show)
-      const attacksData = await getRaceAttacks(guildId, raceData, seasonId, warWeek);
+      const attacksData = await getRaceAttacks(guildId, raceId, raceData, seasonId, warWeek);
       if (!attacksData) {
         console.error(`[Snapshot] Failed to get race attacks data for race ${raceId} day ${day}`);
         await client.query('ROLLBACK');
@@ -811,9 +833,9 @@ function getWarWeek(raceData: CurrentRiverRace): number {
 function getWarDay(raceData: CurrentRiverRace): number {
   switch (raceData.periodType) {
     case 'training':
-      return (raceData.periodIndex % 7) + 1;
+      return -((raceData.periodIndex % 7) + 1); // -1 to -7 for training days
     default:
-      return (raceData.periodIndex % 7) - 2;
+      return (raceData.periodIndex % 7) - 2; // 1 to 4 for war/colosseum days
   }
 }
 

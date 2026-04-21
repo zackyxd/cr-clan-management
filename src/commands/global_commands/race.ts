@@ -4,6 +4,7 @@ import { pool } from '../../db.js';
 import { Command } from '../../types/Command.js';
 import {
   detectSeasonId,
+  getDayForDisplay,
   getRaceStats,
   initializeOrUpdateRace,
   updateParticipantTracking,
@@ -55,7 +56,7 @@ const command: Command = {
         .setColor(BOTCOLOR)
         .setURL(`https://cwstats.com/clan/${normalizedTag.substring(1)}/race`)
         .setAuthor({
-          name: `Season ${seasonId || '---'} | Week ${warWeek} | Day ${warDay}`,
+          name: `Season ${seasonId || '---'} | Week ${warWeek} | Day ${getDayForDisplay(warDay)}`,
         });
       let description = '';
 
@@ -81,7 +82,7 @@ const command: Command = {
         .setTitle(`War Day`)
         .setColor(BOTCOLOR)
         .setURL(`https://cwstats.com/clan/${normalizedTag.substring(1)}/race`)
-        .setAuthor({ name: `Season ${seasonId || '---'} | Week ${warWeek} | Day ${warDay}` });
+        .setAuthor({ name: `Season ${seasonId || '---'} | Week ${warWeek} | Day ${getDayForDisplay(warDay)}` });
       let description = '';
       stats.clans.forEach((clan, index) => {
         const escapedName = escapeMarkdown(clan.name);
@@ -110,7 +111,7 @@ const command: Command = {
         .setTitle('Colosseum')
         .setColor(BOTCOLOR)
         .setURL(`https://cwstats.com/clan/${normalizedTag.substring(1)}/race`)
-        .setAuthor({ name: `Season ${seasonId || '---'} | Week ${warWeek} | Day ${warDay}` });
+        .setAuthor({ name: `Season ${seasonId || '---'} | Week ${warWeek} | Day ${getDayForDisplay(warDay)}` });
       let description = '';
       stats.clans.forEach((clan, index) => {
         const escapedName = escapeMarkdown(clan.name);

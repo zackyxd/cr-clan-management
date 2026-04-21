@@ -13,7 +13,7 @@ import { checkPerms } from '../../utils/checkPermissions.js';
 import { normalizeTag } from '../../api/CR_API.js';
 import { pool } from '../../db.js';
 import { getRaceAttacks, initializeOrUpdateRace } from '../../features/race-tracking/service.js';
-import { getNudgeMessage } from '../../features/race-tracking/nudgeHelper.js';
+import { getNudgeMessage, trackNudge } from '../../features/race-tracking/nudgeHelper.js';
 import {
   enrichParticipantsWithLinks,
   formatParticipantsList,
@@ -46,7 +46,7 @@ const command: Command = {
     const normalizedTag = normalizeTag(userInput);
 
     const clanRes = await pool.query(
-      `SELECT clantag, clan_name, race_custom_nudge_message, race_nudge_channel_id 
+      `SELECT clantag, clan_name, nudge_enabled, race_custom_nudge_message, race_nudge_channel_id 
        FROM clans WHERE guild_id = $1 AND (clantag = $2 OR LOWER(abbreviation) = LOWER($3))`,
       [guild.id, normalizedTag, userInput], // userInput catches if abbreviation is used
     );
@@ -54,6 +54,14 @@ const command: Command = {
     const fixedClantag = clanRes.rows.length > 0 ? clanRes.rows[0].clantag : normalizedTag;
     const customMessage = clanRes.rows[0]?.race_custom_nudge_message;
     const nudgeChannelId = clanRes.rows[0]?.race_nudge_channel_id;
+    const nudgeEnabled = clanRes.rows[0]?.nudge_enabled;
+
+    if (!nudgeEnabled) {
+      await interaction.editReply({
+        content: `❌ Nudges are disabled for this clan. Enable them in \`/clan-settings\`.`,
+      });
+      return;
+    }
 
     const result = await initializeOrUpdateRace(guild.id, fixedClantag);
     if (!result) {
@@ -65,7 +73,7 @@ const command: Command = {
       (await getNudgeMessage(guild.id, fixedClantag, clanRes.rows[0]?.clan_name, result.warDay, customMessage)) +
       ` (Sent by ${interaction.user.tag})`;
 
-    const attacksData = await getRaceAttacks(guild.id, result.raceData, result.seasonId, result.warWeek);
+    const attacksData = await getRaceAttacks(guild.id, result.raceId, result.raceData, result.seasonId, result.warWeek);
     if (!attacksData) {
       await interaction.editReply('❌ Failed to fetch attacks data. Please try again later.');
       return;
@@ -78,12 +86,19 @@ const command: Command = {
       guild: guild,
     });
 
+    console.log(attacksData.raceDay, result.warDay);
+
     // Format participant lines with mentions
-    const lines = formatParticipantsList(enrichedParticipants, {
-      mentionUsers: true,
-      channelId: nudgeChannelId,
-      guild: guild,
-    });
+    const lines = formatParticipantsList(
+      enrichedParticipants,
+      attacksData.totalAttacksRemaining,
+      attacksData.availableAttackers,
+      {
+        mentionUsers: true,
+        channelId: nudgeChannelId,
+        guild: guild,
+      },
+    );
 
     if (lines.length === 0) {
       await interaction.editReply('✅ Everyone has completed their attacks!');
@@ -128,10 +143,20 @@ const command: Command = {
         container.addSeparatorComponents(separator2).addTextDisplayComponents(footer);
       }
 
-      await nudgeChannel.send({
+      const message = await nudgeChannel.send({
         flags: MessageFlags.IsComponentsV2,
         components: [container],
       });
+
+      trackNudge(
+        attacksData.raceId,
+        fixedClantag,
+        result.warWeek,
+        result.warDay,
+        'manual',
+        nudgeMessage,
+        enrichedParticipants,
+      ).catch((err) => console.error('Error tracking nudge:', err));
 
       await interaction.editReply(`✅ Nudge sent to <#${nudgeChannelId}>!`);
     } catch (error) {

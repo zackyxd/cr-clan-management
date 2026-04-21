@@ -13,8 +13,6 @@ export interface FormatOptions {
   channelId?: string;
   /** Guild to check permissions in */
   guild?: Guild;
-  /** Whether we're past the attack deadline (for attacking-late ping logic) */
-  isPastDeadline?: boolean;
 }
 
 /**
@@ -111,12 +109,7 @@ export function formatParticipantLine(participant: FormattedParticipant, options
   let line = '* ';
 
   // Determine if we should ping this user
-  const shouldMention =
-    options.mentionUsers &&
-    participant.discordUserId &&
-    !participant.isReplacementPlayer &&
-    participant.attacksUsedToday === 0 && // Never ping replace-me players
-    (!participant.isAttackingLate || options.isPastDeadline); // Only ping attacking-late after deadline
+  const shouldMention = options.mentionUsers && participant.discordUserId && participant.pingUser; // Use database ping_user setting
 
   // Player mention or name
   if (shouldMention) {
@@ -163,7 +156,12 @@ export function formatParticipantLine(participant: FormattedParticipant, options
 /**
  * Group participants by attacks remaining and format lines
  */
-export function formatParticipantsList(participants: FormattedParticipant[], options: FormatOptions): string[] {
+export function formatParticipantsList(
+  participants: FormattedParticipant[],
+  attacksLeft: number,
+  playersRemaining: number,
+  options: FormatOptions,
+): string[] {
   const lines: string[] = [];
 
   // Filter out completed non-violators
@@ -192,6 +190,9 @@ export function formatParticipantsList(participants: FormattedParticipant[], opt
     // Format participant line
     lines.push(formatParticipantLine(participant, options));
   }
+
+  // TODO emojis
+  lines.push(`\n:playersLeft: ${playersRemaining}\n:attacksLeft: ${attacksLeft}`);
 
   return lines;
 }
