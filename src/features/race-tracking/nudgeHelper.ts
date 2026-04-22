@@ -2,6 +2,7 @@ import { pool } from '../../db.js';
 import { DEFAULT_NUDGE_MESSAGE } from '../../config/constants.js';
 import logger from '../../logger.js';
 import { NewsChannel, TextChannel, type Client } from 'discord.js';
+import type { FormattedParticipant } from './attacksFormatter.js';
 
 /**
  * Get the effective nudge message for a clan (custom or default)
@@ -95,7 +96,31 @@ export async function trackNudge(
   raceDay: number,
   nudgeType: 'manual' | 'automatic',
   message: string,
-  playersNudged: array,
-) {
-  return 1;
+  participants: FormattedParticipant[],
+): Promise<void> {
+  // Build snapshot of all participants with nudge status
+  const playersSnapshot = participants.map((p) => ({
+    playertag: p.playertag,
+    name: p.playerName,
+    nudged: p.attacksRemaining > 0 || p.isSplitAttacker || p.hasAttackedElsewhere,
+    attacks_remaining: p.attacksRemaining,
+    attacks_used_today: p.attacksUsedToday,
+    linked: !!p.discordUserId,
+    has_channel_access: p.hasChannelAccess ?? null,
+    ping_user: p.pingUser,
+    split_attacker: p.isSplitAttacker,
+    attacked_elsewhere: p.hasAttackedElsewhere,
+    is_replacement: p.isReplacementPlayer,
+    is_attacking_late: p.isAttackingLate,
+    is_in_clan: p.isInClan,
+  }));
+
+  await pool.query(
+    `
+    INSERT INTO race_nudges
+    (race_id, clantag, race_week, race_day, nudge_type, message, players_snapshot)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `,
+    [raceId, clantag, raceWeek, raceDay, nudgeType, message, JSON.stringify(playersSnapshot)],
+  );
 }

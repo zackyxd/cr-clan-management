@@ -18,12 +18,13 @@ export const up = (pgm) => {
       onDelete: 'CASCADE',
     },
     clantag: { type: 'varchar(20)', notNull: true },
-    race_week: { type: 'integer', notNull: true},
+    race_week: { type: 'integer', notNull: true },
     race_day: { type: 'integer', notNull: true },
     nudge_time: { type: 'timestamptz', notNull: true, default: pgm.func('current_timestamp') },
     nudge_type: { type: 'varchar(50)', notNull: true, default: 'automatic' },
-    custom_message: { type: 'text', default: null },
-    players_nudged: { type: 'text[]', default: pgm.func("'{}'::text[]") },
+    message: { type: 'text', default: null },
+    players_snapshot: { type: 'jsonb', notNull: true, default: pgm.func("'{}'::jsonb") },
+    // players_nudged: { type: 'text[]', default: pgm.func("'{}'::text[]") },
   });
 
   pgm.createIndex('race_nudges', 'race_id');

@@ -118,7 +118,7 @@ export interface RaceNudge {
   race_day: number;
   nudge_time: Date;
   nudge_type: 'automatic' | 'manual';
-  custom_message: string | null;
+  message: string | null;
   players_nudged: string[];
 }
 

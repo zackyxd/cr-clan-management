@@ -100,11 +100,6 @@ export async function getRaceAttacks(
     [guildId, warWeek, currentDay, raceId, playertags],
   );
 
-  console.log(`[getRaceAttacks] Query returned ${attacksQuery.rows.length} rows for ${playertags.length} players`);
-  if (attacksQuery.rows.length > 0) {
-    console.log('[getRaceAttacks] Sample row:', attacksQuery.rows[0]);
-  }
-
   // Build map of player attack data
   const playerAttackMap = new Map<
     string,
