@@ -1,8 +1,24 @@
 import { pool } from '../../db.js';
 import { DEFAULT_NUDGE_MESSAGE } from '../../config/constants.js';
 import logger from '../../logger.js';
-import { NewsChannel, TextChannel, type Client } from 'discord.js';
+import {
+  NewsChannel,
+  TextChannel,
+  type Client,
+  type Guild,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
+  ContainerBuilder,
+} from 'discord.js';
 import type { FormattedParticipant } from './attacksFormatter.js';
+import {
+  enrichParticipantsWithLinks,
+  formatParticipantsList,
+  buildFooterLegend,
+} from './attacksFormatter.js';
+import { BOTCOLOR } from '../../types/EmbedUtil.js';
+import type { RaceAttacksData } from './types.js';
 
 /**
  * Get the effective nudge message for a clan (custom or default)
@@ -123,4 +139,71 @@ export async function trackNudge(
     `,
     [raceId, clantag, raceWeek, raceDay, nudgeType, message, JSON.stringify(playersSnapshot)],
   );
+}
+
+/**
+ * Build a complete nudge message with Components v2 formatting
+ * Returns null if there are no players to nudge
+ */
+export async function buildNudgeComponents(
+  guild: Guild,
+  attacksData: RaceAttacksData,
+  message: string,
+  channelId: string,
+): Promise<{
+  components: ContainerBuilder[];
+  enrichedParticipants: FormattedParticipant[];
+} | null> {
+  // Enrich participants with Discord linking and channel access
+  const enrichedParticipants = await enrichParticipantsWithLinks(guild.id, attacksData.participants, {
+    mentionUsers: true,
+    channelId: channelId,
+    guild: guild,
+  });
+
+  // Format participant lines with mentions
+  const lines = formatParticipantsList(
+    enrichedParticipants,
+    attacksData.totalAttacksRemaining,
+    attacksData.availableAttackers,
+    {
+      mentionUsers: true,
+      channelId: channelId,
+      guild: guild,
+    },
+  );
+
+  if (lines.length === 0) {
+    return null; // No players to nudge
+  }
+
+  // Build footer legend
+  const footerText = buildFooterLegend(enrichedParticipants, {
+    mentionUsers: true,
+    channelId: channelId,
+    guild: guild,
+  });
+
+  // Build Components v2 message with builders
+  const nudgeText = new TextDisplayBuilder().setContent(message);
+  const separator1 = new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
+  const participantsList = new TextDisplayBuilder().setContent(lines.join('\n'));
+
+  const container = new ContainerBuilder()
+    .setAccentColor(BOTCOLOR)
+    .addTextDisplayComponents(nudgeText)
+    .addSeparatorComponents(separator1)
+    .addTextDisplayComponents(participantsList);
+
+  // Add footer if present
+  if (footerText) {
+    const separator2 = new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
+    const footer = new TextDisplayBuilder().setContent(footerText);
+    container.addSeparatorComponents(separator2).addTextDisplayComponents(footer);
+  }
+
+  return {
+    components: [container],
+    enrichedParticipants,
+  };
 }

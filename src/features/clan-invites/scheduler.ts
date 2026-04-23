@@ -23,6 +23,7 @@ interface ExpiredInvite {
 
 export class InviteScheduler {
   private intervalId: NodeJS.Timeout | null = null;
+  // TODO check if interval should be higher/lower?
   private readonly CHECK_INTERVAL = 10 * 1000; // Check every 10 seconds
 
   constructor(private client: Client) {}

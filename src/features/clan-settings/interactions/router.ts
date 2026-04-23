@@ -63,6 +63,7 @@ export class ClanSettingsInteractionRouter {
    */
   static async handleModal(interaction: ModalSubmitInteraction, parsed: ParsedCustomId): Promise<void> {
     const { action } = parsed;
+
     switch (action) {
       case 'clanSettings_abbreviation':
         await this.handleAbbreviationModal(interaction);

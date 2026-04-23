@@ -80,6 +80,10 @@ client.once(Events.ClientReady, async (c) => {
   // Start clan invite scheduler
   const inviteScheduler = new InviteScheduler(c);
   inviteScheduler.start();
+
+  // Start race tracking scheduler
+  const raceTrackingScheduler = new RaceTrackingScheduler(c);
+  raceTrackingScheduler.start();
 });
 
 // NOTE: Old interaction handling moved to events/interactionCreate.ts with new feature-based dispatcher
@@ -120,6 +124,7 @@ import { insert_guilds_on_startup, remove_guilds_on_startup, sync_default_featur
 import logger from './logger.js';
 import { pool } from './db.js';
 import { InviteScheduler } from './features/clan-invites/scheduler.js';
+import { RaceTrackingScheduler } from './features/race-tracking/nudgeScheduler.js';
 
 // import { pool } from './dbConfig.js';
 logger.info(`🌱 Environment: ${process.env.NODE_ENV || 'development (default)'}`);

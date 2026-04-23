@@ -82,7 +82,7 @@ export const CLAN_FEATURE_SETTINGS = [
 
 // The default features
 export const DEFAULT_CLAN_SETTINGS = {
-  nudge_enabled: false,
+  nudge_enabled: true,
   race_nudge_channel_id: '',
   race_custom_nudge_message: '',
   eod_stats_enabled: false,

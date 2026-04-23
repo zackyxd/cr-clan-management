@@ -1,25 +1,11 @@
-import {
-  SlashCommandBuilder,
-  ChatInputCommandInteraction,
-  MessageFlags,
-  TextDisplayBuilder,
-  SeparatorBuilder,
-  SeparatorSpacingSize,
-  ContainerBuilder,
-} from 'discord.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { checkFeature } from '../../utils/checkFeatureEnabled.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { normalizeTag } from '../../api/CR_API.js';
 import { pool } from '../../db.js';
 import { getRaceAttacks, initializeOrUpdateRace } from '../../features/race-tracking/service.js';
-import { getNudgeMessage, trackNudge } from '../../features/race-tracking/nudgeHelper.js';
-import {
-  enrichParticipantsWithLinks,
-  formatParticipantsList,
-  buildFooterLegend,
-} from '../../features/race-tracking/attacksFormatter.js';
-import { BOTCOLOR } from '../../types/EmbedUtil.js';
+import { getNudgeMessage, trackNudge, buildNudgeComponents } from '../../features/race-tracking/nudgeHelper.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -71,7 +57,7 @@ const command: Command = {
 
     const nudgeMessage =
       (await getNudgeMessage(guild.id, fixedClantag, clanRes.rows[0]?.clan_name, result.warDay, customMessage)) +
-      ` (Sent by ${interaction.user.tag})`;
+      ` (Sent by <@${interaction.user.id}>)`;
 
     const attacksData = await getRaceAttacks(guild.id, result.raceId, result.raceData, result.seasonId, result.warWeek);
     if (!attacksData) {
@@ -79,38 +65,13 @@ const command: Command = {
       return;
     }
 
-    // Enrich participants with Discord linking and channel access
-    const enrichedParticipants = await enrichParticipantsWithLinks(guild.id, attacksData.participants, {
-      mentionUsers: true,
-      channelId: nudgeChannelId,
-      guild: guild,
-    });
+    // Build nudge components using shared helper
+    const nudgeComponents = await buildNudgeComponents(guild, attacksData, nudgeMessage, nudgeChannelId);
 
-    console.log(attacksData.raceDay, result.warDay);
-
-    // Format participant lines with mentions
-    const lines = formatParticipantsList(
-      enrichedParticipants,
-      attacksData.totalAttacksRemaining,
-      attacksData.availableAttackers,
-      {
-        mentionUsers: true,
-        channelId: nudgeChannelId,
-        guild: guild,
-      },
-    );
-
-    if (lines.length === 0) {
+    if (!nudgeComponents) {
       await interaction.editReply('✅ Everyone has completed their attacks!');
       return;
     }
-
-    // Build footer legend
-    const footerText = buildFooterLegend(enrichedParticipants, {
-      mentionUsers: true,
-      channelId: nudgeChannelId,
-      guild: guild,
-    });
 
     // Send nudge to channel
     if (!nudgeChannelId) {
@@ -125,27 +86,10 @@ const command: Command = {
         return;
       }
 
-      // Build Components v2 message with builders
-      const nudgeText = new TextDisplayBuilder().setContent(nudgeMessage);
-      const separator1 = new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
-      const participantsList = new TextDisplayBuilder().setContent(lines.join('\n'));
-
-      const container = new ContainerBuilder()
-        .setAccentColor(BOTCOLOR)
-        .addTextDisplayComponents(nudgeText)
-        .addSeparatorComponents(separator1)
-        .addTextDisplayComponents(participantsList);
-
-      // Add footer if present
-      if (footerText) {
-        const separator2 = new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
-        const footer = new TextDisplayBuilder().setContent(footerText);
-        container.addSeparatorComponents(separator2).addTextDisplayComponents(footer);
-      }
-
-      const message = await nudgeChannel.send({
+      // Send message with Components v2
+      await nudgeChannel.send({
         flags: MessageFlags.IsComponentsV2,
-        components: [container],
+        components: nudgeComponents.components,
       });
 
       trackNudge(
@@ -155,7 +99,7 @@ const command: Command = {
         result.warDay,
         'manual',
         nudgeMessage,
-        enrichedParticipants,
+        nudgeComponents.enrichedParticipants,
       ).catch((err) => console.error('Error tracking nudge:', err));
 
       await interaction.editReply(`✅ Nudge sent to <#${nudgeChannelId}>!`);

@@ -206,11 +206,10 @@ export class ClanSettingsService {
 
       // Update the custom message (null means use default)
       const finalMessage = message.trim() || null;
-      await pool.query(`UPDATE clans SET race_custom_nudge_message = $1 WHERE guild_id = $2 AND clantag = $3`, [
-        finalMessage,
-        guildId,
-        clantag,
-      ]);
+      await pool.query(
+        `UPDATE clans SET race_custom_nudge_message = $1 WHERE guild_id = $2 AND clantag = $3`,
+        [finalMessage, guildId, clantag],
+      );
 
       // Get updated settings
       const settings = await this.getCurrentSettings(guildId, clantag);
