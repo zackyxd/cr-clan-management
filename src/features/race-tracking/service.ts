@@ -897,7 +897,6 @@ function getWarDay(raceData: CurrentRiverRace): number {
  * @returns True if a new war day has started
  */
 function isNewWarDay(previousRaceData: CurrentRiverRace, newRaceData: CurrentRiverRace): boolean {
-  // TODO: Implement day rollover detection logic
   // Compare newRaceData vs previousRaceData to detect if day changed
   // Consider: periodIndex changes, decksUsedToday resets, etc.
   // console.log('Checking for new war day...');

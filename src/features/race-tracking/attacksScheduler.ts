@@ -2,7 +2,7 @@
  *
  * Attacks Scheduler
  * Check all attacks of all clans to keep updated data.
- * Runs every 3 minutes for all clans.
+ * Runs every 1 minute for all clans.
  *
  */
 
@@ -14,6 +14,7 @@ import cron from 'node-cron';
 
 export class AttacksTrackingScheduler {
   private task: cron.ScheduledTask | null = null;
+  private isRunning = false;
 
   constructor(private client: Client) {
     logger.info('Race update scheduler initialized');
@@ -22,9 +23,9 @@ export class AttacksTrackingScheduler {
   start() {
     if (this.task) return;
 
-    // Run every 2 minutes
+    // Run every 1 minute
     this.task = cron.schedule(
-      '*/2 * * * *',
+      '* * * * *',
       () => {
         this.checkAllClansAttacks();
       },
@@ -35,20 +36,12 @@ export class AttacksTrackingScheduler {
 
     const now = new Date();
     const nextRun = new Date(now);
-    // Calculate next 2-minute boundary
-    const currentMinutes = nextRun.getUTCMinutes();
-    const nextMinutes = Math.ceil(currentMinutes / 3) * 3;
-    if (nextMinutes >= 60) {
-      nextRun.setUTCHours(nextRun.getUTCHours() + 1);
-      nextRun.setUTCMinutes(0);
-    } else {
-      nextRun.setUTCMinutes(nextMinutes);
-    }
+    nextRun.setUTCMinutes(nextRun.getUTCMinutes() + 1);
     nextRun.setUTCSeconds(0);
     nextRun.setUTCMilliseconds(0);
 
     logger.info(
-      `⚡ Race update scheduler started - runs every 2 minutes (next: ${String(nextRun.getUTCHours()).padStart(2, '0')}:${String(nextRun.getUTCMinutes()).padStart(2, '0')}:${String(nextRun.getUTCSeconds()).padStart(2, '0')})`,
+      `⚡ Race update scheduler started - runs every 1 minute at :00 seconds UTC (next: ${String(nextRun.getUTCHours()).padStart(2, '0')}:${String(nextRun.getUTCMinutes()).padStart(2, '0')}:00)`,
     );
   }
 
@@ -61,6 +54,12 @@ export class AttacksTrackingScheduler {
   }
 
   private async checkAllClansAttacks() {
+    if (this.isRunning) {
+      logger.warn('Previous race update still running, skipping this cycle');
+      return;
+    }
+
+    this.isRunning = true;
     try {
       // Get unique clantags to avoid duplicate API calls
       // Use MIN(guild_id) to pick one guild per clan for participant tracking
@@ -99,6 +98,8 @@ export class AttacksTrackingScheduler {
       }
     } catch (error) {
       logger.error('Error while checking all clans attacks', error);
+    } finally {
+      this.isRunning = false;
     }
   }
 }
