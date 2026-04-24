@@ -6,9 +6,26 @@
  */
 
 import { pool } from '../../db.js';
-import { CR_API, getCurrentRiverRace, getRiverRaceLog, isFetchError } from '../../api/CR_API.js';
+import { CR_API, isFetchError } from '../../api/CR_API.js';
 import type { CurrentRiverRace, CurrentRiverRaceLogResult } from '../../api/CR_API.js';
-import type { RaceAttacksData, RaceHistoryData, RaceStatsData, RaceUpdateResult, RiverRace } from './types.js';
+import type { RaceAttacksData, RaceHistoryData, RaceStatsData, RaceUpdateResult } from './types.js';
+import { Client, TextChannel } from 'discord.js';
+import { buildAttacksEmbed, buildRaceEmbed } from './embedBuilders.js';
+import { resetCustomNudgeMessageOnNewDay } from './nudgeHelper.js';
+
+// In-memory cache to prevent concurrent updates to the same race
+const ongoingRaceUpdates = new Map<string, Promise<RaceUpdateResult | null>>();
+
+// Discord client for sending messages (set by bot.ts on startup)
+let discordClient: Client | null = null;
+
+/**
+ * Set the Discord client for the race tracking service.
+ * Must be called once during bot startup.
+ */
+export function setDiscordClient(client: Client): void {
+  discordClient = client;
+}
 
 export const periodTypeMap: { [key: string]: string } = {
   training: 'Training',
@@ -86,8 +103,8 @@ export async function getRaceAttacks(
       (SELECT COALESCE(SUM(rpt2.decks_used_today), 0)
        FROM race_participant_tracking rpt2
        JOIN river_races rr2 ON rpt2.race_id = rr2.race_id
+       JOIN clans c2 ON c2.clantag = rr2.clantag AND c2.guild_id = $1
        WHERE rpt2.playertag = rpt.playertag
-         AND rr2.guild_id = $1
          AND rr2.current_week = $2
          AND rpt2.current_day = $3
       ) as total_attacks
@@ -364,18 +381,6 @@ export async function createDaySnapshot(
     try {
       await client.query('BEGIN');
 
-      // Check if snapshot already exists
-      const existing = await client.query(
-        `SELECT snapshot_id FROM race_day_snapshots WHERE race_id = $1 AND race_day = $2`,
-        [raceId, day],
-      );
-
-      if (existing.rows.length > 0) {
-        console.log(`[Snapshot] Snapshot already exists for race ${raceId} day ${day}`);
-        await client.query('ROLLBACK');
-        return false;
-      }
-
       // Get the attacks data (what /attacks would show)
       const attacksData = await getRaceAttacks(guildId, raceId, raceData, seasonId, warWeek);
       if (!attacksData) {
@@ -434,7 +439,7 @@ export async function createDaySnapshot(
       if (attacksData.participants.some((p) => p.isAttackingLate)) legend.push('⏰ Attacking Late');
       if (attacksData.participants.some((p) => !p.isInClan)) legend.push('❌ Left Clan');
 
-      console.log(raceStatsData);
+      // console.log(raceStatsData);
       // Build complete snapshot data (raw + computed)
       const snapshotData = {
         rawApiData: raceData, // Store raw API response
@@ -461,18 +466,22 @@ export async function createDaySnapshot(
         },
       };
 
-      // Store snapshot
+      // Store or update guild-specific snapshot
       await client.query(
         `
         INSERT INTO race_day_snapshots
-        (race_id, race_day, snapshot_time, snapshot_data)
-        VALUES ($1, $2, NOW(), $3)
+        (race_id, guild_id, race_day, snapshot_time, snapshot_data)
+        VALUES ($1, $2, $3, NOW(), $4)
+        ON CONFLICT (race_id, guild_id, race_day)
+        DO UPDATE SET
+          snapshot_time = NOW(),
+          snapshot_data = EXCLUDED.snapshot_data
       `,
-        [raceId, day, JSON.stringify(snapshotData)],
+        [raceId, guildId, day, JSON.stringify(snapshotData)],
       );
 
       await client.query('COMMIT');
-      console.log(`[Snapshot] Created snapshot for race ${raceId} day ${day} with ${groups.length} groups`);
+      console.log(`[Snapshot] Created/updated snapshot for race ${raceId} day ${day} with ${groups.length} groups`);
       return true;
     } catch (error) {
       await client.query('ROLLBACK');
@@ -507,13 +516,38 @@ export async function getRaceHistory(guildId: string, clantag: string, day: numb
 /**
  * Initialize or update a race record from API data.
  * Called by scheduler and on-demand by commands.
+ * Debounced to prevent concurrent updates to the same clan.
  *
- * @param guildId - Discord guild ID
  * @param clantag - Clan tag (normalized with #)
  * @returns Race ID
  */
-export async function initializeOrUpdateRace(guildId: string, clantag: string): Promise<RaceUpdateResult | null> {
-  // TODO: Implement
+export async function initializeOrUpdateRace(clantag: string): Promise<RaceUpdateResult | null> {
+  // Check if there's already an ongoing update for this clan
+  const existingUpdate = ongoingRaceUpdates.get(clantag);
+  if (existingUpdate) {
+    console.log(`[Race Init] Reusing ongoing update for ${clantag}`);
+    return existingUpdate;
+  }
+
+  // Create new update promise
+  const updatePromise = performRaceUpdate(clantag);
+
+  // Cache it
+  ongoingRaceUpdates.set(clantag, updatePromise);
+
+  // Clean up when done (regardless of success/failure)
+  updatePromise.finally(() => {
+    ongoingRaceUpdates.delete(clantag);
+  });
+
+  return updatePromise;
+}
+
+/**
+ * Internal function that performs the actual race update.
+ * Should not be called directly - use initializeOrUpdateRace instead.
+ */
+async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | null> {
   // 1. Call getCurrentRiverRace(clantag)
   // 2. Call getRiverRaceLog(clantag) to get season_id and section_index
   // 3. Check if race exists (match on clan_tag + section_index, season_id if known)
@@ -539,9 +573,13 @@ export async function initializeOrUpdateRace(guildId: string, clantag: string): 
   const warWeek: number = getWarWeek(raceData);
   const periodType = raceData.periodType;
   const clanName = raceData.clan.name;
-  const raceRes = await pool.query(
-    `SELECT race_id FROM river_races WHERE guild_id = $1 AND clantag = $2 AND current_week = $3 AND (season_id = $4 OR season_id IS NULL)`,
-    [guildId, clantag, warWeek, seasonId],
+
+  // Get existing race data in one query (including fields needed for rollover detection)
+  const existingRace = await pool.query(
+    `SELECT race_id, current_day, current_data, end_time 
+     FROM river_races 
+     WHERE clantag = $1 AND current_week = $2 AND (season_id = $3 OR season_id IS NULL)`,
+    [clantag, warWeek, seasonId],
   );
 
   const oppClans = raceData.clans
@@ -549,27 +587,34 @@ export async function initializeOrUpdateRace(guildId: string, clantag: string): 
     .sort((a, b) => a.clantag.localeCompare(b.clantag));
 
   let raceId: number;
+  let endTime: Date | null;
 
-  if (raceRes.rows.length > 0) {
-    raceId = raceRes.rows[0].race_id;
-
-    // Get the existing race data to detect rollover
-    const existingRace = await pool.query(`SELECT current_day, current_data FROM river_races WHERE race_id = $1`, [
-      raceId,
-    ]);
+  if (existingRace.rows.length > 0) {
+    raceId = existingRace.rows[0].race_id;
 
     const oldDay = existingRace.rows[0]?.current_day || 0;
     const oldRaceData = existingRace.rows[0]?.current_data;
 
     // Detect day rollover using isNewWarDay function
+    let isRollover = false;
+    let guildsTracking: string[] = [];
     if (oldRaceData && isNewWarDay(oldRaceData, raceData)) {
+      isRollover = true;
       console.log(`[Rollover] Day rollover detected for ${clantag}: Day ${oldDay} → Day ${oldDay + 1}`);
 
-      // Create snapshot BEFORE updating to preserve old day's data
-      await createDaySnapshot(raceId, guildId, oldRaceData, seasonId, warWeek, oldDay);
+      // Create snapshots for ALL guilds tracking this clan (snapshots are guild-specific)
+      const guildsTrackingQuery = await pool.query(`SELECT DISTINCT guild_id FROM clans WHERE clantag = $1`, [clantag]);
+      guildsTracking = guildsTrackingQuery.rows.map((r) => r.guild_id);
+
+      // Create snapshots in parallel for all guilds
+      await Promise.all(
+        guildsTracking.map((guildId) => createDaySnapshot(raceId, guildId, oldRaceData, seasonId, warWeek, oldDay)),
+      );
+      console.log(`[Rollover] Created snapshots for ${guildsTracking.length} guild(s)`);
     }
 
-    await pool.query(
+    // Update race, setting end_time only on rollover
+    const updateResult = await pool.query(
       `
       UPDATE river_races
       SET
@@ -579,21 +624,32 @@ export async function initializeOrUpdateRace(guildId: string, clantag: string): 
         current_day = $3,
         season_id = $4,
         opponent_clans = $5
+        ${isRollover ? ', end_time = NOW()' : ''}
       WHERE race_id = $6
+      RETURNING end_time
     `,
       [JSON.stringify(raceData), raceData.periodType, warDay, seasonId, JSON.stringify(oppClans), raceId],
     );
-    console.log('Updated race record for', clantag, raceId);
+    endTime = updateResult.rows[0].end_time;
+
+    // Auto-post to staff channels AFTER updating end_time (use old data before rollover)
+    if (isRollover && discordClient) {
+      await postRolloverToStaffChannels(clantag, raceId, oldRaceData, seasonId, warWeek, oldDay, guildsTracking);
+      // Reset custom nudge messages for new day
+      for (const guildId of guildsTracking) {
+        await resetCustomNudgeMessageOnNewDay(discordClient, guildId, clantag);
+      }
+    }
+    // console.log('Updated race record for', clantag, raceId);
   } else {
     const result = await pool.query(
       `
       INSERT INTO river_races 
-      (guild_id, clan_name,clantag, race_state, current_day, current_week, season_id, current_data, opponent_clans, last_check, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-      RETURNING race_id
+      (clan_name, clantag, race_state, current_day, current_week, season_id, current_data, opponent_clans, last_check, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+      RETURNING race_id, end_time
       `,
       [
-        guildId,
         clanName,
         clantag,
         raceData.periodType,
@@ -605,11 +661,12 @@ export async function initializeOrUpdateRace(guildId: string, clantag: string): 
       ],
     );
     raceId = result.rows[0].race_id;
-    console.log('Created new race record for', clantag, raceId);
+    endTime = result.rows[0].end_time;
+    // console.log('Created new race record for', clantag, raceId);
   }
 
   // Update participant tracking with fresh data
-  await updateParticipantTracking(raceId, guildId, raceData.clan.participants, clantag);
+  await updateParticipantTracking(raceId, raceData.clan.participants, clantag);
 
   return {
     raceId,
@@ -618,6 +675,7 @@ export async function initializeOrUpdateRace(guildId: string, clantag: string): 
     periodType: periodTypeMap[periodType] || periodType,
     warDay,
     warWeek,
+    endTime,
   };
 }
 
@@ -626,13 +684,11 @@ export async function initializeOrUpdateRace(guildId: string, clantag: string): 
  * Stores current state for each player in each clan (no cross-clan aggregation stored).
  *
  * @param raceId - Race ID
- * @param guildId - Discord guild ID
  * @param participants - Array of participants from API
  * @param clantag - Current clan tag
  */
 export async function updateParticipantTracking(
   raceId: number,
-  guildId: string,
   participants: Array<{
     tag: string;
     name: string;
@@ -670,15 +726,14 @@ export async function updateParticipantTracking(
         array_agg(DISTINCT rpt.clantag) as clans,
         array_agg(DISTINCT rpt.clan_name) as clan_names
       FROM race_participant_tracking rpt
-      JOIN river_Races rr on rpt.race_id = rr.race_id
-      WHERE rr.guild_id = $1
-        AND rr.current_week = (SELECT current_week FROM river_races WHERE race_id = $2)
-        AND rpt.current_day = (SELECT current_day FROM river_races WHERE race_id = $2)
-        AND rpt.playertag = ANY($3)
+      JOIN river_races rr ON rpt.race_id = rr.race_id
+      WHERE rr.current_week = (SELECT current_week FROM river_races WHERE race_id = $1)
+        AND rpt.current_day = (SELECT current_day FROM river_races WHERE race_id = $1)
+        AND rpt.playertag = ANY($2)
         AND rpt.decks_used_today > 0
       GROUP BY rpt.playertag
     `,
-      [guildId, raceId, activeTags],
+      [raceId, activeTags],
     );
 
     const playerClanMap = new Map<string, { tags: string[]; names: string[] }>();
@@ -755,7 +810,7 @@ export async function updateParticipantTracking(
       );
     }
     await client.query('COMMIT');
-    console.log(`Updated participant tracking for ${participants.length} participants in clan ${clantag}`);
+    // console.log(`Updated participant tracking for ${participants.length} participants in clan ${clantag}`);
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error updating participant tracking:', error);
@@ -845,7 +900,7 @@ function isNewWarDay(previousRaceData: CurrentRiverRace, newRaceData: CurrentRiv
   // TODO: Implement day rollover detection logic
   // Compare newRaceData vs previousRaceData to detect if day changed
   // Consider: periodIndex changes, decksUsedToday resets, etc.
-  console.log('Checking for new war day...');
+  // console.log('Checking for new war day...');
 
   let oldAttacks = 0;
   let newAttacks = 0;
@@ -866,6 +921,85 @@ function isNewWarDay(previousRaceData: CurrentRiverRace, newRaceData: CurrentRiv
   }
 
   return newAttacks < oldAttacks;
+}
+
+/**
+ * Post rollover summaries to staff channels.
+ * Sends both /attacks and /race data from before the rollover.
+ *
+ * @param clantag - Clan tag
+ * @param raceId - Race ID
+ * @param oldRaceData - Race data before rollover
+ * @param seasonId - Season ID
+ * @param warWeek - War week number
+ * @param oldDay - Day number before rollover
+ * @param guildIds - Guild IDs tracking this clan
+ */
+async function postRolloverToStaffChannels(
+  clantag: string,
+  raceId: number,
+  oldRaceData: CurrentRiverRace,
+  seasonId: number | null,
+  warWeek: number,
+  oldDay: number,
+  guildIds: string[],
+): Promise<void> {
+  if (!discordClient) {
+    console.error('[Rollover] Discord client not set, cannot post to staff channels');
+    return;
+  }
+
+  try {
+    // Get all staff channels for guilds tracking this clan (only if eod_stats_enabled)
+    const channelsQuery = await pool.query(
+      `SELECT DISTINCT guild_id, staff_channel_id 
+       FROM clans 
+       WHERE clantag = $1 AND staff_channel_id IS NOT NULL AND eod_stats_enabled = true AND guild_id = ANY($2)`,
+      [clantag, guildIds],
+    );
+
+    if (channelsQuery.rows.length === 0) {
+      console.log(`[Rollover] No staff channels configured for ${clantag}`);
+      return;
+    }
+
+    // Post to each staff channel
+    for (const row of channelsQuery.rows) {
+      const guildId = row.guild_id;
+      const staffChannelId = row.staff_channel_id;
+
+      try {
+        const channel = await discordClient.channels.fetch(staffChannelId);
+        if (!channel || !channel.isTextBased()) {
+          console.error(`[Rollover] Channel ${staffChannelId} not found or not text-based`);
+          continue;
+        }
+
+        // Generate attacks data (don't show end_time for end-of-day summaries)
+        const attacksData = await getRaceAttacks(guildId, raceId, oldRaceData, seasonId, warWeek);
+        if (attacksData) {
+          const attacksEmbed = await buildAttacksEmbed(guildId, attacksData, oldRaceData, null, false);
+          await (channel as TextChannel).send({
+            content: `## 📊 Day ${getDayForDisplay(oldDay)} Summary`,
+            embeds: [attacksEmbed],
+          });
+        }
+
+        // Generate race standings data (don't show end_time for end-of-day summaries)
+        const stats = getRaceStats(guildId, oldRaceData);
+        if (stats) {
+          const raceEmbed = buildRaceEmbed(stats, clantag, seasonId, warWeek, oldDay, null);
+          await (channel as TextChannel).send({ embeds: [raceEmbed] });
+        }
+
+        console.log(`[Rollover] Posted day ${oldDay} summary to guild ${guildId}`);
+      } catch (error) {
+        console.error(`[Rollover] Failed to post to channel ${staffChannelId}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error(`[Rollover] Failed to post rollover summaries for ${clantag}:`, error);
+  }
 }
 
 /**

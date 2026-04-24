@@ -29,6 +29,7 @@ import { clanSettingsService } from '../service.js';
 import { pool } from '../../../db.js';
 import logger from '../../../logger.js';
 import { clanInviteService } from '../../clan-invites/service.js';
+import { NudgeTrackingScheduler } from '../../race-tracking/nudgeScheduler.js';
 
 export class ClanSettingsInteractionRouter {
   /**
@@ -83,6 +84,10 @@ export class ClanSettingsInteractionRouter {
 
       case 'clanSettings_race_custom_nudge_message':
         await this.handleCustomNudgeMessageModal(interaction);
+        break;
+
+      case 'clanSettings_race_nudge_schedule':
+        await this.handleNudgeScheduleModal(interaction);
         break;
 
       default:
@@ -591,6 +596,104 @@ export class ClanSettingsInteractionRouter {
   }
 
   /**
+   * Handle nudge schedule modal submission
+   */
+  private static async handleNudgeScheduleModal(interaction: ModalSubmitInteraction): Promise<void> {
+    const parsed = parseCustomId(interaction.customId);
+    const { guildId, extra } = parsed;
+    const clantag = extra[0];
+
+    if (!clantag) {
+      await interaction.reply({
+        content: 'Missing clan tag. Please try again.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Get values from modal inputs
+    const startHourStr = interaction.fields.getTextInputValue('start_hour').trim();
+    const startMinuteStr = interaction.fields.getTextInputValue('start_minute').trim();
+    const intervalHoursStr = interaction.fields.getTextInputValue('interval_hours').trim();
+
+    // Validate inputs
+    const startHour = parseInt(startHourStr);
+    const startMinute = parseInt(startMinuteStr);
+    const intervalHours = parseFloat(intervalHoursStr);
+
+    if (isNaN(startHour) || startHour < 0 || startHour > 23) {
+      await interaction.reply({
+        content: '❌ Start hour must be a number between 0 and 23.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (isNaN(startMinute) || startMinute < 0 || startMinute > 59) {
+      await interaction.reply({
+        content: '❌ Start minute must be a number between 0 and 59.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (isNaN(intervalHours) || intervalHours <= 0 || intervalHours > 12) {
+      await interaction.reply({
+        content: '❌ Interval must be a number between 0 and 12 hours.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Check permissions
+    const allowed = await checkPerms(interaction, guildId, 'modal', 'either', { hideNoPerms: true });
+    if (!allowed) return;
+
+    // Update schedule using service
+    const result = await clanSettingsService.updateNudgeSchedule(
+      interaction.client,
+      guildId,
+      clantag,
+      startHour,
+      startMinute,
+      intervalHours,
+      interaction.user.id,
+    );
+
+    if (!result.success) {
+      await interaction.followUp({
+        content: result.error || '❌ Failed to update nudge schedule.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    // Calculate nudge times to show in success message
+    const { nudgeTimes } = NudgeTrackingScheduler.calculateNudgeContext(startHour, startMinute, intervalHours);
+
+    // Create Discord timestamps for today's nudge times
+    const now = new Date();
+    const todayDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+    const timeStrings = nudgeTimes.map((time) => {
+      const timestamp = new Date(todayDate);
+      timestamp.setUTCHours(time.hour, time.minute, 0, 0);
+      const unix = Math.floor(timestamp.getTime() / 1000);
+      return `<t:${unix}:t>`;
+    });
+
+    // Create 9am UTC timestamp for stop time
+    const stopTime = new Date(todayDate);
+    stopTime.setUTCHours(9, 0, 0, 0);
+    const stopTimeUnix = Math.floor(stopTime.getTime() / 1000);
+
+    await interaction.followUp({
+      content: `✅ Nudge schedule updated!\n**Nudge times:** ${timeStrings.join(', ')}\n*Hard stop at <t:${stopTimeUnix}:t>*`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  /**
    * Handle abbreviation modal submission
    */
   private static async handleAbbreviationModal(interaction: ModalSubmitInteraction): Promise<void> {
@@ -822,6 +925,10 @@ export class ClanSettingsInteractionRouter {
         await this.showCustomNudgeMessageModal(interaction, guildId, clantag);
         break;
 
+      case 'race_nudge_schedule':
+        await this.showNudgeScheduleModal(interaction, guildId, clantag);
+        break;
+
       default:
         await interaction.reply({
           content: `Unknown modal type: ${action}`,
@@ -860,6 +967,74 @@ export class ClanSettingsInteractionRouter {
               .setMaxLength(250)
               .setPlaceholder('Leave blank for default message')
               .setValue(currentMessage),
+          ),
+      );
+
+    await interaction.showModal(modal);
+  }
+
+  /**
+   * Show nudge schedule modal
+   */
+  private static async showNudgeScheduleModal(
+    interaction: ButtonInteraction,
+    guildId: string,
+    clantag: string,
+  ): Promise<void> {
+    // Get current schedule settings
+    const currentResult = await pool.query(
+      `SELECT race_nudge_start_hour, race_nudge_start_minute, race_nudge_interval_hours 
+       FROM clans WHERE guild_id = $1 AND clantag = $2`,
+      [guildId, clantag],
+    );
+
+    const row = currentResult.rows[0];
+    const startHour = row?.race_nudge_start_hour !== null ? String(row.race_nudge_start_hour) : '';
+    const startMinute = row?.race_nudge_start_minute !== null ? String(row.race_nudge_start_minute) : '';
+    const intervalHours = row?.race_nudge_interval_hours !== null ? String(row.race_nudge_interval_hours) : '';
+
+    const modal = new ModalBuilder()
+      .setTitle('Nudge Schedule')
+      .setCustomId(makeCustomId('m', 'clanSettings_race_nudge_schedule', guildId, { extra: [clantag] }))
+      .addLabelComponents(
+        new LabelBuilder()
+          .setLabel('Start Hour (UTC)')
+          .setDescription('Hour when nudges start (0-23). Example: 14 for 2pm UTC')
+          .setTextInputComponent(
+            new TextInputBuilder()
+              .setCustomId('start_hour')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+              .setMinLength(1)
+              .setMaxLength(2)
+              .setPlaceholder('0-23')
+              .setValue(startHour),
+          ),
+        new LabelBuilder()
+          .setLabel('Start Minute (UTC)')
+          .setDescription('Minute when nudges start (0-59). Example: 30 for half past the hour')
+          .setTextInputComponent(
+            new TextInputBuilder()
+              .setCustomId('start_minute')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+              .setMinLength(1)
+              .setMaxLength(2)
+              .setPlaceholder('0-59')
+              .setValue(startMinute),
+          ),
+        new LabelBuilder()
+          .setLabel('Interval (Hours)')
+          .setDescription('Hours between each nudge. Example: 2 for every 2 hours. Can use decimals like 1.5')
+          .setTextInputComponent(
+            new TextInputBuilder()
+              .setCustomId('interval_hours')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+              .setMinLength(1)
+              .setMaxLength(4)
+              .setPlaceholder('e.g., 2 or 1.5')
+              .setValue(intervalHours),
           ),
       );
 

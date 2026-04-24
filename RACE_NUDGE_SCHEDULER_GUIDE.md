@@ -4,7 +4,7 @@
 
 ### How It Works
 
-The `RaceTrackingScheduler` uses a **polling-based approach**:
+The `NudgeTrackingScheduler` uses a **polling-based approach**:
 
 1. **Checks every 1 minute** for tasks that need to run
 2. **Queries database** for clans with active races and nudge settings

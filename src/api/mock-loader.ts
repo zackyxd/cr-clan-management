@@ -21,10 +21,10 @@ export async function loadMockData<T>(endpoint: string, identifier: string): Pro
     const content = await fs.readFile(filepath, 'utf-8');
     const data = JSON.parse(content) as T;
 
-    console.log(`[MOCK] Loaded fixture: ${endpoint}/${identifier}.json`);
+    // console.log(`[MOCK] Loaded fixture: ${endpoint}/${identifier}.json`);
     return data;
   } catch (error) {
-    console.warn(`[MOCK] No fixture found: ${endpoint}/${identifier}.json`);
+    console.warn(`[MOCK] No fixture found: ${endpoint}/${identifier}.json ${error}`);
     return null;
   }
 }

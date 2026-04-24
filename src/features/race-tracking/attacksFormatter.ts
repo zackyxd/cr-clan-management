@@ -13,6 +13,10 @@ export interface FormatOptions {
   channelId?: string;
   /** Guild to check permissions in */
   guild?: Guild;
+  /** Current nudge number (1-based) for attacking-late logic */
+  currentNudgeNumber?: number;
+  /** Total nudges in the cycle for attacking-late logic */
+  totalNudges?: number;
 }
 
 /**
@@ -109,7 +113,20 @@ export function formatParticipantLine(participant: FormattedParticipant, options
   let line = '* ';
 
   // Determine if we should ping this user
-  const shouldMention = options.mentionUsers && participant.discordUserId && participant.pingUser; // Use database ping_user setting
+  let shouldMention = options.mentionUsers && participant.discordUserId && participant.pingUser;
+
+  // NEVER ping replacement players
+  if (participant.isReplacementPlayer) {
+    shouldMention = false;
+  }
+
+  // Skip attacking-late players for first half of nudges
+  if (participant.isAttackingLate && options.currentNudgeNumber && options.totalNudges) {
+    const skipCount = Math.ceil(options.totalNudges / 2);
+    if (options.currentNudgeNumber <= skipCount) {
+      shouldMention = false;
+    }
+  }
 
   // Player mention or name
   if (shouldMention) {
@@ -133,7 +150,8 @@ export function formatParticipantLine(participant: FormattedParticipant, options
   if (participant.isReplacementPlayer) {
     line += ' ⚠️';
   }
-  if (participant.isAttackingLate) {
+  // Only show clock if they're NOT getting pinged (either skipped or no mention at all)
+  if (participant.isAttackingLate && !shouldMention) {
     line += ' ⏰';
   }
   if (!participant.isInClan) {
@@ -209,7 +227,20 @@ export function buildFooterLegend(participants: FormattedParticipant[], options:
   const hasSplitAttackers = filteredParticipants.some((p) => p.isSplitAttacker);
   const hasAttackedElsewhere = filteredParticipants.some((p) => p.hasAttackedElsewhere);
   const hasReplacementPlayers = filteredParticipants.some((p) => p.isReplacementPlayer);
-  const hasAttackingLate = filteredParticipants.some((p) => p.isAttackingLate);
+
+  // Only show attacking-late legend if there are players who ARE attacking late but NOT being pinged yet
+  const hasAttackingLateWithoutPing = filteredParticipants.some((p) => {
+    if (!p.isAttackingLate) return false;
+
+    // Check if they would be skipped (same logic as formatParticipantLine)
+    if (options.currentNudgeNumber && options.totalNudges) {
+      const skipCount = Math.ceil(options.totalNudges / 2);
+      return options.currentNudgeNumber <= skipCount; // Only show if currently skipped
+    }
+
+    return true; // Show if no nudge context
+  });
+
   const hasLeftClan = filteredParticipants.some((p) => !p.isInClan);
   const hasLockedUsers = options.mentionUsers && filteredParticipants.some((p) => p.hasChannelAccess === false);
 
@@ -217,7 +248,7 @@ export function buildFooterLegend(participants: FormattedParticipant[], options:
   if (hasSplitAttackers) footerParts.push('☠️ = Split attacker\n');
   if (hasAttackedElsewhere) footerParts.push('🚫 = Do not attack (started elsewhere)\n');
   if (hasReplacementPlayers) footerParts.push('⚠️ = Replace me\n');
-  if (hasAttackingLate) footerParts.push('⏰ = Attacking late\n');
+  if (hasAttackingLateWithoutPing) footerParts.push('⏰ = Attacking late\n');
   if (hasLeftClan) footerParts.push('❌ = Left clan\n');
 
   return footerParts.join('');

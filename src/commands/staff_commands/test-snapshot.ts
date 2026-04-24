@@ -32,10 +32,10 @@ const command: Command = {
       const raceQuery = await pool.query(
         `SELECT race_id, current_day, current_data, season_id, current_week, clan_name 
        FROM river_races 
-       WHERE guild_id = $1 AND clantag = $2 
+       WHERE clantag = $1 
        ORDER BY created_at DESC 
        LIMIT 1`,
-        [guildId, clantag],
+        [clantag],
       );
 
       if (raceQuery.rows.length === 0) {

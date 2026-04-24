@@ -24,7 +24,7 @@ const command: Command = {
     const guildId = interaction.guildId!;
 
     try {
-      // Get snapshot
+      // Get snapshot for this guild
       const snapshotQuery = await pool.query(
         `
       SELECT 
@@ -33,7 +33,7 @@ const command: Command = {
         rds.snapshot_data
       FROM race_day_snapshots rds
       JOIN river_races rr ON rds.race_id = rr.race_id
-      WHERE rr.guild_id = $1 
+      WHERE rds.guild_id = $1 
         AND rr.clantag = $2 
         AND rds.race_day = $3
       ORDER BY rds.snapshot_time DESC

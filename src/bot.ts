@@ -63,6 +63,10 @@ client.once(Events.ClientReady, async (c) => {
     name: 'over clans',
     type: ActivityType.Watching,
   });
+  
+  // Set Discord client for race tracking service
+  setDiscordClient(c);
+  
   const dbClient = await pool.connect();
   try {
     await dbClient.query('BEGIN');
@@ -82,8 +86,11 @@ client.once(Events.ClientReady, async (c) => {
   inviteScheduler.start();
 
   // Start race tracking scheduler
-  const raceTrackingScheduler = new RaceTrackingScheduler(c);
-  raceTrackingScheduler.start();
+  const nudgeTrackingScheduler = new NudgeTrackingScheduler(c);
+  nudgeTrackingScheduler.start();
+
+  const attacksTrackingScheduler = new AttacksTrackingScheduler(c);
+  attacksTrackingScheduler.start();
 });
 
 // NOTE: Old interaction handling moved to events/interactionCreate.ts with new feature-based dispatcher
@@ -124,7 +131,9 @@ import { insert_guilds_on_startup, remove_guilds_on_startup, sync_default_featur
 import logger from './logger.js';
 import { pool } from './db.js';
 import { InviteScheduler } from './features/clan-invites/scheduler.js';
-import { RaceTrackingScheduler } from './features/race-tracking/nudgeScheduler.js';
+import { NudgeTrackingScheduler } from './features/race-tracking/nudgeScheduler.js';
+import { AttacksTrackingScheduler } from './features/race-tracking/attacksScheduler.js';
+import { setDiscordClient } from './features/race-tracking/service.js';
 
 // import { pool } from './dbConfig.js';
 logger.info(`🌱 Environment: ${process.env.NODE_ENV || 'development (default)'}`);

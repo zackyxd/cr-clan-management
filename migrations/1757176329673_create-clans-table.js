@@ -20,7 +20,7 @@ export const up = (pgm) => {
       // Clan Settings - Individual columns instead of JSONB
       abbreviation: { type: 'varchar(10)' },
       family_clan: { type: 'boolean', default: false },
-      nudge_enabled: { type: 'boolean', default: false },
+      nudge_enabled: { type: 'boolean', default: true },
       invites_enabled: { type: 'boolean', default: false },
       clan_role_id: { type: 'varchar(30)' }, // Discord role ID
       staff_channel_id: { type: 'varchar(30)' }, // Channel for end-of-day stats and staff updates

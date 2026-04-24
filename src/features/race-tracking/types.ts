@@ -31,6 +31,7 @@ export interface RaceUpdateResult {
   periodType: string;
   warDay: number;
   warWeek: number;
+  endTime: Date | null;
 }
 
 /**

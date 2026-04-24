@@ -6,3 +6,4 @@
 export * from './types.js';
 export * from './service.js';
 export * from './timeUtils.js';
+export * from './embedBuilders.js';

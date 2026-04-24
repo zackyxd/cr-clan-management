@@ -15,11 +15,11 @@ export const up = (pgm) => {
     // Race nudge settings (UTC-based)
     // Note: Nudges automatically stop at 9:00am UTC each day (hardcoded)
     race_nudge_channel_id: { type: 'varchar(30)', default: null },
-    race_nudge_start_hour: { type: 'integer', default: null }, // 0-23 (UTC)
-    race_nudge_start_minute: { type: 'integer', default: null }, // 0-59 (UTC)
-    race_nudge_interval_hours: { type: 'integer', default: 3 }, // Hours between nudges
+    race_nudge_start_hour: { type: 'integer', default: 19 }, // 0-23 (UTC)
+    race_nudge_start_minute: { type: 'integer', default: 0 }, // 0-59 (UTC)
+    race_nudge_interval_hours: { type: 'decimal', default: 2.0 }, // Hours between nudges
     race_custom_nudge_message: { type: 'text', default: null },
-    
+
     // Auto-post end-of-day stats
     eod_stats_enabled: { type: 'boolean', default: false },
   });

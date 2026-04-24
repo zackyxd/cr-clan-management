@@ -1,19 +1,9 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags, EmbedBuilder } from 'discord.js';
-import { getCurrentRiverRace, isFetchError, normalizeTag } from '../../api/CR_API.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { normalizeTag } from '../../api/CR_API.js';
 import { pool } from '../../db.js';
 import { Command } from '../../types/Command.js';
-import {
-  getRaceAttacks,
-  initializeOrUpdateRace,
-  periodTypeMap,
-  getDayForDisplay,
-} from '../../features/race-tracking/index.js';
-import { BOTCOLOR } from '../../types/EmbedUtil.js';
-import {
-  enrichParticipantsWithLinks,
-  formatParticipantsList,
-  buildFooterLegend,
-} from '../../features/race-tracking/attacksFormatter.js';
+import { getRaceAttacks, initializeOrUpdateRace } from '../../features/race-tracking/index.js';
+import { buildAttacksEmbed } from '../../features/race-tracking/embedBuilders.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -39,67 +29,21 @@ const command: Command = {
 
     const fixedClantag = clanRes.rows.length > 0 ? clanRes.rows[0].clantag : normalizedTag;
 
-    const result = await initializeOrUpdateRace(guild.id, fixedClantag);
+    const result = await initializeOrUpdateRace(fixedClantag);
     if (!result) {
       await interaction.editReply('❌ Failed to fetch race data. Please try again later.');
       return;
     }
 
-    const { raceId, raceData, seasonId, warWeek } = result;
+    const { raceId, raceData, seasonId, warWeek, endTime } = result;
     const attacksData = await getRaceAttacks(guild.id, raceId, raceData, seasonId, warWeek);
     if (!attacksData) {
       await interaction.editReply('❌ Failed to fetch attacks data. Please try again later.');
       return;
     }
 
-    // Enrich participants (no linking for /attacks - display only)
-    const enrichedParticipants = await enrichParticipantsWithLinks(guild.id, attacksData.participants, {
-      mentionUsers: false, // Don't ping in /attacks
-    });
-
-    // Format participant lines
-    const lines = formatParticipantsList(
-      enrichedParticipants,
-      attacksData.totalAttacksRemaining,
-      attacksData.availableAttackers,
-      {
-        mentionUsers: false,
-      },
-    );
-
-    if (lines.length === 0) {
-      const embed = new EmbedBuilder()
-        .setTitle(`${attacksData.clanInfo.name}`)
-        .setAuthor({
-          name: `Season ${attacksData.seasonId ?? '---'} | Week ${attacksData.warWeek} | Day ${getDayForDisplay(attacksData.raceDay)}`,
-        })
-        .setColor(BOTCOLOR)
-        .setDescription(
-          `## ${periodTypeMap[raceData.periodType] || ''} Attacks\n✅ Everyone has completed their attacks!`,
-        )
-        .setURL(`https://cwstats.com/clan/${attacksData.clanInfo.clantag.substring(1)}/race`);
-      await interaction.editReply({ embeds: [embed] });
-      return;
-    }
-
-    // Build footer legend
-    const footerText = buildFooterLegend(enrichedParticipants, { mentionUsers: false });
-
-    // const description = `:playersLeft: ${attacksData.availableAttackers}\n:decksLeft: ${attacksData.totalAttacksRemaining}\n\n`;
-
-    const embed = new EmbedBuilder()
-      .setTitle(`${attacksData.clanInfo.name}`)
-      .setAuthor({
-        name: `Season ${attacksData.seasonId ?? '---'} | Week ${attacksData.warWeek} | Day ${getDayForDisplay(attacksData.raceDay)}`,
-      })
-      .setColor(BOTCOLOR)
-      .setDescription(`## ${periodTypeMap[raceData.periodType] || ''} Attacks\n${lines.join('\n')}`)
-      .setURL(`https://cwstats.com/clan/${attacksData.clanInfo.clantag.substring(1)}/race`);
-
-    if (footerText) {
-      embed.setFooter({ text: footerText });
-    }
-
+    // Build and send embed
+    const embed = await buildAttacksEmbed(guild.id, attacksData, raceData, endTime, false);
     await interaction.editReply({ embeds: [embed] });
   },
 };

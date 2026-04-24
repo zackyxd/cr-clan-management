@@ -17,6 +17,7 @@ export const up = (pgm) => {
       references: 'river_races(race_id)',
       onDelete: 'CASCADE',
     },
+    message_id: { type: 'varchar(30)', notNull: true },
     clantag: { type: 'varchar(20)', notNull: true },
     race_week: { type: 'integer', notNull: true },
     race_day: { type: 'integer', notNull: true },
@@ -24,7 +25,6 @@ export const up = (pgm) => {
     nudge_type: { type: 'varchar(50)', notNull: true, default: 'automatic' },
     message: { type: 'text', default: null },
     players_snapshot: { type: 'jsonb', notNull: true, default: pgm.func("'{}'::jsonb") },
-    // players_nudged: { type: 'text[]', default: pgm.func("'{}'::text[]") },
   });
 
   pgm.createIndex('race_nudges', 'race_id');

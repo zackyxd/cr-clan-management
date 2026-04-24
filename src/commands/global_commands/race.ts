@@ -1,15 +1,9 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags, EmbedBuilder } from 'discord.js';
-import { getCurrentRiverRace, isFetchError, normalizeTag } from '../../api/CR_API.js';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { normalizeTag } from '../../api/CR_API.js';
 import { pool } from '../../db.js';
 import { Command } from '../../types/Command.js';
-import {
-  detectSeasonId,
-  getDayForDisplay,
-  getRaceStats,
-  initializeOrUpdateRace,
-  updateParticipantTracking,
-} from '../../features/race-tracking/service.js';
-import { BOTCOLOR } from '../../types/EmbedUtil.js';
+import { getRaceStats, initializeOrUpdateRace } from '../../features/race-tracking/service.js';
+import { buildRaceEmbed } from '../../features/race-tracking/embedBuilders.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -35,13 +29,13 @@ const command: Command = {
 
     const fixedClantag = clanRes.rows.length > 0 ? clanRes.rows[0].clantag : normalizedTag;
 
-    const result = await initializeOrUpdateRace(guild.id, fixedClantag);
+    const result = await initializeOrUpdateRace(fixedClantag);
     if (!result) {
       await interaction.editReply('❌ Failed to fetch race data. Please try again later.');
       return;
     }
 
-    const { raceId, raceData, seasonId, warDay, warWeek, periodType } = result;
+    const { raceData, seasonId, warDay, warWeek, endTime } = result;
     const stats = getRaceStats(guild.id, raceData);
 
     if (!stats) {
@@ -49,106 +43,10 @@ const command: Command = {
       return;
     }
 
-    if (stats.type === 'training') {
-      // TODO add emojis
-      const embed = new EmbedBuilder()
-        .setTitle(`Training Day`)
-        .setColor(BOTCOLOR)
-        .setURL(`https://cwstats.com/clan/${normalizedTag.substring(1)}/race`)
-        .setAuthor({
-          name: `Season ${seasonId || '---'} | Week ${warWeek} | Day ${getDayForDisplay(warDay)}`,
-        });
-      let description = '';
-
-      stats.clans.forEach((clan, index) => {
-        const escapedName = escapeMarkdown(clan.name);
-        const clantag = clan.clantag.substring(1); // Remove #
-
-        if (clan.clantag === fixedClantag) {
-          description += `__**${index + 1}. [${escapedName}](<https://www.cwstats.com/clan/${clantag}/log>)**__\n`;
-        } else {
-          description += `**${index + 1}. [${escapedName}](<https://www.cwstats.com/clan/${clantag}/log>)**\n`;
-        }
-      });
-
-      embed.setDescription(description);
-      await interaction.editReply({ embeds: [embed] });
-      return;
-    }
-
-    if (stats.type === 'warDay') {
-      // TODO add emojis
-      const embed = new EmbedBuilder()
-        .setTitle(`War Day`)
-        .setColor(BOTCOLOR)
-        .setURL(`https://cwstats.com/clan/${normalizedTag.substring(1)}/race`)
-        .setAuthor({ name: `Season ${seasonId || '---'} | Week ${warWeek} | Day ${getDayForDisplay(warDay)}` });
-      let description = '';
-      stats.clans.forEach((clan, index) => {
-        const escapedName = escapeMarkdown(clan.name);
-        const clantag = clan.clantag.substring(1); // Remove #
-
-        if (clan.clantag === fixedClantag) {
-          description += `${index + 1}. __**[${escapedName}](<https://www.cwstats.com/clan/${clantag}/log>)**__\n`;
-        } else {
-          description += `${index + 1}. **[${escapedName}](<https://www.cwstats.com/clan/${clantag}/log>)**\n`;
-        }
-        // TODO emoji
-        const average: string = (clan.fame / clan.attacksUsedToday).toFixed(2);
-        description += `:fame: ${clan.fame.toLocaleString()}\n`;
-        description += `:projected: ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
-        description += `:attacksLeft: ${200 - clan.attacksUsedToday}\n`;
-        description += `:average: ${average ? average : '-1'}\n\n`;
-      });
-      embed.setDescription(description);
-      await interaction.editReply({ embeds: [embed] });
-      return;
-    }
-
-    if (stats.type === 'colosseum') {
-      // TODO add emojis
-      const embed = new EmbedBuilder()
-        .setTitle('Colosseum')
-        .setColor(BOTCOLOR)
-        .setURL(`https://cwstats.com/clan/${normalizedTag.substring(1)}/race`)
-        .setAuthor({ name: `Season ${seasonId || '---'} | Week ${warWeek} | Day ${getDayForDisplay(warDay)}` });
-      let description = '';
-      stats.clans.forEach((clan, index) => {
-        const escapedName = escapeMarkdown(clan.name);
-        const clantag = clan.clantag.substring(1); // Remove #
-
-        if (clan.clantag === fixedClantag) {
-          description += `${index + 1}. __**[${escapedName}](<https://www.cwstats.com/clan/${clantag}/log>)**__\n`;
-        } else {
-          description += `${index + 1}. **[${escapedName}](<https://www.cwstats.com/clan/${clantag}/log>)**\n`;
-        }
-
-        const average: string = (clan.fame / clan.attacksUsedToday).toFixed(2);
-        description += `:fame: ${clan.fame.toLocaleString()}\n`;
-        description += `:projected: ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
-        description += `:attacksLeft: ${200 - clan.attacksUsedToday}\n`;
-        description += `:average: ${average ? average : '-1'}\n\n`;
-      });
-      embed.setDescription(description);
-      await interaction.editReply({ embeds: [embed] });
-      return;
-    }
-
-    await interaction.editReply({ content: 'You should not get this...' });
+    // Build and send embed
+    const embed = buildRaceEmbed(stats, fixedClantag, seasonId, warWeek, warDay, endTime);
+    await interaction.editReply({ embeds: [embed] });
   },
 };
-
-function escapeMarkdown(text: string): string {
-  const markdownCharacters = ['*', '_', '`', '~'];
-  return text
-    .split('')
-    .map(function (character: string) {
-      if (markdownCharacters.includes(character)) {
-        return '\\' + character;
-      }
-      return character;
-    })
-    .join('');
-}
 
 export default command;

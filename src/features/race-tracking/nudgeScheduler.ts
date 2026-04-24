@@ -1,9 +1,11 @@
 import { Client, TextChannel, MessageFlags } from 'discord.js';
 import { pool } from '../../db.js';
 import logger from '../../logger.js';
-import { getRaceAttacks } from './service.js';
+import { getRaceAttacks, initializeOrUpdateRace } from './service.js';
 import { trackNudge, getNudgeMessage, buildNudgeComponents } from './nudgeHelper.js';
 import { isDev } from '../../utils/env.js';
+import { getNextDayRelativeTimestamp } from './timeUtils.js';
+import cron from 'node-cron';
 
 interface ScheduledNudge {
   race_id: number;
@@ -19,6 +21,7 @@ interface ScheduledNudge {
   current_day: number;
   current_week: number;
   race_state: string;
+  end_time: Date;
 }
 
 /**
@@ -28,71 +31,108 @@ interface ScheduledNudge {
  *
  */
 
-export class RaceTrackingScheduler {
-  private intervalId: NodeJS.Timeout | null = null;
-  private readonly CHECK_INTERVAL: number;
+export class NudgeTrackingScheduler {
+  private task: cron.ScheduledTask | null = null;
 
   constructor(private client: Client) {
-    // Configurable check interval (default: 60 seconds)
-    // For testing: set RACE_SCHEDULER_INTERVAL_SECONDS=10 in .env.dev
-    const intervalSeconds = process.env.RACE_SCHEDULER_INTERVAL_SECONDS
-      ? parseInt(process.env.RACE_SCHEDULER_INTERVAL_SECONDS)
-      : 60;
-
-    this.CHECK_INTERVAL = intervalSeconds * 1000;
-    logger.info(`Race scheduler will check every ${intervalSeconds} seconds`);
+    logger.info('Nudge scheduler initialized');
   }
 
   start() {
-    if (this.intervalId) return;
-    logger.info('Starting race tracking scheduler');
-    this.intervalId = setInterval(() => this.checkScheduledTasks(), this.CHECK_INTERVAL);
+    if (this.task) return;
 
-    // Run on startup
-    this.checkScheduledTasks();
+    // Run every minute at :00 seconds (UTC)
+    this.task = cron.schedule(
+      '* * * * *',
+      () => {
+        this.checkScheduledTasks();
+      },
+      {
+        timezone: 'Etc/UTC',
+      },
+    );
+
+    const now = new Date();
+    const nextRun = new Date(now);
+    nextRun.setUTCMinutes(nextRun.getUTCMinutes() + 1);
+    nextRun.setUTCSeconds(0);
+    nextRun.setUTCMilliseconds(0);
+
+    logger.info(
+      `⏰ Nudge scheduler started - runs every 1 minute at :00 seconds UTC (next: ${String(nextRun.getUTCHours()).padStart(2, '0')}:${String(nextRun.getUTCMinutes()).padStart(2, '0')}:00)`,
+    );
   }
 
   /**
-   * Manually trigger a nudge immediately for a specific clan (for testing/manual sends)
+   * Calculate all nudge times and find current nudge number based on current UTC time
+   * Returns { currentNudgeNumber, totalNudges } or null if outside nudge window
    */
-  async triggerNudgeNow(guildId: string, clantag: string): Promise<{ success: boolean; message: string }> {
-    try {
-      const result = await pool.query<ScheduledNudge>(
-        `
-        SELECT 
-          rr.race_id,
-          c.clantag,
-          c.guild_id,
-          c.clan_name,
-          c.staff_channel_id,
-          c.race_nudge_channel_id,
-          c.race_nudge_start_hour,
-          c.race_nudge_start_minute,
-          c.race_nudge_interval_hours,
-          c.race_custom_nudge_message,
-          rr.current_day,
-          rr.current_week,
-          rr.race_state
-        FROM river_races rr
-        JOIN clans c ON c.clantag = rr.clantag AND c.guild_id = rr.guild_id
-        WHERE c.guild_id = $1 AND c.clantag = $2
-          AND rr.race_state = 'warDay'
-          AND c.race_nudge_channel_id IS NOT NULL
-        `,
-        [guildId, clantag],
-      );
+  static calculateNudgeContext(
+    startHour: number,
+    startMinute: number,
+    intervalHours: number,
+  ): { currentNudgeNumber: number; totalNudges: number; nudgeTimes: { hour: number; minute: number }[] } {
+    const STOP_HOUR = 9;
+    const STOP_MINUTE = 0;
+    const stopTotalMinutes = STOP_HOUR * 60 + STOP_MINUTE;
 
-      if (result.rows.length === 0) {
-        return { success: false, message: 'No active race or nudge settings not configured' };
+    // Calculate all nudge times
+    const nudgeTimes: { hour: number; minute: number }[] = [];
+    const startTotalMinutes = startHour * 60 + startMinute;
+    const crossesMidnight = startTotalMinutes >= stopTotalMinutes;
+
+    let i = 0;
+    while (true) {
+      const totalMinutes = startTotalMinutes + i * intervalHours * 60;
+      const hour = Math.floor(totalMinutes / 60) % 24;
+      const minute = totalMinutes % 60;
+      const currentMinutes = hour * 60 + minute;
+
+      if (crossesMidnight) {
+        if (currentMinutes > stopTotalMinutes && currentMinutes < startTotalMinutes) {
+          break;
+        }
+      } else {
+        if (currentMinutes > stopTotalMinutes) {
+          break;
+        }
       }
 
-      const clan = result.rows[0];
-      await this.sendNudge(clan, true); // Pass true for manual trigger
-      return { success: true, message: `Nudge sent to ${clan.clan_name}` };
-    } catch (error) {
-      logger.error('Error triggering manual nudge:', error);
-      return { success: false, message: 'Failed to send nudge' };
+      nudgeTimes.push({ hour, minute });
+      i++;
     }
+
+    // Find which nudge we're currently at (based on current UTC time)
+    const now = new Date();
+    const currentHour = now.getUTCHours();
+    const currentMinute = now.getUTCMinutes();
+
+    // Find the most recent nudge time that has passed
+    let currentNudgeNumber = 1; // Default to first nudge
+    for (let idx = nudgeTimes.length - 1; idx >= 0; idx--) {
+      const nudgeTime = nudgeTimes[idx];
+      const nudgeMinutes = nudgeTime.hour * 60 + nudgeTime.minute;
+      const nowMinutes = currentHour * 60 + currentMinute;
+
+      // Handle midnight wraparound
+      if (crossesMidnight) {
+        // If nudge time is before midnight and current time is after midnight
+        if (nudgeMinutes >= startTotalMinutes && nowMinutes < stopTotalMinutes) {
+          continue; // This nudge hasn't happened yet
+        }
+      }
+
+      if (nowMinutes >= nudgeMinutes) {
+        currentNudgeNumber = idx + 1;
+        break;
+      }
+    }
+
+    return {
+      currentNudgeNumber,
+      totalNudges: nudgeTimes.length,
+      nudgeTimes,
+    };
   }
 
   /**
@@ -108,10 +148,10 @@ export class RaceTrackingScheduler {
   }
 
   stop() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-      logger.info('Stopped race tracking scheduler');
+    if (this.task) {
+      this.task.stop();
+      this.task = null;
+      logger.info('Stopped nudge scheduler');
     }
   }
 
@@ -135,9 +175,9 @@ export class RaceTrackingScheduler {
       const now = new Date();
       const currentHour = now.getUTCHours();
       const currentMinute = now.getUTCMinutes();
-      console.log(
-        `⏰ Checking for pending nudges at ${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')} UTC`,
-      );
+      // console.log(
+      //   `⏰ Checking for pending nudges at ${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')} UTC`,
+      // );
       // Query clans with active races that have nudge settings
       const result = await pool.query<ScheduledNudge>(
         `
@@ -154,14 +194,15 @@ export class RaceTrackingScheduler {
           c.race_custom_nudge_message,
           rr.current_day,
           rr.current_week,
-          rr.race_state
+          rr.race_state,
+          rr.end_time
         FROM river_races rr
-        JOIN clans c ON c.clantag = rr.clantag AND c.guild_id = rr.guild_id
-        WHERE (rr.race_state = 'warDay' OR rr.race_state = 'training')
+        JOIN clans c ON c.clantag = rr.clantag
+        WHERE (rr.race_state = 'warDay' OR rr.race_state = 'colosseum')
           AND c.race_nudge_channel_id IS NOT NULL
           AND c.race_nudge_start_hour IS NOT NULL
           AND c.race_nudge_start_minute IS NOT NULL
-          -- AND rr.current_day > 0
+          AND rr.current_day > 0
         `,
       );
 
@@ -179,42 +220,9 @@ export class RaceTrackingScheduler {
       const startMinute = clan.race_nudge_start_minute;
       const intervalHours = clan.race_nudge_interval_hours;
 
-      // Hardcoded stop time: 9:00am UTC
-      const STOP_HOUR = 9;
-      const STOP_MINUTE = 0;
-      const stopTotalMinutes = STOP_HOUR * 60 + STOP_MINUTE; // 540 minutes (9am)
-
-      // Calculate all nudge times up to 9am UTC (handles midnight wrap-around)
-      const nudgeTimes: { hour: number; minute: number }[] = [];
-      const startTotalMinutes = startHour * 60 + startMinute;
-      const crossesMidnight = startTotalMinutes >= stopTotalMinutes;
-
-      let i = 0;
-      while (true) {
-        const totalMinutes = startTotalMinutes + i * intervalHours * 60;
-        const hour = Math.floor(totalMinutes / 60) % 24;
-        const minute = totalMinutes % 60;
-        const currentMinutes = hour * 60 + minute; // Normalized to 0-1439
-
-        // Check if we should stop
-        if (crossesMidnight) {
-          // Start time is after stop time (e.g., 18:00 start, 09:00 stop)
-          // Stop when we're in the "gap" between stop and start
-          // Example: If start=18:00, stop=09:00, stop when time is > 09:00 AND < 18:00
-          if (currentMinutes > stopTotalMinutes && currentMinutes < startTotalMinutes) {
-            break;
-          }
-        } else {
-          // Start time is before stop time (e.g., 01:00 start, 09:00 stop)
-          // Stop when we're past the stop time
-          if (currentMinutes > stopTotalMinutes) {
-            break;
-          }
-        }
-
-        nudgeTimes.push({ hour, minute });
-        i++;
-      }
+      // Calculate all nudge times and find current nudge number
+      const nudgeContext = NudgeTrackingScheduler.calculateNudgeContext(startHour, startMinute, intervalHours);
+      const { nudgeTimes, currentNudgeNumber, totalNudges } = nudgeContext;
 
       // Find which nudge time matches current time (if any)
       const matchingNudgeIndex = nudgeTimes.findIndex(
@@ -267,7 +275,7 @@ export class RaceTrackingScheduler {
       }
 
       // Send the nudge!
-      await this.sendNudge(clan, false);
+      await NudgeTrackingScheduler.sendNudge(this.client, clan, false, matchingNudgeIndex + 1, totalNudges);
     } catch (error) {
       logger.error(`Error processing nudge for clan ${clan.clantag}:`, error);
     }
@@ -296,9 +304,12 @@ export class RaceTrackingScheduler {
         Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hour, minute, 0),
       );
       const scheduledUnix = Math.floor(scheduledDate.getTime() / 1000);
-
+      let description = `ℹ️ **Scheduled nudge skipped** for ${clan.clan_name} at <t:${scheduledUnix}:f>\n-# A nudge was already sent at <t:${lastSentUnix}:t> (within 1 hour)`;
+      if (clan.end_time !== null) {
+        description += `\nWar ends ~${getNextDayRelativeTimestamp(clan.end_time)}`;
+      }
       await channel.send({
-        content: `ℹ️ **Scheduled nudge skipped** for ${clan.clan_name} at <t:${scheduledUnix}:f>\n-# A nudge was already sent at <t:${lastSentUnix}:t> (within 1 hour)`,
+        content: description,
       });
 
       logger.info(`Sent skip notification for ${clan.clan_name} to channel ${clan.staff_channel_id}`);
@@ -307,86 +318,177 @@ export class RaceTrackingScheduler {
     }
   }
 
-  private async sendNudge(clan: ScheduledNudge, isManual: boolean = false) {
+  /**
+   * Send a nudge for a clan. Shared by scheduler and manual /nudge command.
+   * @param client Discord client
+   * @param clan Clan data including race info and nudge settings
+   * @param isManual Whether this is a manual nudge (true) or automatic (false)
+   * @param currentNudgeNumber Current position in nudge sequence (1-based)
+   * @param totalNudges Total number of nudges in sequence
+   * @param senderId Optional Discord user ID who triggered manual nudge
+   */
+  static async sendNudge(
+    client: Client,
+    clan: ScheduledNudge,
+    isManual: boolean = false,
+    currentNudgeNumber?: number,
+    totalNudges?: number,
+    senderId?: string,
+  ): Promise<void> {
     try {
       // Fetch channel
-      const channel = await this.client.channels.fetch(clan.race_nudge_channel_id);
+      const channel = await client.channels.fetch(clan.race_nudge_channel_id);
       if (!channel?.isTextBased() || !(channel instanceof TextChannel)) {
         logger.warn(`Nudge channel ${clan.race_nudge_channel_id} not found or not text-based`);
         return;
       }
 
+      // Delete previous automatic nudge message if this is an automatic nudge
+      if (!isManual) {
+        try {
+          const previousNudge = await pool.query<{ message_id: string }>(
+            `
+            SELECT message_id FROM race_nudges
+            WHERE race_id = $1
+              AND clantag = $2
+              AND race_day = $3
+              AND nudge_type = 'automatic'
+              AND message_id IS NOT NULL
+            ORDER BY nudge_time DESC
+            LIMIT 1
+            `,
+            [clan.race_id, clan.clantag, clan.current_day],
+          );
+
+          if (previousNudge.rows.length > 0) {
+            const messageId = previousNudge.rows[0].message_id;
+            try {
+              // Try to fetch and delete the message
+              const oldMessage = await channel.messages.fetch(messageId);
+              await oldMessage.delete();
+              logger.info(`Deleted previous auto-nudge message ${messageId} for ${clan.clan_name}`);
+            } catch (deleteError) {
+              // Message might already be deleted or not found - that's okay
+              // Discord API error code 10008 = Unknown Message
+              if (
+                typeof deleteError === 'object' &&
+                deleteError !== null &&
+                'code' in deleteError &&
+                deleteError.code !== 10008
+              ) {
+                const message = 'message' in deleteError ? String(deleteError.message) : 'Unknown error';
+                logger.warn(`Could not delete previous nudge message ${messageId}: ${message}`);
+              }
+            }
+          }
+        } catch (error) {
+          logger.error('Error checking/deleting previous nudge:', error);
+        }
+      }
+
       // Fetch guild
-      const guild = await this.client.guilds.fetch(clan.guild_id);
+      const guild = await client.guilds.fetch(clan.guild_id);
       if (!guild) {
         logger.warn(`Guild ${clan.guild_id} not found`);
         return;
       }
 
-      // Get race data and attacks info using existing service
-      const raceResult = await pool.query(`SELECT current_data, season_id FROM river_races WHERE race_id = $1`, [
-        clan.race_id,
-      ]);
-
-      if (!raceResult.rows[0]?.current_data) {
-        logger.warn(`No race data found for race_id ${clan.race_id}`);
+      // Update race data from API before sending nudge
+      const updateResult = await initializeOrUpdateRace(clan.clantag);
+      if (!updateResult) {
+        logger.warn(`Failed to update race data for ${clan.clantag}`);
         return;
       }
 
-      const raceData = raceResult.rows[0].current_data;
-      const seasonId = raceResult.rows[0].season_id;
+      const raceData = updateResult.raceData;
+      const seasonId = updateResult.seasonId;
+      const raceId = updateResult.raceId;
 
       // Use existing getRaceAttacks service that handles all the logic
-      const attacksData = await getRaceAttacks(clan.guild_id, clan.race_id, raceData, seasonId, clan.current_week);
+      const attacksData = await getRaceAttacks(clan.guild_id, raceId, raceData, seasonId, clan.current_week);
 
       if (!attacksData || attacksData.participants.length === 0) {
         logger.info(`No players to nudge for ${clan.clan_name}`);
-        if (isManual) {
-          await channel.send({
-            content: `✅ All players have completed their attacks for ${clan.clan_name}!`,
-          });
-        }
+        const completionMessage = `✅ All players have completed their attacks for ${clan.clan_name}!`;
+        const message = await channel.send({
+          content: completionMessage,
+        });
+
+        // Track as a nudge with no participants
+        await trackNudge(
+          raceId,
+          clan.clantag,
+          clan.current_week,
+          clan.current_day,
+          isManual ? 'manual' : 'automatic',
+          completionMessage,
+          [], // Empty participants array
+          message.id,
+        );
         return;
       }
 
       // Get the nudge message with placeholders replaced
-      const message =
-        (await getNudgeMessage(
-          clan.guild_id,
-          clan.clantag,
-          clan.clan_name,
-          clan.current_day,
-          clan.race_custom_nudge_message,
-        )) + ` (Sent by <@${this.client.user?.id}>)`;
+      let nudgeMessage = await getNudgeMessage(
+        clan.guild_id,
+        clan.clantag,
+        clan.clan_name,
+        clan.current_day,
+        clan.race_custom_nudge_message,
+      );
+
+      // Add sender info
+      const sender = senderId || client.user?.id;
+      nudgeMessage += ` (Sent by <@${sender}>)`;
 
       // Build nudge components using shared helper
-      const nudgeComponents = await buildNudgeComponents(guild, attacksData, message, clan.race_nudge_channel_id);
+      const nudgeComponents = await buildNudgeComponents(
+        guild,
+        attacksData,
+        nudgeMessage,
+        clan.race_nudge_channel_id,
+        currentNudgeNumber,
+        totalNudges,
+        clan.end_time,
+      );
 
       if (!nudgeComponents) {
         logger.info(`All players completed attacks for ${clan.clan_name}`);
-        if (isManual) {
-          await channel.send({
-            content: `✅ All players have completed their attacks for ${clan.clan_name}!`,
-          });
-        }
+        const completionMessage = `✅ All players have completed their attacks for ${clan.clan_name}!`;
+        const message = await channel.send({
+          content: completionMessage,
+        });
+
+        // Track as a nudge with no participants
+        await trackNudge(
+          raceId,
+          clan.clantag,
+          clan.current_week,
+          clan.current_day,
+          isManual ? 'manual' : 'automatic',
+          completionMessage,
+          [], // Empty participants array
+          message.id,
+        );
         return;
       }
 
       // Send nudge with Components v2
-      await channel.send({
+      const message = await channel.send({
         flags: MessageFlags.IsComponentsV2,
         components: nudgeComponents.components,
       });
 
       // Track nudge using existing helper
       await trackNudge(
-        clan.race_id,
+        raceId,
         clan.clantag,
         clan.current_week,
         clan.current_day,
         isManual ? 'manual' : 'automatic',
-        message,
+        nudgeMessage,
         nudgeComponents.enrichedParticipants,
+        message.id,
       );
 
       logger.info(

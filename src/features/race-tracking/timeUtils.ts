@@ -10,7 +10,7 @@ export function getServerTimeDisplay(): string {
   const now = new Date();
   const time = now.toTimeString().split(' ')[0]; // HH:MM:SS
   const date = now.toISOString().split('T')[0]; // YYYY-MM-DD
-  
+
   return `**${time}** on ${date} (Server Time)`;
 }
 
@@ -20,6 +20,11 @@ export function getServerTimeDisplay(): string {
 export function getCurrentTimestamp(): string {
   const unix = Math.floor(Date.now() / 1000);
   return `<t:${unix}:T>`; // Shows in user's local timezone automatically
+}
+
+export function getNextDayRelativeTimestamp(date: Date): string {
+  const unix = Math.floor(date.getTime() / 1000) + 86400;
+  return `<t:${unix}:R>`; // Relative time (e.g., "in 5 minutes", "2 hours ago")
 }
 
 /**
@@ -59,7 +64,7 @@ export function formatTime24(hour: number, minute: number): string {
  * Calculate all nudge times based on start time and interval
  * Nudges automatically stop at 9:00am UTC (hardcoded)
  * Handles midnight wrap-around (e.g., start at 18:00, stop at 09:00)
- * 
+ *
  * Examples:
  *   Start: 1am, Interval: 2h -> 1am, 3am, 5am, 7am, 9am
  *   Start: 6pm, Interval: 2h -> 6pm, 8pm, 10pm, 12am, 2am, 4am, 6am, 8am
@@ -71,7 +76,7 @@ export function calculateNudgeTimes(
 ): Array<{ hour: number; minute: number; display: string }> {
   const times: Array<{ hour: number; minute: number; display: string }> = [];
   const startTotalMinutes = startHour * 60 + startMinute;
-  
+
   // Hardcoded stop time: 9:00am UTC
   const STOP_HOUR = 9;
   const STOP_MINUTE = 0;
@@ -84,7 +89,7 @@ export function calculateNudgeTimes(
     const hour = Math.floor(totalMinutes / 60) % 24;
     const minute = totalMinutes % 60;
     const currentMinutes = hour * 60 + minute; // Normalized to 0-1439
-    
+
     // Check if we should stop
     if (crossesMidnight) {
       // Start time is after stop time (e.g., 18:00 start, 09:00 stop)
@@ -100,13 +105,13 @@ export function calculateNudgeTimes(
         break;
       }
     }
-    
+
     times.push({
       hour,
       minute,
       display: formatTime24(hour, minute),
     });
-    
+
     i++;
   }
 
@@ -118,28 +123,17 @@ export function calculateNudgeTimes(
  * Automatically stops at 9:00am UTC (hardcoded)
  * Returns array of formatted <t:unix:t> strings
  */
-export function createScheduleTimestamps(
-  startHour: number,
-  startMinute: number,
-  intervalHours: number,
-): string[] {
+export function createScheduleTimestamps(startHour: number, startMinute: number, intervalHours: number): string[] {
   const times = calculateNudgeTimes(startHour, startMinute, intervalHours);
   const now = new Date();
-  
+
   return times.map((time) => {
     // Create UTC timestamp for today at this time
-    const timestamp = new Date(Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate(),
-      time.hour,
-      time.minute,
-      0
-    ));
-    
+    const timestamp = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), time.hour, time.minute, 0),
+    );
+
     const unix = Math.floor(timestamp.getTime() / 1000);
     return `<t:${unix}:t>`; // Shows in user's local timezone!
   });
 }
-
-

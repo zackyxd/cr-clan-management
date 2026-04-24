@@ -12,13 +12,10 @@ import {
   ContainerBuilder,
 } from 'discord.js';
 import type { FormattedParticipant } from './attacksFormatter.js';
-import {
-  enrichParticipantsWithLinks,
-  formatParticipantsList,
-  buildFooterLegend,
-} from './attacksFormatter.js';
+import { enrichParticipantsWithLinks, formatParticipantsList, buildFooterLegend } from './attacksFormatter.js';
 import { BOTCOLOR } from '../../types/EmbedUtil.js';
 import type { RaceAttacksData } from './types.js';
+import { getNextDayRelativeTimestamp } from './timeUtils.js';
 
 /**
  * Get the effective nudge message for a clan (custom or default)
@@ -113,6 +110,7 @@ export async function trackNudge(
   nudgeType: 'manual' | 'automatic',
   message: string,
   participants: FormattedParticipant[],
+  messageId?: string,
 ): Promise<void> {
   // Build snapshot of all participants with nudge status
   const playersSnapshot = participants.map((p) => ({
@@ -134,10 +132,10 @@ export async function trackNudge(
   await pool.query(
     `
     INSERT INTO race_nudges
-    (race_id, clantag, race_week, race_day, nudge_type, message, players_snapshot)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    (race_id, message_id, clantag, race_week, race_day, nudge_type, message, players_snapshot)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     `,
-    [raceId, clantag, raceWeek, raceDay, nudgeType, message, JSON.stringify(playersSnapshot)],
+    [raceId, messageId, clantag, raceWeek, raceDay, nudgeType, message, JSON.stringify(playersSnapshot)],
   );
 }
 
@@ -150,6 +148,9 @@ export async function buildNudgeComponents(
   attacksData: RaceAttacksData,
   message: string,
   channelId: string,
+  currentNudgeNumber?: number,
+  totalNudges?: number,
+  end_time?: Date,
 ): Promise<{
   components: ContainerBuilder[];
   enrichedParticipants: FormattedParticipant[];
@@ -159,6 +160,8 @@ export async function buildNudgeComponents(
     mentionUsers: true,
     channelId: channelId,
     guild: guild,
+    currentNudgeNumber,
+    totalNudges,
   });
 
   // Format participant lines with mentions
@@ -170,6 +173,8 @@ export async function buildNudgeComponents(
       mentionUsers: true,
       channelId: channelId,
       guild: guild,
+      currentNudgeNumber,
+      totalNudges,
     },
   );
 
@@ -182,6 +187,8 @@ export async function buildNudgeComponents(
     mentionUsers: true,
     channelId: channelId,
     guild: guild,
+    currentNudgeNumber,
+    totalNudges,
   });
 
   // Build Components v2 message with builders
@@ -200,6 +207,13 @@ export async function buildNudgeComponents(
     const separator2 = new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
     const footer = new TextDisplayBuilder().setContent(footerText);
     container.addSeparatorComponents(separator2).addTextDisplayComponents(footer);
+  }
+
+  // Add end time at the bottom if available
+  if (end_time) {
+    const separator3 = new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
+    const endTimeText = new TextDisplayBuilder().setContent(`-# War ends ~${getNextDayRelativeTimestamp(end_time)}`);
+    container.addSeparatorComponents(separator3).addTextDisplayComponents(endTimeText);
   }
 
   return {

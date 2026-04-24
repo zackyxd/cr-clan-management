@@ -231,11 +231,69 @@ export class ClanSettingsService {
     }
   }
 
+  /**
+   * Update nudge schedule settings
+   */
+  async updateNudgeSchedule(
+    client: Client,
+    guildId: string,
+    clantag: string,
+    startHour: number,
+    startMinute: number,
+    intervalHours: number,
+    userId: string,
+  ): Promise<ClanSettingsResponse> {
+    try {
+      const oldResult = await pool.query(
+        `SELECT race_nudge_start_hour, race_nudge_start_minute, race_nudge_interval_hours, clan_name 
+         FROM clans WHERE guild_id = $1 AND clantag = $2`,
+        [guildId, clantag],
+      );
+      const oldRow = oldResult.rows[0];
+      const clanName = oldRow?.clan_name;
+
+      // Update the schedule
+      await pool.query(
+        `UPDATE clans 
+         SET race_nudge_start_hour = $1, 
+             race_nudge_start_minute = $2, 
+             race_nudge_interval_hours = $3 
+         WHERE guild_id = $4 AND clantag = $5`,
+        [startHour, startMinute, intervalHours, guildId, clantag],
+      );
+
+      // Get updated settings
+      const settings = await this.getCurrentSettings(guildId, clantag);
+
+      const oldSchedule = oldRow?.race_nudge_start_hour !== null 
+        ? `${String(oldRow.race_nudge_start_hour).padStart(2, '0')}:${String(oldRow.race_nudge_start_minute).padStart(2, '0')} every ${oldRow.race_nudge_interval_hours}h`
+        : 'Not set';
+      const newSchedule = `${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')} every ${intervalHours}h`;
+
+      this.sendLog(
+        client,
+        guildId,
+        `⏰ Clan Setting Changed`,
+        `**Nudge Schedule:**\nClan: ${clanName}\n${oldSchedule} → ${newSchedule}\n**Changed by:** <@${userId}>`,
+      ).catch((err) => logger.error('Error sending nudge schedule update log:', err));
+
+      return { success: true, settings };
+    } catch (error) {
+      logger.error('Error updating nudge schedule:', error);
+      return {
+        success: false,
+        error: 'Failed to update nudge schedule. Please try again.',
+      };
+    }
+  }
+
   /**   * Fetch current clan settings from database
    */
   async getCurrentSettings(guildId: string, clantag: string): Promise<ClanSettings> {
     const res = await pool.query(
-      `SELECT family_clan, nudge_enabled, race_nudge_channel_id, race_custom_nudge_message, staff_channel_id, eod_stats_enabled, invites_enabled, clan_role_id, abbreviation 
+      `SELECT family_clan, nudge_enabled, race_nudge_channel_id, race_custom_nudge_message, 
+              race_nudge_start_hour, race_nudge_start_minute, race_nudge_interval_hours,
+              staff_channel_id, eod_stats_enabled, invites_enabled, clan_role_id, abbreviation 
        FROM clans WHERE guild_id = $1 AND clantag = $2`,
       [guildId, clantag],
     );

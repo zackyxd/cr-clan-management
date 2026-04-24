@@ -4,8 +4,8 @@ import { checkFeature } from '../../utils/checkFeatureEnabled.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { normalizeTag } from '../../api/CR_API.js';
 import { pool } from '../../db.js';
-import { getRaceAttacks, initializeOrUpdateRace } from '../../features/race-tracking/service.js';
-import { getNudgeMessage, trackNudge, buildNudgeComponents } from '../../features/race-tracking/nudgeHelper.js';
+import { initializeOrUpdateRace } from '../../features/race-tracking/service.js';
+import { NudgeTrackingScheduler } from '../../features/race-tracking/nudgeScheduler.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -31,78 +31,120 @@ const command: Command = {
     const userInput = interaction.options.getString('clantag') as string;
     const normalizedTag = normalizeTag(userInput);
 
+    // Query clan data and race info
     const clanRes = await pool.query(
-      `SELECT clantag, clan_name, nudge_enabled, race_custom_nudge_message, race_nudge_channel_id 
-       FROM clans WHERE guild_id = $1 AND (clantag = $2 OR LOWER(abbreviation) = LOWER($3))`,
-      [guild.id, normalizedTag, userInput], // userInput catches if abbreviation is used
+      `SELECT 
+        c.clantag, 
+        c.clan_name, 
+        c.nudge_enabled, 
+        c.race_custom_nudge_message, 
+        c.race_nudge_channel_id,
+        c.staff_channel_id,
+        c.race_nudge_start_hour, 
+        c.race_nudge_start_minute, 
+        c.race_nudge_interval_hours,
+        rr.race_id,
+        rr.current_day,
+        rr.current_week,
+        rr.race_state,
+        rr.end_time
+       FROM clans c
+       LEFT JOIN river_races rr ON c.clantag = rr.clantag 
+         AND rr.race_state IN ('warDay', 'colosseum')
+       WHERE c.guild_id = $1 
+         AND (c.clantag = $2 OR LOWER(c.abbreviation) = LOWER($3))`,
+      [guild.id, normalizedTag, userInput],
     );
 
-    const fixedClantag = clanRes.rows.length > 0 ? clanRes.rows[0].clantag : normalizedTag;
-    const customMessage = clanRes.rows[0]?.race_custom_nudge_message;
-    const nudgeChannelId = clanRes.rows[0]?.race_nudge_channel_id;
-    const nudgeEnabled = clanRes.rows[0]?.nudge_enabled;
+    if (clanRes.rows.length === 0) {
+      await interaction.editReply({
+        content: `❌ Clan not found. Make sure it's added to your server with \`/add-clan\`.`,
+      });
+      return;
+    }
 
-    if (!nudgeEnabled) {
+    const clanData = clanRes.rows[0];
+    const fixedClantag = clanData.clantag;
+
+    if (!clanData.nudge_enabled) {
       await interaction.editReply({
         content: `❌ Nudges are disabled for this clan. Enable them in \`/clan-settings\`.`,
       });
       return;
     }
 
-    const result = await initializeOrUpdateRace(guild.id, fixedClantag);
+    if (!clanData.race_nudge_channel_id) {
+      await interaction.editReply({
+        content: `❌ No nudge channel configured for this clan. Set one in \`/clan-settings\`.`,
+      });
+      return;
+    }
+
+    // Update race data from API
+    const result = await initializeOrUpdateRace(fixedClantag);
     if (!result) {
       await interaction.editReply('❌ Failed to fetch race data. Please try again later.');
       return;
     }
 
-    const nudgeMessage =
-      (await getNudgeMessage(guild.id, fixedClantag, clanRes.rows[0]?.clan_name, result.warDay, customMessage)) +
-      ` (Sent by <@${interaction.user.id}>)`;
+    // Re-query to get updated race info (including race_id if it was just created)
+    const updatedClanRes = await pool.query(
+      `SELECT 
+        c.clantag, 
+        c.clan_name, 
+        c.staff_channel_id,
+        c.race_custom_nudge_message, 
+        c.race_nudge_channel_id,
+        c.race_nudge_start_hour, 
+        c.race_nudge_start_minute, 
+        c.race_nudge_interval_hours,
+        rr.race_id,
+        rr.current_day,
+        rr.current_week,
+        rr.race_state,
+        rr.end_time
+       FROM clans c
+       JOIN river_races rr ON c.clantag = rr.clantag 
+       WHERE c.guild_id = $1 AND c.clantag = $2`,
+      [guild.id, fixedClantag],
+    );
 
-    const attacksData = await getRaceAttacks(guild.id, result.raceId, result.raceData, result.seasonId, result.warWeek);
-    if (!attacksData) {
-      await interaction.editReply('❌ Failed to fetch attacks data. Please try again later.');
+    if (updatedClanRes.rows.length === 0) {
+      await interaction.editReply('❌ Failed to fetch updated race data. Please try again later.');
       return;
     }
 
-    // Build nudge components using shared helper
-    const nudgeComponents = await buildNudgeComponents(guild, attacksData, nudgeMessage, nudgeChannelId);
+    const scheduledNudge = updatedClanRes.rows[0];
 
-    if (!nudgeComponents) {
-      await interaction.editReply('✅ Everyone has completed their attacks!');
-      return;
+    // Calculate nudge context based on schedule
+    let currentNudgeNumber: number | undefined;
+    let totalNudges: number | undefined;
+
+    if (
+      scheduledNudge.race_nudge_start_hour !== null &&
+      scheduledNudge.race_nudge_start_minute !== null &&
+      scheduledNudge.race_nudge_interval_hours !== null
+    ) {
+      const nudgeContext = NudgeTrackingScheduler.calculateNudgeContext(
+        scheduledNudge.race_nudge_start_hour,
+        scheduledNudge.race_nudge_start_minute,
+        scheduledNudge.race_nudge_interval_hours,
+      );
+      currentNudgeNumber = nudgeContext.currentNudgeNumber;
+      totalNudges = nudgeContext.totalNudges;
     }
 
-    // Send nudge to channel
-    if (!nudgeChannelId) {
-      await interaction.editReply('❌ No nudge channel configured for this clan. Set one in `/clan-settings`.');
-      return;
-    }
-
+    // Use shared sendNudge method from scheduler
     try {
-      const nudgeChannel = await guild.channels.fetch(nudgeChannelId);
-      if (!nudgeChannel?.isTextBased()) {
-        await interaction.editReply('❌ Nudge channel not found or is not a text channel.');
-        return;
-      }
-
-      // Send message with Components v2
-      await nudgeChannel.send({
-        flags: MessageFlags.IsComponentsV2,
-        components: nudgeComponents.components,
-      });
-
-      trackNudge(
-        attacksData.raceId,
-        fixedClantag,
-        result.warWeek,
-        result.warDay,
-        'manual',
-        nudgeMessage,
-        nudgeComponents.enrichedParticipants,
-      ).catch((err) => console.error('Error tracking nudge:', err));
-
-      await interaction.editReply(`✅ Nudge sent to <#${nudgeChannelId}>!`);
+      await NudgeTrackingScheduler.sendNudge(
+        interaction.client,
+        scheduledNudge,
+        true,
+        currentNudgeNumber,
+        totalNudges,
+        interaction.user.id,
+      );
+      await interaction.editReply(`✅ Nudge sent to <#${scheduledNudge.race_nudge_channel_id}>!`);
     } catch (error) {
       console.error('Error sending nudge:', error);
       await interaction.editReply('❌ Failed to send nudge. Check bot permissions and channel configuration.');

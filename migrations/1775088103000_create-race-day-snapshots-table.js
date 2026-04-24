@@ -19,19 +19,21 @@ export const up = (pgm) => {
         references: 'river_races(race_id)',
         onDelete: 'CASCADE',
       },
+      guild_id: { type: 'varchar(30)', notNull: true }, // Guild-specific snapshots for guild-specific data (links, settings)
       race_day: { type: 'integer', notNull: true },
       snapshot_time: { type: 'timestamptz', notNull: true, default: pgm.func('current_timestamp') },
-      snapshot_data: { type: 'jsonb', notNull: true }, // Contains: rawApiData (CurrentRiverRace) + embedData (pre-computed attacks/race display)
+      snapshot_data: { type: 'jsonb', notNull: true }, // Contains: rawApiData (CurrentRiverRace) + embedData (pre-computed attacks/race display with guild-specific links/settings)
     },
     {
       constraints: {
-        unique: ['race_id', 'race_day'],
+        unique: ['race_id', 'guild_id', 'race_day'],
       },
     },
   );
 
   pgm.createIndex('race_day_snapshots', 'race_id');
-  pgm.createIndex('race_day_snapshots', ['race_id', 'race_day']);
+  pgm.createIndex('race_day_snapshots', 'guild_id');
+  pgm.createIndex('race_day_snapshots', ['race_id', 'guild_id', 'race_day']);
 };
 
 /**
