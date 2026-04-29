@@ -7,7 +7,7 @@ import { Interaction, ButtonInteraction, ModalSubmitInteraction, StringSelectMen
 import { parseCustomId } from '../../utils/customId.js';
 import type { ParsedCustomId } from '../../types/ParsedCustomId.js';
 import { MemberChannelInteractionRouter } from '../../features/member-channels/router.js';
-import { ClanSettingsInteractionRouter } from '../../features/clan-settings/interactions/router.js';
+import { ClanSettingsInteractionRouter } from '../../features/clan-settings/router.js';
 import { ServerSettingsInteractionRouter } from '../../features/server-settings/router.js';
 import { TicketInteractionRouter } from '../../features/tickets/router.js';
 import { PlayerLinksInteractionRouter } from '../../features/player-links/router.js';
@@ -18,6 +18,7 @@ import { ClanInvitesInteractionRouter } from '../../features/clan-invites/router
 interface FeatureRouter {
   handleButton?: (interaction: ButtonInteraction, parsed: ParsedCustomId) => Promise<void>;
   handleModal?: (interaction: ModalSubmitInteraction, parsed: ParsedCustomId) => Promise<void>;
+  handleModalSubmit?: (interaction: ModalSubmitInteraction, parsed: ParsedCustomId) => Promise<void>;
   handleSelectMenu?: (interaction: StringSelectMenuInteraction, parsed: ParsedCustomId) => Promise<void>;
 }
 
@@ -130,8 +131,20 @@ export class InteractionDispatcher {
     const router = this.getRouterForAction(parsed.action);
     console.log('📍 Found router:', !!router, 'for action:', parsed.action); // Debug logging
 
-    if (router && router.handleModal) {
-      await router.handleModal(interaction, parsed);
+    if (router) {
+      // Support both new naming (handleModalSubmit) and legacy (handleModal)
+      if (router.handleModalSubmit) {
+        await router.handleModalSubmit(interaction, parsed);
+      } else if (router.handleModal) {
+        // TODO change routers to use handleModalSubmit and remove this fallback after migration is complete
+        await router.handleModal(interaction, parsed);
+      } else {
+        logger.warn(`Router found but no modal handler for action: ${parsed.action}`);
+        await interaction.reply({
+          content: 'This feature is not yet implemented for modals.',
+          ephemeral: true,
+        });
+      }
     } else {
       logger.warn(`No router found for modal action: ${parsed.action}`);
       await interaction.reply({

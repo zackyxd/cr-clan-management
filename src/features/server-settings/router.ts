@@ -197,7 +197,7 @@ export class ServerSettingsInteractionRouter {
     // Extract settingKey from action (remove 'serverSetting_' prefix if present)
     const settingKey = action.startsWith('serverSetting_') ? action.replace('serverSetting_', '') : action;
 
-    await this.handleModalSubmit(interaction, guildId, settingKey, tableName, featureName, interaction.user.id);
+    await this.processModalSubmit(interaction, guildId, settingKey, tableName, featureName, interaction.user.id);
   }
 
   static async handleSelectMenu(_interaction: StringSelectMenuInteraction, parsed: ParsedCustomId): Promise<void> {
@@ -598,9 +598,9 @@ export class ServerSettingsInteractionRouter {
   }
 
   /**
-   * Handle modal submission for server settings
+   * Process modal submission for server settings (internal)
    */
-  private static async handleModalSubmit(
+  private static async processModalSubmit(
     interaction: ModalSubmitInteraction,
     guildId: string,
     settingKey: string,

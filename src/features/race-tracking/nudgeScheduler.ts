@@ -252,12 +252,13 @@ export class NudgeTrackingScheduler {
         SELECT nudge_time, nudge_type FROM race_nudges
         WHERE race_id = $1
           AND clantag = $2
-          AND race_day = $3
+          AND guild_id = $3
+          AND race_day = $4
           AND nudge_time >= NOW() - INTERVAL '${DEDUPE_WINDOW_MINUTES} minutes'
         ORDER BY nudge_time DESC
         LIMIT 1
         `,
-        [clan.race_id, clan.clantag, clan.current_day],
+        [clan.race_id, clan.clantag, clan.guild_id, clan.current_day],
       );
 
       if (existingNudge.rows.length > 0) {
@@ -351,13 +352,14 @@ export class NudgeTrackingScheduler {
             SELECT message_id FROM race_nudges
             WHERE race_id = $1
               AND clantag = $2
-              AND race_day = $3
+              AND guild_id = $3
+              AND race_day = $4
               AND nudge_type = 'automatic'
               AND message_id IS NOT NULL
             ORDER BY nudge_time DESC
             LIMIT 1
             `,
-            [clan.race_id, clan.clantag, clan.current_day],
+            [clan.race_id, clan.clantag, clan.guild_id, clan.current_day],
           );
 
           if (previousNudge.rows.length > 0) {
@@ -387,11 +389,20 @@ export class NudgeTrackingScheduler {
       }
 
       // Fetch guild
+      logger.debug(`Fetching guild with ID: ${clan.guild_id} (type: ${typeof clan.guild_id})`);
       const guild = await client.guilds.fetch(clan.guild_id);
       if (!guild) {
         logger.warn(`Guild ${clan.guild_id} not found`);
         return;
       }
+      
+      // Defensive check - ensure we got a Guild object, not a Collection
+      if (!guild.id || typeof guild.id !== 'string') {
+        logger.error(`Invalid guild object received for ${clan.guild_id}:`, typeof guild);
+        return;
+      }
+      
+      logger.debug(`Successfully fetched guild: ${guild.id} (${guild.name})`);
 
       // Update race data from API before sending nudge
       const updateResult = await initializeOrUpdateRace(clan.clantag);
@@ -405,7 +416,7 @@ export class NudgeTrackingScheduler {
       const raceId = updateResult.raceId;
 
       // Use existing getRaceAttacks service that handles all the logic
-      const attacksData = await getRaceAttacks(clan.guild_id, raceId, raceData, seasonId, clan.current_week);
+      const attacksData = await getRaceAttacks(guild.id, raceId, raceData, seasonId, clan.current_week);
 
       if (!attacksData || attacksData.participants.length === 0) {
         logger.info(`No players to nudge for ${clan.clan_name}`);
@@ -430,7 +441,7 @@ export class NudgeTrackingScheduler {
 
       // Get the nudge message with placeholders replaced
       let nudgeMessage = await getNudgeMessage(
-        clan.guild_id,
+        guild.id,
         clan.clantag,
         clan.clan_name,
         clan.current_day,

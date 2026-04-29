@@ -13,7 +13,7 @@ import logger from '../../logger.js';
 import { Command } from '../../types/Command.js';
 import { makeCustomId } from '../../utils/customId.js';
 import { BOTCOLOR, EmbedColor } from '../../types/EmbedUtil.js';
-import { buildClanSettingsView } from '../../config/clanSettingsConfig.js';
+import { buildClanSettingsView } from '../../features/clan-settings/config.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()

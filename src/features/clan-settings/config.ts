@@ -9,11 +9,11 @@ import {
   MessageActionRowComponent,
   ComponentType,
 } from 'discord.js';
-import { pool } from '../db.js';
-import { BOTCOLOR } from '../types/EmbedUtil.js';
-import { makeCustomId } from '../utils/customId.js';
-import { storeClanSettingsData } from '../cache/clanSettingsDataCache.js';
-import { NudgeTrackingScheduler } from '../features/race-tracking/nudgeScheduler.js';
+import { pool } from '../../db.js';
+import { BOTCOLOR } from '../../types/EmbedUtil.js';
+import { makeCustomId } from '../../utils/customId.js';
+import { storeClanSettingsData } from './cache.js';
+import { NudgeTrackingScheduler } from '../race-tracking/nudgeScheduler.js';
 
 // Type for nudge schedule settings
 interface NudgeSchedule {
@@ -25,71 +25,35 @@ interface NudgeSchedule {
 // The features that will show under /clan-settings
 export const CLAN_FEATURE_SETTINGS = [
   {
-    key: 'family_clan',
-    label: 'Family Clan',
-    description: 'Make this clan part of your clan family.',
-    type: 'toggle',
+    key: 'clan_settings',
+    label: 'Clan Info (Family, Abbreviation, Role, Staff Channel)',
+    buttonLabel: 'Clan Info',
+    type: 'grouped_modal',
+    group: ['family_clan', 'abbreviation', 'clan_role_id', 'staff_channel_id'],
   },
   {
-    key: 'abbreviation',
-    label: 'Abbreviation',
-    description: 'Short tag or nickname for the clan.',
-    type: 'modal',
-  },
-  {
-    key: 'staff_channel_id',
-    label: 'Staff Channel',
-    description: 'Channel for end-of-day stats and staff updates.',
-    type: 'channel',
-  },
-  {
-    key: 'clan_role_id',
-    label: 'Clan Role',
-    description: 'Role used for this clan',
-    type: 'role',
+    key: 'nudge_settings',
+    label: 'Race Nudge Settings (Channel, Schedule, Message)',
+    buttonLabel: 'Nudge Settings',
+    type: 'grouped_modal',
+    group: ['nudge_enabled', 'race_nudge_channel_id', 'race_nudge_schedule', 'race_custom_nudge_message'],
   },
   {
     key: 'invites_enabled',
-    label: 'Invites',
-    description: "Show this clan's invite in the invites channel and ability to generate them for members.",
+    label: 'Show/Generate Clan Invites',
+    buttonLabel: 'Invites',
     type: 'toggle',
-  },
-  {
-    key: 'nudge_enabled',
-    label: 'Nudges',
-    description: 'Send pings for clan nudges automatically.',
-    type: 'toggle',
-  },
-  {
-    key: 'race_nudge_channel_id',
-    label: 'Nudge Channel',
-    description: 'Channel where nudge pings will be sent.',
-    type: 'channel',
-  },
-
-  {
-    key: 'race_nudge_schedule',
-    label: 'Nudge Schedule',
-    description: 'Configure when automatic nudges are sent (start time, interval, stops at 9am UTC).',
-    type: 'modal',
-  },
-  {
-    key: 'race_custom_nudge_message',
-    label: 'Custom Nudge Message',
-    description: 'Customize the nudge message (resets to default on new war days).',
-    type: 'modal',
   },
   {
     key: 'eod_stats_enabled',
-    label: 'End-of-Day Stats',
-    description: 'Automatically post race snapshots at end of each day.',
+    label: 'Auto-Post End-of-Day Stats',
+    buttonLabel: 'EOD Stats',
     type: 'toggle',
   },
   {
-    // TODO add this to the settings
     key: 'purge_invites',
-    label: 'Purge Invites',
-    description: 'Purge any active clan invites sent',
+    label: 'Purge Active Clan Invites',
+    buttonLabel: 'Purge Invites',
     type: 'action',
   },
   // ...add more as needed
@@ -146,6 +110,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
 
   for (const [, settingConfig] of Object.entries(CLAN_FEATURE_SETTINGS)) {
     const value = settings[settingConfig.key];
+
     // Format value for display
     let displayValue = '';
     if (settingConfig.type === 'toggle') {
@@ -154,44 +119,68 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
       displayValue = value ? `<@&${value}>` : '*None*';
     } else if (settingConfig.type === 'channel') {
       displayValue = value ? `<#${value}>` : '*None*';
-    } else if (settingConfig.type === 'text' || settingConfig.type === 'modal') {
-      // Special case for custom nudge message - don't show full text
-      if (settingConfig.key === 'race_custom_nudge_message') {
-        displayValue = value ? '*Click button below to view*' : '*Using default message.*';
-      } else if (settingConfig.key === 'race_nudge_schedule') {
-        // Special formatting for nudge schedule
-        const schedule = value as NudgeSchedule;
+    } else if (settingConfig.type === 'grouped_modal') {
+      // Special handling for grouped settings - format as bullet list
+      if (settingConfig.key === 'nudge_settings') {
+        const nudgeEnabled = settings['nudge_enabled'];
+        const nudgeChannel = settings['race_nudge_channel_id'];
+        const schedule = settings['race_nudge_schedule'] as NudgeSchedule;
+        const customMessage = settings['race_custom_nudge_message'];
+
+        const lines: string[] = [];
+        lines.push(` * Status: ${nudgeEnabled ? '✅ Enabled' : '❌ Disabled'}`);
+        lines.push(` * Channel: ${nudgeChannel ? `<#${nudgeChannel}>` : '*Not set*'}`);
+
         if (schedule && schedule.startHour !== null && schedule.intervalHours !== null) {
           const { nudgeTimes } = NudgeTrackingScheduler.calculateNudgeContext(
             schedule.startHour,
             schedule.startMinute || 0,
             schedule.intervalHours,
           );
-
-          // Create Discord timestamps for today's nudge times
           const now = new Date();
           const todayDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-
           const timeStrings = nudgeTimes.map((time) => {
             const timestamp = new Date(todayDate);
             timestamp.setUTCHours(time.hour, time.minute, 0, 0);
             const unix = Math.floor(timestamp.getTime() / 1000);
             return `<t:${unix}:t>`;
           });
-
-          displayValue = timeStrings.join(', ');
+          lines.push(` * Schedule: ${timeStrings.join(', ')}`);
         } else {
-          displayValue = '*Not configured*';
+          lines.push(` * Schedule: *Not set*`);
         }
-      } else {
-        displayValue = value ? `__${value}__` : '*None*';
+
+        lines.push(` * Custom Message: ${customMessage ? customMessage : '*Default*'}`);
+
+        displayValue = '\n' + lines.join('\n');
+      } else if (settingConfig.key === 'clan_settings') {
+        const familyEnabled = settings['family_clan'];
+        const abbreviation = settings['abbreviation'];
+        const clanRoleId = settings['clan_role_id'];
+        const staffChannelId = settings['staff_channel_id'];
+
+        const lines: string[] = [];
+        lines.push(` * Family Clan: ${familyEnabled ? '✅ Enabled' : '❌ Disabled'}`);
+        lines.push(` * Abbreviation: ${abbreviation ? `__${abbreviation}__` : '*Not set*'}`);
+        lines.push(` * Clan Role: ${clanRoleId ? `<@&${clanRoleId}>` : '*Not set*'}`);
+        lines.push(` * Staff Channel: ${staffChannelId ? `<#${staffChannelId}>` : '*Not set*'}`);
+
+        displayValue = '\n' + lines.join('\n');
       }
+    } else if (settingConfig.type === 'text' || settingConfig.type === 'modal') {
+      displayValue = value ? `__${value}__` : '*None*';
+    } else if (settingConfig.type === 'action') {
+      displayValue = ''; // No value display for action buttons
     }
 
-    description += `* **${settingConfig.label}: ${displayValue}**\n  * ${settingConfig.description}\n\n`;
+    if (settingConfig.type !== 'action') {
+      description += `**${settingConfig.label}:** ${displayValue}\n`;
+    }
 
     // Build button if editable via button
     let button: ButtonBuilder | null = null;
+    const buttonLabel = (settingConfig as any).buttonLabel || settingConfig.label;
+
     if (settingConfig.type === 'toggle') {
       const cacheKey = storeClanSettingsData({
         settingKey: settingConfig.key,
@@ -202,9 +191,22 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
       });
 
       button = new ButtonBuilder()
-        .setLabel(`${value ? 'Disable' : 'Enable'} ${settingConfig.label}`)
+        .setLabel(`${value ? 'Disable' : 'Enable'} ${buttonLabel}`)
         .setCustomId(makeCustomId('b', 'clanSettings', guildId, { cooldown: 2, extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Primary);
+    } else if (settingConfig.type === 'grouped_modal') {
+      const cacheKey = storeClanSettingsData({
+        settingKey: settingConfig.key,
+        clantag,
+        clanName,
+        guildId,
+        ownerId,
+      });
+
+      button = new ButtonBuilder()
+        .setLabel(`Configure ${buttonLabel}`)
+        .setCustomId(makeCustomId('b', 'clanSettingsShowModal', guildId, { extra: [cacheKey], ownerId }))
+        .setStyle(ButtonStyle.Secondary);
     } else if (settingConfig.type === 'modal' || settingConfig.type === 'text') {
       const cacheKey = storeClanSettingsData({
         settingKey: settingConfig.key,
@@ -215,8 +217,8 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
       });
 
       button = new ButtonBuilder()
-        .setLabel(`Edit ${settingConfig.label}`)
-        .setCustomId(makeCustomId('b', 'clanSettingsOpenModal', guildId, { extra: [cacheKey], ownerId }))
+        .setLabel(`Edit ${buttonLabel}`)
+        .setCustomId(makeCustomId('b', 'clanSettingsShowModal', guildId, { extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Secondary);
     } else if (settingConfig.type === 'role' || settingConfig.type === 'channel') {
       const cacheKey = storeClanSettingsData({
@@ -228,8 +230,8 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
       });
 
       button = new ButtonBuilder()
-        .setLabel(`Edit ${settingConfig.label}`)
-        .setCustomId(makeCustomId('b', 'clanSettingsOpenModal', guildId, { extra: [cacheKey], ownerId }))
+        .setLabel(`Set ${buttonLabel}`)
+        .setCustomId(makeCustomId('b', 'clanSettingsShowModal', guildId, { extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Secondary);
     } else if (settingConfig.type === 'action') {
       const cacheKey = storeClanSettingsData({
@@ -241,11 +243,10 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
       });
 
       button = new ButtonBuilder()
-        .setLabel(`${settingConfig.label}`)
+        .setLabel(buttonLabel)
         .setCustomId(makeCustomId('b', 'clanSettingsAction', guildId, { extra: [cacheKey], ownerId }))
         .setStyle(ButtonStyle.Danger);
     }
-    // For 'role', you might want to use a slash command or a select menu, so you can just show info.
 
     if (button) {
       currentRow.addComponents(button);

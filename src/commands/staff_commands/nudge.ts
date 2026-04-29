@@ -34,6 +34,7 @@ const command: Command = {
     // Query clan data and race info
     const clanRes = await pool.query(
       `SELECT 
+        c.guild_id,
         c.clantag, 
         c.clan_name, 
         c.nudge_enabled, 
@@ -90,6 +91,7 @@ const command: Command = {
     // Re-query to get updated race info (including race_id if it was just created)
     const updatedClanRes = await pool.query(
       `SELECT 
+        c.guild_id,
         c.clantag, 
         c.clan_name, 
         c.staff_channel_id,

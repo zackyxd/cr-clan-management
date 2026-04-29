@@ -1,7 +1,7 @@
 import { pool } from '../../db.js';
 import { fetchClanName } from '../../services/clans.js';
 import { repostInviteMessage, updateInviteMessage } from '../clan-invites/messageManager.js';
-import { getClanSettingsData } from '../../cache/clanSettingsDataCache.js';
+import { getClanSettingsData } from './cache.js';
 import logger from '../../logger.js';
 import type {
   ClanSettings,
@@ -58,20 +58,25 @@ export class ClanSettingsService {
   /**
    * Update clan abbreviation
    */
-  async updateAbbreviation(guildId: string, clantag: string, abbreviation: string): Promise<ClanSettingsResponse> {
-    const client = await pool.connect();
+  async updateAbbreviation(
+    client: Client,
+    guildId: string,
+    clantag: string,
+    abbreviation: string,
+  ): Promise<ClanSettingsResponse> {
+    const dbClient = await pool.connect();
 
     try {
-      await client.query('BEGIN');
+      await dbClient.query('BEGIN');
 
       // 1️⃣ Check if abbreviation already exists for another clan
-      const existingRes = await client.query(
+      const existingRes = await dbClient.query(
         `SELECT clan_name FROM clans WHERE guild_id = $1 AND abbreviation = $2 AND clantag != $3`,
         [guildId, abbreviation, clantag],
       );
 
       if (existingRes.rows.length > 0) {
-        await client.query('ROLLBACK');
+        await dbClient.query('ROLLBACK');
         return {
           success: false,
           error: `❌ Abbreviation "${abbreviation}" is already used by clan: ${existingRes.rows[0].clan_name}`,
@@ -79,24 +84,24 @@ export class ClanSettingsService {
       }
 
       // 2️⃣ Update the clan abbreviation
-      await client.query(`UPDATE clans SET abbreviation = $1 WHERE guild_id = $2 AND clantag = $3`, [
+      await dbClient.query(`UPDATE clans SET abbreviation = $1 WHERE guild_id = $2 AND clantag = $3`, [
         abbreviation,
         guildId,
         clantag,
       ]);
 
-      await client.query('COMMIT');
+      await dbClient.query('COMMIT');
 
       return { success: true };
     } catch (error) {
-      await client.query('ROLLBACK');
+      await dbClient.query('ROLLBACK');
       logger.error('Error updating clan abbreviation:', error);
       return {
         success: false,
         error: 'Failed to update abbreviation. Please try again.',
       };
     } finally {
-      client.release();
+      dbClient.release();
     }
   }
 
@@ -108,30 +113,14 @@ export class ClanSettingsService {
     guildId: string,
     clantag: string,
     roleId: string,
-    userId: string,
   ): Promise<ClanSettingsResponse> {
     try {
-      const oldResult = await pool.query(
-        `SELECT clan_role_id, clan_name FROM clans WHERE guild_id = $1 AND clantag = $2`,
-        [guildId, clantag],
-      );
-      const oldRoleId = oldResult.rows[0]?.clan_role_id;
-      const clanName = oldResult.rows[0]?.clan_name;
-
       // Simple direct update to clans table
       await pool.query(`UPDATE clans SET clan_role_id = $1 WHERE guild_id = $2 AND clantag = $3`, [
         roleId,
         guildId,
         clantag,
       ]);
-
-      // TODO new emoji
-      this.sendLog(
-        client,
-        guildId,
-        `🪧 Clan Setting Changed`,
-        `**Clan Role:**\nClan: ${clanName}\n${oldRoleId ? `<@&${oldRoleId}>` : 'None'} → <@&${roleId}>\n**Changed by:** <@${userId}>`,
-      ).catch((err) => logger.error('Error sending clan role update log:', err));
 
       return { success: true };
     } catch (error) {
@@ -152,16 +141,8 @@ export class ClanSettingsService {
     clantag: string,
     settingKey: string,
     value: string | boolean,
-    userId: string,
   ): Promise<ClanSettingsResponse> {
     try {
-      const oldResult = await pool.query(
-        `SELECT ${settingKey}, clan_name FROM clans WHERE guild_id = $1 AND clantag = $2`,
-        [guildId, clantag],
-      );
-      const oldValue = oldResult.rows[0]?.[settingKey];
-      const clanName = oldResult.rows[0]?.clan_name;
-
       // Simple direct update to clans table
       await pool.query(`UPDATE clans SET ${settingKey} = $1 WHERE guild_id = $2 AND clantag = $3`, [
         value,
@@ -169,120 +150,12 @@ export class ClanSettingsService {
         clantag,
       ]);
 
-      const settingLabel = settingKey.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
-      this.sendLog(
-        client,
-        guildId,
-        `🪧 Clan Setting Changed`,
-        `**${settingLabel}:**\nClan: ${clanName}\n${oldValue ? `<#${oldValue}>` : 'None'} → <#${value}>\n**Changed by:** <@${userId}>`,
-      ).catch((err) => logger.error('Error sending clan setting update log:', err));
-
       return { success: true };
     } catch (error) {
       logger.error(`Error updating clan setting ${settingKey}:`, error);
       return {
         success: false,
         error: `Failed to update ${settingKey}. Please try again.`,
-      };
-    }
-  }
-
-  /**   * Update custom nudge message
-   */
-  async updateCustomNudgeMessage(
-    client: Client,
-    guildId: string,
-    clantag: string,
-    message: string,
-    userId: string,
-  ): Promise<ClanSettingsResponse> {
-    try {
-      const oldResult = await pool.query(
-        `SELECT race_custom_nudge_message, clan_name FROM clans WHERE guild_id = $1 AND clantag = $2`,
-        [guildId, clantag],
-      );
-      const oldMessage = oldResult.rows[0]?.race_custom_nudge_message;
-      const clanName = oldResult.rows[0]?.clan_name;
-
-      // Update the custom message (null means use default)
-      const finalMessage = message.trim() || null;
-      await pool.query(
-        `UPDATE clans SET race_custom_nudge_message = $1 WHERE guild_id = $2 AND clantag = $3`,
-        [finalMessage, guildId, clantag],
-      );
-
-      // Get updated settings
-      const settings = await this.getCurrentSettings(guildId, clantag);
-
-      this.sendLog(
-        client,
-        guildId,
-        `🪧 Clan Setting Changed`,
-        `**Custom Nudge Message:**\nClan: ${clanName}\n${oldMessage || 'Default'} → ${finalMessage || 'Default'}\n**Changed by:** <@${userId}>`,
-      ).catch((err) => logger.error('Error sending custom nudge message update log:', err));
-
-      return { success: true, settings };
-    } catch (error) {
-      logger.error('Error updating custom nudge message:', error);
-      return {
-        success: false,
-        error: 'Failed to update custom nudge message. Please try again.',
-      };
-    }
-  }
-
-  /**
-   * Update nudge schedule settings
-   */
-  async updateNudgeSchedule(
-    client: Client,
-    guildId: string,
-    clantag: string,
-    startHour: number,
-    startMinute: number,
-    intervalHours: number,
-    userId: string,
-  ): Promise<ClanSettingsResponse> {
-    try {
-      const oldResult = await pool.query(
-        `SELECT race_nudge_start_hour, race_nudge_start_minute, race_nudge_interval_hours, clan_name 
-         FROM clans WHERE guild_id = $1 AND clantag = $2`,
-        [guildId, clantag],
-      );
-      const oldRow = oldResult.rows[0];
-      const clanName = oldRow?.clan_name;
-
-      // Update the schedule
-      await pool.query(
-        `UPDATE clans 
-         SET race_nudge_start_hour = $1, 
-             race_nudge_start_minute = $2, 
-             race_nudge_interval_hours = $3 
-         WHERE guild_id = $4 AND clantag = $5`,
-        [startHour, startMinute, intervalHours, guildId, clantag],
-      );
-
-      // Get updated settings
-      const settings = await this.getCurrentSettings(guildId, clantag);
-
-      const oldSchedule = oldRow?.race_nudge_start_hour !== null 
-        ? `${String(oldRow.race_nudge_start_hour).padStart(2, '0')}:${String(oldRow.race_nudge_start_minute).padStart(2, '0')} every ${oldRow.race_nudge_interval_hours}h`
-        : 'Not set';
-      const newSchedule = `${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')} every ${intervalHours}h`;
-
-      this.sendLog(
-        client,
-        guildId,
-        `⏰ Clan Setting Changed`,
-        `**Nudge Schedule:**\nClan: ${clanName}\n${oldSchedule} → ${newSchedule}\n**Changed by:** <@${userId}>`,
-      ).catch((err) => logger.error('Error sending nudge schedule update log:', err));
-
-      return { success: true, settings };
-    } catch (error) {
-      logger.error('Error updating nudge schedule:', error);
-      return {
-        success: false,
-        error: 'Failed to update nudge schedule. Please try again.',
       };
     }
   }
@@ -319,10 +192,15 @@ export class ClanSettingsService {
   /**
    * Toggle family clan status with validation
    */
-  async toggleFamilyClan(
+  /**
+   * Set family clan to a specific value (not toggle)
+   * Used by grouped modal where checkbox directly sets the value
+   */
+  async setFamilyClan(
     client: Client,
     guildId: string,
     clantag: string,
+    enabled: boolean,
     userId: string,
   ): Promise<ClanSettingsResponse> {
     const dbClient = await pool.connect();
@@ -330,7 +208,7 @@ export class ClanSettingsService {
     try {
       await dbClient.query('BEGIN');
 
-      // 1️⃣ Get current family_clan status directly from clans table
+      // Get current family_clan status
       const currentRes = await dbClient.query(
         `SELECT family_clan, clan_name FROM clans WHERE guild_id = $1 AND clantag = $2`,
         [guildId, clantag],
@@ -339,8 +217,14 @@ export class ClanSettingsService {
       const currentFamilyClan = currentRes.rows[0]?.family_clan || false;
       const clanName = currentRes.rows[0]?.clan_name;
 
-      // 2️⃣ Check family clan limit if enabling
-      if (!currentFamilyClan) {
+      // If no change needed, return early
+      if (enabled === currentFamilyClan) {
+        await dbClient.query('ROLLBACK');
+        return { success: true };
+      }
+
+      // Check family clan limit if enabling
+      if (enabled) {
         const countRes = await dbClient.query(
           `SELECT COUNT(*)::int FROM clans 
            WHERE guild_id = $1 AND family_clan = true`,
@@ -361,8 +245,86 @@ export class ClanSettingsService {
         }
       }
 
-      // 3️⃣ Toggle the family_clan setting in clans table
+      // Set the family_clan value
+      await dbClient.query(`UPDATE clans SET family_clan = $1 WHERE guild_id = $2 AND clantag = $3`, [
+        enabled,
+        guildId,
+        clantag,
+      ]);
+
+      await dbClient.query('COMMIT');
+
+      // Return the updated settings
+      const updatedSettings = await this.getCurrentSettings(guildId, clantag);
+
+      // Note: No log sent here - the grouped modal handler sends a consolidated log
+      // for all changes together
+
+      return { success: true, settings: updatedSettings };
+    } catch (error) {
+      await dbClient.query('ROLLBACK');
+      logger.error('Error setting family_clan:', error);
+      return {
+        success: false,
+        error: 'There was an error setting this clan as family clan.',
+      };
+    } finally {
+      dbClient.release();
+    }
+  }
+
+  async toggleFamilyClan(
+    client: Client,
+    guildId: string,
+    clantag: string,
+    userId: string,
+  ): Promise<ClanSettingsResponse> {
+    const dbClient = await pool.connect();
+
+    try {
+      await dbClient.query('BEGIN');
+
+      // 1️⃣ Get current family_clan status directly from clans table
+      const currentRes = await dbClient.query(
+        `SELECT family_clan, clan_name FROM clans WHERE guild_id = $1 AND clantag = $2`,
+        [guildId, clantag],
+      );
+
+      const currentFamilyClan = currentRes.rows[0]?.family_clan || false;
+      const clanName = currentRes.rows[0]?.clan_name;
+
+      // Determine the new state
       const newFamilyClan = !currentFamilyClan;
+
+      // If no change needed, return early
+      if (newFamilyClan === currentFamilyClan) {
+        await dbClient.query('ROLLBACK');
+        return { success: true };
+      }
+
+      // 2️⃣ Check family clan limit if enabling
+      if (newFamilyClan) {
+        const countRes = await dbClient.query(
+          `SELECT COUNT(*)::int FROM clans 
+           WHERE guild_id = $1 AND family_clan = true`,
+          [guildId],
+        );
+
+        const maxFamilyClansRes = await dbClient.query(
+          `SELECT max_family_clans FROM server_settings WHERE guild_id = $1`,
+          [guildId],
+        );
+
+        if (countRes.rows[0].count >= maxFamilyClansRes.rows[0].max_family_clans) {
+          await dbClient.query('ROLLBACK');
+          return {
+            success: false,
+            error: `This server already has the maximum **${maxFamilyClansRes.rows[0].max_family_clans}** family clans allowed.`,
+          };
+        }
+      }
+
+      // 3️⃣ Update the family_clan setting in clans table
       await dbClient.query(`UPDATE clans SET family_clan = $1 WHERE guild_id = $2 AND clantag = $3`, [
         newFamilyClan,
         guildId,
@@ -492,12 +454,22 @@ export class ClanSettingsService {
    * Toggle invites enabled setting
    */
   async toggleInvitesEnabled(
+    client: Client,
     guildId: string,
     clantag: string,
+    userId: string,
   ): Promise<
     ClanSettingsResponse & { inviteUpdateNeeded?: boolean; inviteSettings?: ClanInviteSettings; warning?: string }
   > {
     try {
+      // Get old value and clan name before updating
+      const oldResult = await pool.query(
+        `SELECT invites_enabled, clan_name FROM clans WHERE guild_id = $1 AND clantag = $2`,
+        [guildId, clantag],
+      );
+      const oldValue = oldResult.rows[0]?.invites_enabled;
+      const clanName = oldResult.rows[0]?.clan_name;
+
       // Simple direct update to clans table
       await pool.query(`UPDATE clans SET invites_enabled = NOT invites_enabled WHERE guild_id = $1 AND clantag = $2`, [
         guildId,
@@ -506,6 +478,14 @@ export class ClanSettingsService {
 
       // Get updated settings
       const settings = await this.getCurrentSettings(guildId, clantag);
+
+      // Send audit log
+      this.sendLog(
+        client,
+        guildId,
+        `📨 Clan Setting Changed`,
+        `**Invites Enabled:**\nClan: ${clanName}\n${oldValue ? 'Enabled' : 'Disabled'} → ${settings.invites_enabled ? 'Enabled' : 'Disabled'}\n**Changed by:** <@${userId}>`,
+      ).catch((err) => logger.error('Error sending invites toggle log:', err));
 
       // Check if invite message needs updating
       const inviteData = await this.getInviteSettings(guildId, clantag);

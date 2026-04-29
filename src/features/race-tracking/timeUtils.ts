@@ -22,6 +22,10 @@ export function getCurrentTimestamp(): string {
   return `<t:${unix}:T>`; // Shows in user's local timezone automatically
 }
 
+export function getRelativeTimestamp(date: Date): string {
+  const unix = Math.floor(date.getTime() / 1000);
+  return `<t:${unix}:R>`; // Relative time (e.g., "in 5 minutes", "2 hours ago")
+}
 export function getNextDayRelativeTimestamp(date: Date): string {
   const unix = Math.floor(date.getTime() / 1000) + 86400;
   return `<t:${unix}:R>`; // Relative time (e.g., "in 5 minutes", "2 hours ago")
