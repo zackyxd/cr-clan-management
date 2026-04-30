@@ -69,7 +69,7 @@ export class ClanSettingsInteractionRouter {
     const { settingKey: action, clantag, clanName, guildId } = settingsData;
 
     // Check permissions
-    const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {
+    const allowed = await checkPerms(interaction, guildId, 'button', 'either', {
       hideNoPerms: true,
       skipDefer: true,
     });

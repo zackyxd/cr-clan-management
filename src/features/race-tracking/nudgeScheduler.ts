@@ -14,11 +14,12 @@ interface ScheduledNudge {
   clan_name: string;
   staff_channel_id: string;
   race_nudge_channel_id: string;
-  race_nudge_start_hour: number; // 0-23 (UTC)
-  race_nudge_start_minute: number; // 0-59 (UTC)
-  race_nudge_interval_hours: number;
+  nudge_method: 'disabled' | 'interval' | 'hours_before_end';
+  race_nudge_start_hour: number | null; // 0-23 (UTC)
+  race_nudge_start_minute: number | null; // 0-59 (UTC)
+  race_nudge_interval_hours: number | null;
+  race_nudge_hours_before_array: number[] | null;
   race_custom_nudge_message: string | null;
-  nudge_enabled: boolean;
   current_day: number;
   current_week: number;
   race_state: string;
@@ -191,21 +192,24 @@ export class NudgeTrackingScheduler {
           c.clan_name,
           c.staff_channel_id,
           c.race_nudge_channel_id,
+          c.nudge_method,
           c.race_nudge_start_hour,
           c.race_nudge_start_minute,
           c.race_nudge_interval_hours,
+          c.race_nudge_hours_before_array,
           c.race_custom_nudge_message,
-          c.nudge_enabled,
           rr.current_day,
           rr.current_week,
           rr.race_state,
           rr.end_time
         FROM river_races rr
         JOIN clans c ON c.clantag = rr.clantag
-        WHERE c.nudge_enabled = true
+        WHERE c.nudge_method IN ('interval', 'hours_before_end')
           AND c.race_nudge_channel_id IS NOT NULL
-          AND c.race_nudge_start_hour IS NOT NULL
-          AND c.race_nudge_start_minute IS NOT NULL
+          AND (
+            (c.nudge_method = 'interval' AND c.race_nudge_start_hour IS NOT NULL AND c.race_nudge_start_minute IS NOT NULL)
+            OR (c.nudge_method = 'hours_before_end' AND c.race_nudge_hours_before_array IS NOT NULL)
+          )
         ORDER BY c.guild_id, c.clantag, rr.current_week DESC, rr.race_id DESC
         `,
       );
@@ -228,26 +232,85 @@ export class NudgeTrackingScheduler {
         return;
       }
 
-      const startHour = clan.race_nudge_start_hour;
-      const startMinute = clan.race_nudge_start_minute;
-      const intervalHours = clan.race_nudge_interval_hours;
+      let matchingNudgeIndex = -1;
+      let totalNudges = 0;
+      let timeString = '';
 
-      // Calculate all nudge times and find current nudge number
-      const nudgeContext = NudgeTrackingScheduler.calculateNudgeContext(startHour, startMinute, intervalHours);
-      const { nudgeTimes, currentNudgeNumber, totalNudges } = nudgeContext;
+      if (clan.nudge_method === 'interval') {
+        // Interval method: Check scheduled times
+        const startHour = clan.race_nudge_start_hour!;
+        const startMinute = clan.race_nudge_start_minute!;
+        const intervalHours = clan.race_nudge_interval_hours!;
 
-      // Find which nudge time matches current time (if any)
-      const matchingNudgeIndex = nudgeTimes.findIndex(
-        (time) => time.hour === currentHour && time.minute === currentMinute,
-      );
+        // Calculate all nudge times and find current nudge number
+        const nudgeContext = NudgeTrackingScheduler.calculateNudgeContext(startHour, startMinute, intervalHours);
+        const { nudgeTimes } = nudgeContext;
+        totalNudges = nudgeContext.totalNudges;
 
-      if (matchingNudgeIndex === -1) {
-        // Not time for a nudge yet
+        // Find which nudge time matches current time (if any)
+        matchingNudgeIndex = nudgeTimes.findIndex(
+          (time) => time.hour === currentHour && time.minute === currentMinute,
+        );
+
+        if (matchingNudgeIndex === -1) {
+          // Not time for a nudge yet
+          return;
+        }
+
+        const matchingTime = nudgeTimes[matchingNudgeIndex];
+        timeString = `${String(matchingTime.hour).padStart(2, '0')}:${String(matchingTime.minute).padStart(2, '0')}:00`;
+      } else if (clan.nudge_method === 'hours_before_end') {
+        // Hours before end method: Check if current time matches X hours before 9am UTC
+        const WAR_END_HOUR = 9;
+        const WAR_END_MINUTE = 0;
+        const hoursBeforeArray = clan.race_nudge_hours_before_array!;
+        totalNudges = hoursBeforeArray.length;
+
+        // Calculate war end time for today
+        const now = new Date();
+        const warEndTime = new Date(Date.UTC(
+          now.getUTCFullYear(),
+          now.getUTCMonth(),
+          now.getUTCDate(),
+          WAR_END_HOUR,
+          WAR_END_MINUTE,
+          0,
+          0
+        ));
+
+        // If current time is past war end, use tomorrow's war end
+        if (now.getTime() >= warEndTime.getTime()) {
+          warEndTime.setUTCDate(warEndTime.getUTCDate() + 1);
+        }
+
+        // Calculate hours until war end (as a decimal)
+        const millisUntilEnd = warEndTime.getTime() - now.getTime();
+        const hoursUntilEnd = millisUntilEnd / (1000 * 60 * 60);
+
+        // Check if any hour in array matches current time (within 1 minute tolerance)
+        for (let i = 0; i < hoursBeforeArray.length; i++) {
+          const hoursBefore = hoursBeforeArray[i];
+          const difference = Math.abs(hoursUntilEnd - hoursBefore);
+          
+          // If within 1 minute (0.0167 hours) of the target, send nudge
+          if (difference < 0.0167) {
+            matchingNudgeIndex = i;
+            
+            // Calculate the exact nudge time for logging
+            const nudgeTime = new Date(warEndTime.getTime() - (hoursBefore * 60 * 60 * 1000));
+            timeString = `${String(nudgeTime.getUTCHours()).padStart(2, '0')}:${String(nudgeTime.getUTCMinutes()).padStart(2, '0')}:00 (${hoursBefore}h before war end)`;
+            break;
+          }
+        }
+
+        if (matchingNudgeIndex === -1) {
+          // Not time for a nudge yet
+          return;
+        }
+      } else {
+        // Unknown method
         return;
       }
-
-      const matchingTime = nudgeTimes[matchingNudgeIndex];
-      const timeString = `${String(matchingTime.hour).padStart(2, '0')}:${String(matchingTime.minute).padStart(2, '0')}:00`;
 
       logger.debug(`⏰ Scheduled nudge time ${timeString} UTC matched for ${clan.clan_name}`);
 

@@ -1,6 +1,6 @@
 /**
  * End-of-Day Stats Settings Handler
- * 
+ *
  * Handles toggling automatic end-of-day race stats posting:
  * - Checks for staff channel configuration
  * - Updates database and sends audit logs
@@ -16,7 +16,7 @@ import logger from '../../../logger.js';
 export class EodStatsHandler {
   /**
    * Handle EOD stats toggle button interaction
-   * 
+   *
    * @param interaction - Button interaction from Discord
    * @param settingsData - Cached settings data (from cache key)
    */
@@ -24,9 +24,6 @@ export class EodStatsHandler {
     const { guildId, clantag, clanName } = settingsData;
 
     try {
-      // Defer to allow time for DB operations
-      await interaction.deferReply({ ephemeral: true });
-
       // Call service layer to toggle EOD stats
       const result = await clanSettingsService.toggleEodStatsEnabled(
         interaction,
@@ -56,7 +53,7 @@ export class EodStatsHandler {
       );
     } catch (error) {
       logger.error('[EodStats] Error toggling EOD stats:', error);
-      
+
       await interaction.editReply({
         content: '❌ An unexpected error occurred while updating end-of-day stats setting.',
       });

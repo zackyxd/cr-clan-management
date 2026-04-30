@@ -1,6 +1,6 @@
 /**
  * Clan Invites Settings Handler
- * 
+ *
  * Handles two actions:
  * 1. Toggle invites enabled/disabled
  * 2. Purge all active clan invites
@@ -40,7 +40,7 @@ interface FailedMessage {
 export class InvitesHandler {
   /**
    * Handle invites enabled toggle button interaction
-   * 
+   *
    * @param interaction - Button interaction from Discord
    * @param settingsData - Cached settings data (from cache key)
    */
@@ -48,9 +48,6 @@ export class InvitesHandler {
     const { guildId, clantag, clanName } = settingsData;
 
     try {
-      // Defer to allow time for DB operations
-      await interaction.deferReply({ ephemeral: true });
-
       // Call service layer to toggle invites
       const result = await clanSettingsService.toggleInvitesEnabled(
         interaction.client,
@@ -95,12 +92,10 @@ export class InvitesHandler {
         content: '✅ Invites setting updated successfully',
       });
 
-      logger.info(
-        `[Invites] ${interaction.user.tag} toggled invites for ${clanName} (${clantag}) in guild ${guildId}`,
-      );
+      logger.info(`[Invites] ${interaction.user.tag} toggled invites for ${clanName} (${clantag}) in guild ${guildId}`);
     } catch (error) {
       logger.error('[Invites] Error toggling invites:', error);
-      
+
       await interaction.editReply({
         content: '❌ An unexpected error occurred while updating invite setting.',
       });
@@ -110,7 +105,7 @@ export class InvitesHandler {
   /**
    * Handle purge invites action - deletes all existing invites for the clan
    * Only higher-staff roles can use this button.
-   * 
+   *
    * @param interaction - Button interaction from Discord
    * @param settingsData - Cached settings data (from cache key)
    */
@@ -230,7 +225,7 @@ export class InvitesHandler {
       );
     } catch (error) {
       logger.error('[Invites] Error purging invites:', error);
-      
+
       await interaction.followUp({
         content: '❌ An unexpected error occurred while purging invites.',
         ephemeral: true,

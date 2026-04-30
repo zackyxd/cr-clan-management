@@ -37,7 +37,7 @@ const command: Command = {
         c.guild_id,
         c.clantag, 
         c.clan_name, 
-        c.nudge_enabled, 
+        c.nudge_method, 
         c.race_custom_nudge_message, 
         c.race_nudge_channel_id,
         c.staff_channel_id,
@@ -67,7 +67,7 @@ const command: Command = {
     const clanData = clanRes.rows[0];
     const fixedClantag = clanData.clantag;
 
-    if (!clanData.nudge_enabled) {
+    if (clanData.nudge_method === 'disabled') {
       await interaction.editReply({
         content: `❌ Nudges are disabled for this clan. Enable them in \`/clan-settings\`.`,
       });

@@ -36,7 +36,13 @@ export const CLAN_FEATURE_SETTINGS = [
     label: 'Race Nudge Settings',
     buttonLabel: 'Nudge Settings',
     type: 'grouped_modal',
-    group: ['nudge_enabled', 'race_nudge_channel_id', 'race_nudge_schedule', 'race_custom_nudge_message'],
+    group: [
+      'nudge_method',
+      'race_nudge_channel_id',
+      'race_nudge_schedule',
+      'race_nudge_hours_before_array',
+      'race_custom_nudge_message',
+    ],
   },
   {
     key: 'invites_enabled',
@@ -61,9 +67,10 @@ export const CLAN_FEATURE_SETTINGS = [
 
 // The default features
 export const DEFAULT_CLAN_SETTINGS = {
-  nudge_enabled: true,
+  nudge_method: 'disabled',
   race_nudge_channel_id: '',
   race_custom_nudge_message: '',
+  race_nudge_hours_before_array: null,
   eod_stats_enabled: false,
   staff_channel_id: '',
   invites_enabled: true,
@@ -75,8 +82,8 @@ export const DEFAULT_CLAN_SETTINGS = {
 // Build the clan settings view when a clan is selected in /clan-settings
 export async function buildClanSettingsView(guildId: string, clanName: string, clantag: string, ownerId: string) {
   const res = await pool.query(
-    `SELECT family_clan, nudge_enabled, race_nudge_channel_id, race_custom_nudge_message, 
-            race_nudge_start_hour, race_nudge_start_minute, race_nudge_interval_hours,
+    `SELECT family_clan, nudge_method, race_nudge_channel_id, race_custom_nudge_message, 
+            race_nudge_start_hour, race_nudge_start_minute, race_nudge_interval_hours, race_nudge_hours_before_array,
             eod_stats_enabled, staff_channel_id, invites_enabled, clan_role_id, abbreviation 
      FROM clans WHERE guild_id = $1 AND clantag = $2`,
     [guildId, clantag],
@@ -86,9 +93,9 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
   // Map database columns to settings object
   const dbRow = res.rows[0];
 
-  const settings: Record<string, boolean | string | number | NudgeSchedule> = {
+  const settings: Record<string, boolean | string | number | NudgeSchedule | number[] | null> = {
     family_clan: dbRow.family_clan || false,
-    nudge_enabled: dbRow.nudge_enabled || false,
+    nudge_method: dbRow.nudge_method || 'disabled',
     race_nudge_channel_id: dbRow.race_nudge_channel_id || '',
     race_custom_nudge_message: dbRow.race_custom_nudge_message || '',
     race_nudge_schedule: {
@@ -96,6 +103,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
       startMinute: dbRow.race_nudge_start_minute,
       intervalHours: dbRow.race_nudge_interval_hours,
     },
+    race_nudge_hours_before_array: dbRow.race_nudge_hours_before_array || null,
     eod_stats_enabled: dbRow.eod_stats_enabled || false,
     staff_channel_id: dbRow.staff_channel_id || '',
     invites_enabled: dbRow.invites_enabled || false,
@@ -123,16 +131,26 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
     } else if (settingConfig.type === 'grouped_modal') {
       // Special handling for grouped settings - format as bullet list
       if (settingConfig.key === 'nudge_settings') {
-        const nudgeEnabled = settings['nudge_enabled'];
+        const nudgeMethod = settings['nudge_method'] as 'disabled' | 'interval' | 'hours_before_end';
         const nudgeChannel = settings['race_nudge_channel_id'];
         const schedule = settings['race_nudge_schedule'] as NudgeSchedule;
+        const hoursBeforeArray = settings['race_nudge_hours_before_array'] as number[] | null;
         const customMessage = settings['race_custom_nudge_message'];
 
         const lines: string[] = [];
-        lines.push(` * Status: ${nudgeEnabled ? '✅ Enabled' : '❌ Disabled'}`);
+
+        // Display method status
+        const methodNames: Record<'disabled' | 'interval' | 'hours_before_end', string> = {
+          disabled: '❌ Disabled',
+          interval: 'Interval Method',
+          hours_before_end: 'Hours Before End',
+        };
+        lines.push(` * Method: ${methodNames[nudgeMethod] || 'Unknown'}`);
+
         lines.push(` * Channel: ${nudgeChannel ? `<#${nudgeChannel}>` : '*Not set*'}`);
 
-        if (schedule && schedule.startHour !== null && schedule.intervalHours !== null) {
+        // Display schedule based on method
+        if (nudgeMethod === 'interval' && schedule && schedule.startHour !== null && schedule.intervalHours !== null) {
           const { nudgeTimes } = NudgeTrackingScheduler.calculateNudgeContext(
             schedule.startHour,
             schedule.startMinute || 0,
@@ -147,11 +165,22 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
             return `<t:${unix}:t>`;
           });
           lines.push(` * Schedule: ${timeStrings.join(', ')}`);
-        } else {
+        } else if (nudgeMethod === 'hours_before_end' && hoursBeforeArray && hoursBeforeArray.length > 0) {
+          const now = new Date();
+          const warEndTime = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 9, 0, 0));
+          const timeStrings = hoursBeforeArray.map((hoursBefore) => {
+            const nudgeTime = new Date(warEndTime.getTime() - hoursBefore * 60 * 60 * 1000);
+            const unix = Math.floor(nudgeTime.getTime() / 1000);
+            return `<t:${unix}:t> (${hoursBefore}h before)`;
+          });
+          lines.push(` * Schedule: ${timeStrings.join(', ')}`);
+        } else if (nudgeMethod !== 'disabled') {
           lines.push(` * Schedule: *Not set*`);
         }
 
-        lines.push(` * Custom Message: ${customMessage ? customMessage : '*Default*'}`);
+        if (nudgeMethod !== 'disabled') {
+          lines.push(` * Custom Message: ${customMessage ? customMessage : '*Default*'}`);
+        }
 
         displayValue = '\n' + lines.join('\n');
       } else if (settingConfig.key === 'clan_settings') {
