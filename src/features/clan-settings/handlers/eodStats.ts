@@ -24,6 +24,9 @@ export class EodStatsHandler {
     const { guildId, clantag, clanName } = settingsData;
 
     try {
+      // Defer to allow time for DB operations
+      await interaction.deferReply({ ephemeral: true });
+
       // Call service layer to toggle EOD stats
       const result = await clanSettingsService.toggleEodStatsEnabled(
         interaction,
@@ -34,9 +37,8 @@ export class EodStatsHandler {
 
       // Handle failure
       if (!result.success) {
-        await interaction.reply({
+        await interaction.editReply({
           content: result.error || 'Failed to toggle end-of-day stats setting',
-          ephemeral: true,
         });
         return;
       }
@@ -44,15 +46,19 @@ export class EodStatsHandler {
       // Success - update the settings view to show new state
       await updateClanSettingsView(interaction, guildId, clantag, clanName);
 
+      // Confirm success in ephemeral reply
+      await interaction.editReply({
+        content: '✅ End-of-day stats setting updated successfully',
+      });
+
       logger.info(
         `[EodStats] ${interaction.user.tag} toggled EOD stats for ${clanName} (${clantag}) in guild ${guildId}`,
       );
     } catch (error) {
       logger.error('[EodStats] Error toggling EOD stats:', error);
       
-      await interaction.followUp({
+      await interaction.editReply({
         content: '❌ An unexpected error occurred while updating end-of-day stats setting.',
-        ephemeral: true,
       });
     }
   }

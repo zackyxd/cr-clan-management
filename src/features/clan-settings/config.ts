@@ -85,6 +85,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
 
   // Map database columns to settings object
   const dbRow = res.rows[0];
+
   const settings: Record<string, boolean | string | number | NudgeSchedule> = {
     family_clan: dbRow.family_clan || false,
     nudge_enabled: dbRow.nudge_enabled || false,

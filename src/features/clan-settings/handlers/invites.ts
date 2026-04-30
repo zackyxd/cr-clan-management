@@ -48,6 +48,9 @@ export class InvitesHandler {
     const { guildId, clantag, clanName } = settingsData;
 
     try {
+      // Defer to allow time for DB operations
+      await interaction.deferReply({ ephemeral: true });
+
       // Call service layer to toggle invites
       const result = await clanSettingsService.toggleInvitesEnabled(
         interaction.client,
@@ -57,9 +60,8 @@ export class InvitesHandler {
       );
 
       if (!result.success) {
-        await interaction.reply({
+        await interaction.editReply({
           content: result.error || 'Failed to toggle invite setting',
-          ephemeral: true,
         });
         return;
       }
@@ -88,15 +90,19 @@ export class InvitesHandler {
       // Success - update the settings view
       await updateClanSettingsView(interaction, guildId, clantag, clanName);
 
+      // Confirm success in ephemeral reply
+      await interaction.editReply({
+        content: '✅ Invites setting updated successfully',
+      });
+
       logger.info(
         `[Invites] ${interaction.user.tag} toggled invites for ${clanName} (${clantag}) in guild ${guildId}`,
       );
     } catch (error) {
       logger.error('[Invites] Error toggling invites:', error);
       
-      await interaction.followUp({
+      await interaction.editReply({
         content: '❌ An unexpected error occurred while updating invite setting.',
-        ephemeral: true,
       });
     }
   }

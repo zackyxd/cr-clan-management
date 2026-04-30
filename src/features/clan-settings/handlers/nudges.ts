@@ -34,6 +34,9 @@ export class NudgesHandler {
   static async toggleNudgeEnabled(interaction: ButtonInteraction, settingsData: ClanSettingsData): Promise<void> {
     const { guildId, clantag, clanName } = settingsData;
 
+    // Defer to allow time for DB operations
+    await interaction.deferReply({ ephemeral: true });
+
     const result = await clanSettingsService.toggleNudgeEnabled(
       interaction.client,
       guildId,
@@ -42,14 +45,27 @@ export class NudgesHandler {
     );
 
     if (!result.success) {
-      await interaction.reply({
+      await interaction.editReply({
         content: result.error || 'Failed to toggle nudge setting',
-        ephemeral: true,
       });
       return;
     }
 
-    await updateClanSettingsView(interaction, guildId, clantag, clanName);
+    // Update the main settings view (updates original message)
+    try {
+      await updateClanSettingsView(interaction, guildId, clantag, clanName);
+    } catch (error) {
+      logger.error('[NudgesHandler] Failed to update settings view:', error);
+      await interaction.editReply({
+        content: '⚠️ Setting updated but failed to refresh display. Please reopen clan settings.',
+      });
+      return;
+    }
+
+    // Confirm success in ephemeral reply
+    await interaction.editReply({
+      content: '✅ Nudge setting updated successfully',
+    });
   }
 
   /**
@@ -322,6 +338,30 @@ export class NudgesHandler {
           content: '✅ Nudge settings updated successfully!',
           flags: MessageFlags.Ephemeral,
         });
+
+        // Update the original clan settings message
+        const messageId = interaction.message?.id;
+        if (messageId && interaction.channel) {
+          try {
+            const message = await interaction.channel.messages.fetch(messageId);
+            const { embed, components: newButtonRows } = await (await import('../config.js')).buildClanSettingsView(
+              guildId,
+              clanName,
+              clantag,
+              interaction.user.id,
+            );
+            const selectMenuRowBuilder = (await import('../config.js')).getSelectMenuRowBuilder(message.components);
+
+            await message.edit({
+              embeds: [embed],
+              components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
+            });
+            logger.debug(`[Nudges] Updated clan settings message for ${clanName}`);
+          } catch (error) {
+            logger.warn('[Nudges] Could not update clan settings message:', error);
+            // Non-critical - user can refresh manually
+          }
+        }
 
         logger.info(`[Nudges] ${interaction.user.tag} updated nudge settings for ${clantag} in guild ${guildId}`);
       } catch (error) {

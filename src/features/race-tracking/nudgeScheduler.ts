@@ -18,6 +18,7 @@ interface ScheduledNudge {
   race_nudge_start_minute: number; // 0-59 (UTC)
   race_nudge_interval_hours: number;
   race_custom_nudge_message: string | null;
+  nudge_enabled: boolean;
   current_day: number;
   current_week: number;
   race_state: string;
@@ -178,10 +179,12 @@ export class NudgeTrackingScheduler {
       // console.log(
       //   `⏰ Checking for pending nudges at ${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')} UTC`,
       // );
-      // Query clans with active races that have nudge settings
+      // Query clans with nudge settings enabled
+      // Use DISTINCT ON per GUILD+CLAN since different guilds have different nudge settings for same clan
+      // Get only the LATEST race per guild+clan (highest current_week)
       const result = await pool.query<ScheduledNudge>(
         `
-        SELECT 
+        SELECT DISTINCT ON (c.guild_id, c.clantag)
           rr.race_id,
           c.clantag,
           c.guild_id,
@@ -192,17 +195,18 @@ export class NudgeTrackingScheduler {
           c.race_nudge_start_minute,
           c.race_nudge_interval_hours,
           c.race_custom_nudge_message,
+          c.nudge_enabled,
           rr.current_day,
           rr.current_week,
           rr.race_state,
           rr.end_time
         FROM river_races rr
         JOIN clans c ON c.clantag = rr.clantag
-        WHERE (rr.race_state = 'warDay' OR rr.race_state = 'colosseum')
+        WHERE c.nudge_enabled = true
           AND c.race_nudge_channel_id IS NOT NULL
           AND c.race_nudge_start_hour IS NOT NULL
           AND c.race_nudge_start_minute IS NOT NULL
-          AND rr.current_day > 0
+        ORDER BY c.guild_id, c.clantag, rr.current_week DESC, rr.race_id DESC
         `,
       );
 
@@ -216,6 +220,14 @@ export class NudgeTrackingScheduler {
 
   private async processNudgeForClan(clan: ScheduledNudge, currentHour: number, currentMinute: number) {
     try {
+      // Verify we're in war day or colosseum (not training day)
+      if (clan.race_state !== 'warDay' && clan.race_state !== 'colosseum') {
+        logger.info(
+          `⏭️  Skipping nudge for ${clan.clan_name} [Guild:${clan.guild_id}] - not a war day (state: '${clan.race_state}', day: ${clan.current_day})`,
+        );
+        return;
+      }
+
       const startHour = clan.race_nudge_start_hour;
       const startMinute = clan.race_nudge_start_minute;
       const intervalHours = clan.race_nudge_interval_hours;
@@ -252,13 +264,12 @@ export class NudgeTrackingScheduler {
         SELECT nudge_time, nudge_type FROM race_nudges
         WHERE race_id = $1
           AND clantag = $2
-          AND guild_id = $3
-          AND race_day = $4
+          AND race_day = $3
           AND nudge_time >= NOW() - INTERVAL '${DEDUPE_WINDOW_MINUTES} minutes'
         ORDER BY nudge_time DESC
         LIMIT 1
         `,
-        [clan.race_id, clan.clantag, clan.guild_id, clan.current_day],
+        [clan.race_id, clan.clantag, clan.current_day],
       );
 
       if (existingNudge.rows.length > 0) {
@@ -270,7 +281,7 @@ export class NudgeTrackingScheduler {
         );
 
         // Notify staff channel if we're skipping due to recent manual nudge
-        await this.notifySkippedNudge(clan, lastSent, timeString);
+        await this.notifySkippedNudge(clan, lastSent, timeString, 'recent');
 
         return;
       }
@@ -283,11 +294,16 @@ export class NudgeTrackingScheduler {
   }
 
   /**
-   * Notify staff/log channel that automatic nudge was skipped due to recent manual nudge
+   * Notify staff/log channel that automatic nudge was skipped
    */
-  private async notifySkippedNudge(clan: ScheduledNudge, lastNudgeTime: Date, scheduledTime: string) {
+  private async notifySkippedNudge(
+    clan: ScheduledNudge,
+    lastNudgeTime: Date,
+    scheduledTime: string,
+    reason: 'disabled' | 'recent' = 'recent',
+  ) {
     try {
-      // Try to fetch the nudge channel to send notification there
+      // Try to fetch the staff channel to send notification there
       const channel = await this.client.channels
         .fetch(clan.staff_channel_id)
         .catch(() => console.warn('Staff channel not found for skip notification'));
@@ -305,7 +321,14 @@ export class NudgeTrackingScheduler {
         Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hour, minute, 0),
       );
       const scheduledUnix = Math.floor(scheduledDate.getTime() / 1000);
-      let description = `ℹ️ **Scheduled nudge skipped** for ${clan.clan_name} at <t:${scheduledUnix}:f>\n-# A nudge was already sent at <t:${lastSentUnix}:t> (within 1 hour)`;
+
+      let description: string;
+      if (reason === 'disabled') {
+        description = `ℹ️ **Scheduled nudge skipped** for ${clan.clan_name} at <t:${scheduledUnix}:f>\n-# Nudges are currently disabled for this clan`;
+      } else {
+        description = `ℹ️ **Scheduled nudge skipped** for ${clan.clan_name} at <t:${scheduledUnix}:f>\n-# A nudge was already sent at <t:${lastSentUnix}:t> (within 1 hour)`;
+      }
+
       if (clan.end_time !== null) {
         description += `\nWar ends ~${getNextDayRelativeTimestamp(clan.end_time)}`;
       }
@@ -352,18 +375,20 @@ export class NudgeTrackingScheduler {
             SELECT message_id FROM race_nudges
             WHERE race_id = $1
               AND clantag = $2
-              AND guild_id = $3
-              AND race_day = $4
+              AND race_day = $3
               AND nudge_type = 'automatic'
               AND message_id IS NOT NULL
             ORDER BY nudge_time DESC
             LIMIT 1
             `,
-            [clan.race_id, clan.clantag, clan.guild_id, clan.current_day],
+            [clan.race_id, clan.clantag, clan.current_day],
           );
 
           if (previousNudge.rows.length > 0) {
             const messageId = previousNudge.rows[0].message_id;
+            logger.debug(
+              `Found previous automatic nudge message ${messageId} for ${clan.clan_name}, attempting deletion...`,
+            );
             try {
               // Try to fetch and delete the message
               const oldMessage = await channel.messages.fetch(messageId);
@@ -395,13 +420,13 @@ export class NudgeTrackingScheduler {
         logger.warn(`Guild ${clan.guild_id} not found`);
         return;
       }
-      
+
       // Defensive check - ensure we got a Guild object, not a Collection
       if (!guild.id || typeof guild.id !== 'string') {
         logger.error(`Invalid guild object received for ${clan.guild_id}:`, typeof guild);
         return;
       }
-      
+
       logger.debug(`Successfully fetched guild: ${guild.id} (${guild.name})`);
 
       // Update race data from API before sending nudge

@@ -282,30 +282,28 @@ export class ClanSettingsHandler {
         `**Clan:** ${clanName}\n${changes.join('\n')}\n**Changed by:** <@${interaction.user.id}>`,
       );
 
-      // Update the settings view
-      if (!interaction.message) {
-        await interaction.followUp({
-          content: '✅ Settings updated successfully!',
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+      // Update the original clan settings message
+      const messageId = interaction.message?.id;
+      if (messageId && interaction.channel) {
+        try {
+          const message = await interaction.channel.messages.fetch(messageId);
+          const { embed, components: newButtonRows } = await buildClanSettingsView(
+            guildId,
+            clanName,
+            clantag,
+            interaction.user.id,
+          );
+          const selectMenuRowBuilder = getSelectMenuRowBuilder(message.components);
 
-      const selectMenuRowBuilder = getSelectMenuRowBuilder(interaction.message.components);
-      const { embed, components: newButtonRows } = await buildClanSettingsView(
-        guildId,
-        clanName,
-        clantag,
-        interaction.user.id,
-      );
-
-      try {
-        await interaction.message.edit({
-          embeds: [embed],
-          components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
-        });
-      } catch (error) {
-        logger.error('[ClanSettings] Failed to edit message:', error);
+          await message.edit({
+            embeds: [embed],
+            components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
+          });
+          logger.debug(`[ClanSettings] Updated clan settings message for ${clanName}`);
+        } catch (error) {
+          logger.warn('[ClanSettings] Could not update clan settings message:', error);
+          // Non-critical - user can refresh manually
+        }
       }
 
       logger.info(

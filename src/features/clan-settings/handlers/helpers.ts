@@ -2,8 +2,9 @@
  * Shared helper functions for clan settings handlers
  */
 
-import { ButtonInteraction } from 'discord.js';
+import { ButtonInteraction, Message } from 'discord.js';
 import { buildClanSettingsView, getSelectMenuRowBuilder } from '../config.js';
+import logger from '../../../logger.js';
 
 /**
  * Update the clan settings view with fresh data from database.
@@ -21,10 +22,13 @@ export async function updateClanSettingsView(
   clanName: string,
 ): Promise<void> {
   try {
+    // Get the original message
+    const message = interaction.message as Message;
+    
     // Find the select menu row in the current message
-    const selectMenuRowBuilder = getSelectMenuRowBuilder(interaction.message.components);
+    const selectMenuRowBuilder = getSelectMenuRowBuilder(message.components);
 
-    // Build new button rows with updated settings
+    // Build new button rows with updated settings - fetch fresh from DB
     const { embed, components: newButtonRows } = await buildClanSettingsView(
       guildId,
       clanName,
@@ -32,15 +36,19 @@ export async function updateClanSettingsView(
       interaction.user.id,
     );
 
-    // Replace all components with the new ones
-    await interaction.editReply({
+    logger.debug(`[updateClanSettingsView] Updating message for ${clanName} (${clantag}) in guild ${guildId}`);
+
+    // Update the original message (not a reply)
+    await message.edit({
       embeds: [embed],
       components: selectMenuRowBuilder
         ? [...newButtonRows, selectMenuRowBuilder] // ✅ select menu goes last
         : newButtonRows,
     });
+    
+    logger.debug(`[updateClanSettingsView] Successfully updated message`);
   } catch (error) {
-    console.error('[updateClanSettingsView] Failed to update view:', error);
-    // Silently fail - Discord API might be temporarily unavailable
+    logger.error('[updateClanSettingsView] Failed to update view:', error);
+    throw error; // Re-throw so caller can handle
   }
 }
