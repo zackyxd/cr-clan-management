@@ -43,11 +43,6 @@ export class EodStatsHandler {
       // Success - update the settings view to show new state
       await updateClanSettingsView(interaction, guildId, clantag, clanName);
 
-      // Confirm success in ephemeral reply
-      await interaction.editReply({
-        content: '✅ End-of-day stats setting updated successfully',
-      });
-
       logger.info(
         `[EodStats] ${interaction.user.tag} toggled EOD stats for ${clanName} (${clantag}) in guild ${guildId}`,
       );

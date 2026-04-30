@@ -87,11 +87,6 @@ export class InvitesHandler {
       // Success - update the settings view
       await updateClanSettingsView(interaction, guildId, clantag, clanName);
 
-      // Confirm success in ephemeral reply
-      await interaction.editReply({
-        content: '✅ Invites setting updated successfully',
-      });
-
       logger.info(`[Invites] ${interaction.user.tag} toggled invites for ${clanName} (${clantag}) in guild ${guildId}`);
     } catch (error) {
       logger.error('[Invites] Error toggling invites:', error);
