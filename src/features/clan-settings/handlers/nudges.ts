@@ -98,7 +98,6 @@ export class NudgesHandler {
         undefined,
         row.race_custom_nudge_message,
       );
-      console.log(customMessage);
 
       const modal = new ModalBuilder()
         .setTitle('Race Nudge Settings')
@@ -344,12 +343,9 @@ export class NudgesHandler {
         if (messageId && interaction.channel) {
           try {
             const message = await interaction.channel.messages.fetch(messageId);
-            const { embed, components: newButtonRows } = await (await import('../config.js')).buildClanSettingsView(
-              guildId,
-              clanName,
-              clantag,
-              interaction.user.id,
-            );
+            const { embed, components: newButtonRows } = await (
+              await import('../config.js')
+            ).buildClanSettingsView(guildId, clanName, clantag, interaction.user.id);
             const selectMenuRowBuilder = (await import('../config.js')).getSelectMenuRowBuilder(message.components);
 
             await message.edit({

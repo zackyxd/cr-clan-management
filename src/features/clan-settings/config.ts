@@ -26,14 +26,14 @@ interface NudgeSchedule {
 export const CLAN_FEATURE_SETTINGS = [
   {
     key: 'clan_settings',
-    label: 'Clan Info (Family, Abbreviation, Role, Staff Channel)',
+    label: 'Clan Info',
     buttonLabel: 'Clan Info',
     type: 'grouped_modal',
     group: ['family_clan', 'abbreviation', 'clan_role_id', 'staff_channel_id'],
   },
   {
     key: 'nudge_settings',
-    label: 'Race Nudge Settings (Channel, Schedule, Message)',
+    label: 'Race Nudge Settings',
     buttonLabel: 'Nudge Settings',
     type: 'grouped_modal',
     group: ['nudge_enabled', 'race_nudge_channel_id', 'race_nudge_schedule', 'race_custom_nudge_message'],
