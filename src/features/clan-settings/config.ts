@@ -164,16 +164,18 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
             const unix = Math.floor(timestamp.getTime() / 1000);
             return `<t:${unix}:t>`;
           });
-          lines.push(` * Schedule: ${timeStrings.join(', ')}`);
+          lines.push(` * Schedule:\n  * ${timeStrings.join('\n  * ')}`);
         } else if (nudgeMethod === 'hours_before_end' && hoursBeforeArray && hoursBeforeArray.length > 0) {
           const now = new Date();
           const warEndTime = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 9, 0, 0));
-          const timeStrings = hoursBeforeArray.map((hoursBefore) => {
-            const nudgeTime = new Date(warEndTime.getTime() - hoursBefore * 60 * 60 * 1000);
-            const unix = Math.floor(nudgeTime.getTime() / 1000);
-            return `<t:${unix}:t> (${hoursBefore}h before)`;
-          });
-          lines.push(` * Schedule: ${timeStrings.join(', ')}`);
+          const timeStrings = hoursBeforeArray
+            .sort((a, b) => b - a)
+            .map((hoursBefore) => {
+              const nudgeTime = new Date(warEndTime.getTime() - hoursBefore * 60 * 60 * 1000);
+              const unix = Math.floor(nudgeTime.getTime() / 1000);
+              return `<t:${unix}:t> (${hoursBefore}h before)`;
+            });
+          lines.push(` * Schedule:\n  * ${timeStrings.join('\n  * ')}`);
         } else if (nudgeMethod !== 'disabled') {
           lines.push(` * Schedule: *Not set*`);
         }

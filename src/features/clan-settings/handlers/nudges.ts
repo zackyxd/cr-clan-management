@@ -96,13 +96,7 @@ export class NudgesHandler {
       const intervalHours = row?.race_nudge_interval_hours !== null ? String(row.race_nudge_interval_hours) : '';
       const hoursBeforeArray = row?.race_nudge_hours_before_array || [];
       const hoursBeforeStr = hoursBeforeArray.length > 0 ? hoursBeforeArray.join(',') : '';
-      const customMessage = await getNudgeMessage(
-        guildId,
-        clantag,
-        row.clan_name,
-        undefined,
-        row.race_custom_nudge_message,
-      );
+      const customMessage = row?.race_custom_nudge_message || '';
 
       // Build interval method value (HH:MM,interval)
       const intervalMethodValue =
@@ -149,7 +143,7 @@ export class NudgesHandler {
                 .setRequired(false)
                 .setPlaceholder('Leave blank for default')
                 .setMaxLength(200)
-                .setValue(customMessage ?? ''),
+                .setValue(customMessage),
             ),
           new LabelBuilder()
             .setLabel('Interval Method: HH:MM, interval')

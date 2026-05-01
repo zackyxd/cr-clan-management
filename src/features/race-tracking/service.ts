@@ -260,11 +260,12 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
       if (warDay !== 1) {
         totalDecksUsed = warDay * 200 - 200;
       }
-      const average = clan.fame / (attacksUsedToday + totalDecksUsed);
+      const totalDecks = attacksUsedToday + totalDecksUsed;
+      const average = totalDecks > 0 ? clan.fame / totalDecks : 0;
       const projectedFameRaw =
         clan.fame + Math.round(200 * (4 - warDay) * average) + Math.round((200 - attacksUsedToday) * average);
       const projectedFame = Math.round(projectedFameRaw / 50) * 50;
-
+      console.log(projectedFameRaw, projectedFame); // --- IGNORE ---
       return {
         clantag: clan.tag,
         name: clan.name,
@@ -295,7 +296,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
   // Calculate projected fame for each clan
   const clansWithProjected = data.clans.map((clan) => {
     const attacksUsedToday = clan.participants.reduce((sum, p) => sum + p.decksUsedToday, 0);
-    const average = (clan.periodPoints ?? 0) / attacksUsedToday;
+    const average = attacksUsedToday > 0 ? (clan.periodPoints ?? 0) / attacksUsedToday : 0;
     const projectedFameRaw = (clan.periodPoints ?? 0) + Math.round((200 - attacksUsedToday) * average);
     const projectedFame = Math.round(projectedFameRaw / 50) * 50;
 
@@ -633,7 +634,12 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
     endTime = updateResult.rows[0].end_time;
 
     // Auto-post to staff channels AFTER updating end_time (use old data before rollover)
-    if (isRollover && discordClient) {
+    // Only post if old state was warDay or colosseum, not training
+    if (
+      isRollover &&
+      discordClient &&
+      (oldRaceData.periodType === 'warDay' || oldRaceData.periodType === 'colosseum')
+    ) {
       await postRolloverToStaffChannels(clantag, raceId, oldRaceData, seasonId, warWeek, oldDay, guildsTracking);
       // Reset custom nudge messages for new day
       for (const guildId of guildsTracking) {
@@ -974,21 +980,29 @@ async function postRolloverToStaffChannels(
           continue;
         }
 
-        // Generate attacks data (don't show end_time for end-of-day summaries)
+        // Generate both embeds - always show race stats, show attacks if available
         const attacksData = await getRaceAttacks(guildId, raceId, oldRaceData, seasonId, warWeek);
-        if (attacksData) {
-          const attacksEmbed = await buildAttacksEmbed(guildId, attacksData, oldRaceData, null, false);
-          await (channel as TextChannel).send({
-            content: `## 📊 Day ${getDayForDisplay(oldDay)} Summary`,
-            embeds: [attacksEmbed],
-          });
-        }
-
-        // Generate race standings data (don't show end_time for end-of-day summaries)
         const stats = getRaceStats(guildId, oldRaceData);
+
         if (stats) {
           const raceEmbed = buildRaceEmbed(stats, clantag, seasonId, warWeek, oldDay, null);
-          await (channel as TextChannel).send({ embeds: [raceEmbed] });
+          const embeds = [raceEmbed];
+
+          // Add attacks embed if there are incomplete attacks
+          if (attacksData) {
+            const attacksEmbed = await buildAttacksEmbed(guildId, attacksData, oldRaceData, null, false);
+            attacksEmbed.setURL(null); // Remove URL to prevent Discord deduplication with race embed
+            attacksEmbed.setTimestamp();
+            embeds.push(attacksEmbed);
+          } else {
+            // All attacks completed - add timestamp to race embed instead
+            raceEmbed.setTimestamp();
+          }
+
+          await (channel as TextChannel).send({
+            content: `## 📊 Day ${getDayForDisplay(oldDay)} Summary`,
+            embeds: embeds,
+          });
         }
 
         console.log(`[Rollover] Posted day ${oldDay} summary to guild ${guildId}`);

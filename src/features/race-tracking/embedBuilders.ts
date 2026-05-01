@@ -6,11 +6,7 @@ import { EmbedBuilder } from 'discord.js';
 import { BOTCOLOR } from '../../types/EmbedUtil.js';
 import { periodTypeMap, getDayForDisplay } from './service.js';
 import { RaceAttacksData, RaceStatsData } from './types.js';
-import {
-  enrichParticipantsWithLinks,
-  formatParticipantsList,
-  buildFooterLegend,
-} from './attacksFormatter.js';
+import { enrichParticipantsWithLinks, formatParticipantsList, buildFooterLegend } from './attacksFormatter.js';
 import { getNextDayRelativeTimestamp } from './timeUtils.js';
 import { CurrentRiverRace } from '../../api/CR_API.js';
 
@@ -106,7 +102,7 @@ export function buildRaceEmbed(
     });
 
   let description = '';
-
+  console.log(stats);
   if (stats.type === 'training') {
     embed.setTitle('Training Day');
     stats.clans.forEach((clan, index) => {
@@ -130,11 +126,11 @@ export function buildRaceEmbed(
       } else {
         description += `${index + 1}. **[${escapedName}](<https://www.cwstats.com/clan/${clantagForUrl}/log>)**\n`;
       }
-      const average: string = (clan.fame / clan.attacksUsedToday).toFixed(2);
+      const average: string = clan.attacksUsedToday > 0 ? (clan.fame / clan.attacksUsedToday).toFixed(2) : '0.00';
       description += `:fame: ${clan.fame.toLocaleString()}\n`;
       description += `:projected: ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
       description += `:attacksLeft: ${200 - clan.attacksUsedToday}\n`;
-      description += `:average: ${average || '-1'}\n\n`;
+      description += `:average: ${average}\n\n`;
     });
   } else if (stats.type === 'colosseum') {
     embed.setTitle('Colosseum');
@@ -147,11 +143,11 @@ export function buildRaceEmbed(
       } else {
         description += `${index + 1}. **[${escapedName}](<https://www.cwstats.com/clan/${clantagForUrl}/log>)**\n`;
       }
-      const average: string = (clan.fame / clan.attacksUsedToday).toFixed(2);
+      const average: string = clan.attacksUsedToday > 0 ? (clan.fame / clan.attacksUsedToday).toFixed(2) : '0.00';
       description += `:fame: ${clan.fame.toLocaleString()}\n`;
       description += `:projected: ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
       description += `:attacksLeft: ${200 - clan.attacksUsedToday}\n`;
-      description += `:average: ${average || '-1'}\n\n`;
+      description += `:average: ${average}\n\n`;
     });
   }
 
