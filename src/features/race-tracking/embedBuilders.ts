@@ -102,7 +102,7 @@ export function buildRaceEmbed(
     });
 
   let description = '';
-  console.log(stats);
+  // console.log(stats);
   if (stats.type === 'training') {
     embed.setTitle('Training Day');
     stats.clans.forEach((clan, index) => {
@@ -126,11 +126,11 @@ export function buildRaceEmbed(
       } else {
         description += `${index + 1}. **[${escapedName}](<https://www.cwstats.com/clan/${clantagForUrl}/log>)**\n`;
       }
-      const average: string = clan.attacksUsedToday > 0 ? (clan.fame / clan.attacksUsedToday).toFixed(2) : '0.00';
+      // const average: string = clan.attacksUsedToday > 0 ? (clan.fame / clan.attacksUsedToday).toFixed(2) : '0.00';
       description += `:fame: ${clan.fame.toLocaleString()}\n`;
       description += `:projected: ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
       description += `:attacksLeft: ${200 - clan.attacksUsedToday}\n`;
-      description += `:average: ${average}\n\n`;
+      description += `:average: ${clan.average.toFixed(2)}\n\n`;
     });
   } else if (stats.type === 'colosseum') {
     embed.setTitle('Colosseum');
@@ -143,11 +143,10 @@ export function buildRaceEmbed(
       } else {
         description += `${index + 1}. **[${escapedName}](<https://www.cwstats.com/clan/${clantagForUrl}/log>)**\n`;
       }
-      const average: string = clan.attacksUsedToday > 0 ? (clan.fame / clan.attacksUsedToday).toFixed(2) : '0.00';
-      description += `:fame: ${clan.fame.toLocaleString()}\n`;
+      description += `:coloFame: ${clan.fame.toLocaleString()}\n`;
       description += `:projected: ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
       description += `:attacksLeft: ${200 - clan.attacksUsedToday}\n`;
-      description += `:average: ${average}\n\n`;
+      description += `:coloAverage: ${clan.coloAverage.toFixed(2)}\n\n`;
     });
   }
 

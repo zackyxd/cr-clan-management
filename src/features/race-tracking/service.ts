@@ -265,13 +265,13 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
       const projectedFameRaw =
         clan.fame + Math.round(200 * (4 - warDay) * average) + Math.round((200 - attacksUsedToday) * average);
       const projectedFame = Math.round(projectedFameRaw / 50) * 50;
-      console.log(projectedFameRaw, projectedFame); // --- IGNORE ---
       return {
         clantag: clan.tag,
         name: clan.name,
         fame: clan.fame,
         participantCount: clan.participants.filter((p) => p.decksUsedToday > 0).length,
         attacksUsedToday,
+        coloAverage: average,
         projectedFame,
       };
     });
@@ -283,6 +283,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
     return {
       type: 'colosseum',
       day: warDay,
+      week: getWarWeek(data),
       clans: sorted.map((clan, index) => ({
         ...clan,
         projectedRank: getOrdinal(index + 1),
@@ -307,6 +308,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
       boatPoints: clan.fame,
       participantCount: clan.participants.filter((p) => p.decksUsedToday > 0).length,
       attacksUsedToday,
+      average,
       projectedFame,
     };
   });

@@ -190,6 +190,7 @@ interface WarDayStatsData {
     attacksUsedToday: number;
     projectedFame: number;
     projectedRank: string;
+    average: number;
   }>;
 }
 
@@ -205,6 +206,7 @@ interface ColosseumStatsData {
     fame: number;
     participantCount: number;
     attacksUsedToday: number;
+    coloAverage: number;
     projectedFame: number;
     projectedRank: string;
   }>;

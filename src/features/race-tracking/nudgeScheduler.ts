@@ -177,9 +177,9 @@ export class NudgeTrackingScheduler {
       const now = new Date();
       const currentHour = now.getUTCHours();
       const currentMinute = now.getUTCMinutes();
-      // console.log(
-      //   `⏰ Checking for pending nudges at ${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')} UTC`,
-      // );
+      logger.info(
+        `⏰ Checking for pending nudges at ${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')} UTC`,
+      );
       // Query clans with nudge settings enabled
       // Use DISTINCT ON per GUILD+CLAN since different guilds have different nudge settings for same clan
       // Get only the LATEST race per guild+clan (highest current_week)
@@ -248,9 +248,7 @@ export class NudgeTrackingScheduler {
         totalNudges = nudgeContext.totalNudges;
 
         // Find which nudge time matches current time (if any)
-        matchingNudgeIndex = nudgeTimes.findIndex(
-          (time) => time.hour === currentHour && time.minute === currentMinute,
-        );
+        matchingNudgeIndex = nudgeTimes.findIndex((time) => time.hour === currentHour && time.minute === currentMinute);
 
         if (matchingNudgeIndex === -1) {
           // Not time for a nudge yet
@@ -266,39 +264,45 @@ export class NudgeTrackingScheduler {
         const hoursBeforeArray = clan.race_nudge_hours_before_array!;
         totalNudges = hoursBeforeArray.length;
 
-        // Calculate war end time for today
-        const now = new Date();
-        const warEndTime = new Date(Date.UTC(
-          now.getUTCFullYear(),
-          now.getUTCMonth(),
-          now.getUTCDate(),
-          WAR_END_HOUR,
-          WAR_END_MINUTE,
-          0,
-          0
-        ));
+        // logger.info(
+        //   `🔍 Checking hours_before_end for ${clan.clan_name} - Current time: ${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')} UTC`,
+        // );
 
-        // If current time is past war end, use tomorrow's war end
-        if (now.getTime() >= warEndTime.getTime()) {
-          warEndTime.setUTCDate(warEndTime.getUTCDate() + 1);
-        }
-
-        // Calculate hours until war end (as a decimal)
-        const millisUntilEnd = warEndTime.getTime() - now.getTime();
-        const hoursUntilEnd = millisUntilEnd / (1000 * 60 * 60);
-
-        // Check if any hour in array matches current time (within 1 minute tolerance)
+        // Calculate target times (war end - X hours) and check if current time matches
         for (let i = 0; i < hoursBeforeArray.length; i++) {
           const hoursBefore = hoursBeforeArray[i];
-          const difference = Math.abs(hoursUntilEnd - hoursBefore);
-          
-          // If within 1 minute (0.0167 hours) of the target, send nudge
-          if (difference < 0.0167) {
+
+          // Calculate target time: 9:00 - X hours
+          const targetTotalMinutes = WAR_END_HOUR * 60 + WAR_END_MINUTE - hoursBefore * 60;
+          let targetHour = Math.floor(targetTotalMinutes / 60);
+          let targetMinute = targetTotalMinutes % 60;
+
+          // logger.info(
+          //   `  📊 Nudge ${i + 1}/${hoursBeforeArray.length}: ${hoursBefore}h before - Raw calculation: ${targetTotalMinutes} total mins, hour=${targetHour}, minute=${targetMinute}`,
+          // );
+
+          // Handle negative hours (wraps to previous day)
+          if (targetHour < 0) {
+            targetHour += 24;
+          }
+
+          // Handle negative minutes (JavaScript modulo returns negative for negative numbers)
+          if (targetMinute < 0) {
+            targetMinute += 60;
+          }
+
+          // Round to nearest whole minute (decimal hours create fractional minutes)
+          targetMinute = Math.round(targetMinute);
+
+          // logger.info(
+          //   `  ⏰ Target time: ${String(targetHour).padStart(2, '0')}:${String(targetMinute).padStart(2, '0')} UTC - Match: ${currentHour === targetHour && currentMinute === targetMinute ? '✅ YES' : '❌ NO'}`,
+          // );
+
+          // Check if current time matches this target time
+          if (currentHour === targetHour && currentMinute === targetMinute) {
             matchingNudgeIndex = i;
-            
-            // Calculate the exact nudge time for logging
-            const nudgeTime = new Date(warEndTime.getTime() - (hoursBefore * 60 * 60 * 1000));
-            timeString = `${String(nudgeTime.getUTCHours()).padStart(2, '0')}:${String(nudgeTime.getUTCMinutes()).padStart(2, '0')}:00 (${hoursBefore}h before war end)`;
+            timeString = `${String(targetHour).padStart(2, '0')}:${String(targetMinute).padStart(2, '0')}:00 (${hoursBefore}h before war end)`;
+            // logger.info(`  ✅ MATCHED! Will attempt to send nudge at ${timeString}`);
             break;
           }
         }
@@ -309,10 +313,11 @@ export class NudgeTrackingScheduler {
         }
       } else {
         // Unknown method
+        logger.info(`❌ Unknown nudge method for ${clan.clan_name}: ${clan.nudge_method}`);
         return;
       }
 
-      logger.debug(`⏰ Scheduled nudge time ${timeString} UTC matched for ${clan.clan_name}`);
+      // logger.info(`⏰ Scheduled nudge time ${timeString} UTC matched for ${clan.clan_name} - Checking dedupe...`);
 
       // Check if we already sent ANY nudge recently (prevents automatic nudges after manual ones)
       // Window is 60 minutes to avoid over-nudging
@@ -339,9 +344,9 @@ export class NudgeTrackingScheduler {
         const lastNudge = existingNudge.rows[0];
         const lastSent = lastNudge.nudge_time;
 
-        logger.info(
-          `⏭️  Skipping automatic nudge for ${clan.clan_name} at ${timeString} UTC - nudge already sent at ${lastSent} (within ${DEDUPE_WINDOW_MINUTES}min window)`,
-        );
+        // logger.info(
+        //   `⏭️  Skipping automatic nudge for ${clan.clan_name} at ${timeString} UTC - nudge already sent at ${lastSent} (within ${DEDUPE_WINDOW_MINUTES}min window)`,
+        // );
 
         // Notify staff channel if we're skipping due to recent manual nudge
         await this.notifySkippedNudge(clan, lastSent, timeString, 'recent');
@@ -350,6 +355,9 @@ export class NudgeTrackingScheduler {
       }
 
       // Send the nudge!
+      logger.info(
+        `🚀 SENDING NUDGE for ${clan.clan_name} - Nudge ${matchingNudgeIndex + 1}/${totalNudges} at ${timeString} UTC`,
+      );
       await NudgeTrackingScheduler.sendNudge(this.client, clan, false, matchingNudgeIndex + 1, totalNudges);
     } catch (error) {
       logger.error(`Error processing nudge for clan ${clan.clantag}:`, error);
