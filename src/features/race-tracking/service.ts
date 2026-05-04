@@ -585,6 +585,16 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
     [clantag, warWeek, seasonId],
   );
 
+  // Check for week/season rollover: get most recent race regardless of week or season
+  const previousRace = await pool.query(
+    `SELECT race_id, current_week, current_day, current_data, season_id
+     FROM river_races
+     WHERE clantag = $1
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [clantag],
+  );
+
   const oppClans = raceData.clans
     .map((clan) => ({ clantag: clan.tag, clan_name: clan.name }))
     .sort((a, b) => a.clantag.localeCompare(b.clantag));
@@ -605,15 +615,21 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
       isRollover = true;
       console.log(`[Rollover] Day rollover detected for ${clantag}: Day ${oldDay} → Day ${oldDay + 1}`);
 
-      // Create snapshots for ALL guilds tracking this clan (snapshots are guild-specific)
-      const guildsTrackingQuery = await pool.query(`SELECT DISTINCT guild_id FROM clans WHERE clantag = $1`, [clantag]);
-      guildsTracking = guildsTrackingQuery.rows.map((r) => r.guild_id);
+      // Only create snapshots if old race was NOT training day
+      if (oldRaceData.periodType !== 'training') {
+        // Create snapshots for ALL guilds tracking this clan (snapshots are guild-specific)
+        const guildsTrackingQuery = await pool.query(`SELECT DISTINCT guild_id FROM clans WHERE clantag = $1`, [clantag]);
+        guildsTracking = guildsTrackingQuery.rows.map((r) => r.guild_id);
 
-      // Create snapshots in parallel for all guilds
-      await Promise.all(
-        guildsTracking.map((guildId) => createDaySnapshot(raceId, guildId, oldRaceData, seasonId, warWeek, oldDay)),
-      );
-      console.log(`[Rollover] Created snapshots for ${guildsTracking.length} guild(s)`);
+        // Create snapshots in parallel for all guilds
+        await Promise.all(
+          guildsTracking.map((guildId) => createDaySnapshot(raceId, guildId, oldRaceData, seasonId, warWeek, oldDay)),
+        );
+        console.log(`[Rollover] Created snapshots for ${guildsTracking.length} guild(s)`);
+      } else {
+        console.log(`[Rollover] Skipping snapshot - previous day was training`);
+        guildsTracking = (await pool.query(`SELECT DISTINCT guild_id FROM clans WHERE clantag = $1`, [clantag])).rows.map((r) => r.guild_id);
+      }
     }
 
     // Update race, setting end_time only on rollover
@@ -650,6 +666,62 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
     }
     // console.log('Updated race record for', clantag, raceId);
   } else {
+    // Week/Season rollover detected: create final snapshot for previous race if it exists
+    if (previousRace.rows.length > 0) {
+      const prevRace = previousRace.rows[0];
+      const isWeekChange = prevRace.current_week !== warWeek;
+      const isSeasonChange = prevRace.season_id !== seasonId;
+      
+      // Only create snapshots if previous race was NOT training day
+      const prevPeriodType = prevRace.current_data?.periodType;
+      const shouldCreateSnapshot = 
+        (isWeekChange || isSeasonChange) && 
+        prevRace.current_data && 
+        prevPeriodType !== 'training';
+      
+      if (shouldCreateSnapshot) {
+        const changeType = isSeasonChange ? 'Season' : 'Week';
+        const prevIdentifier = isSeasonChange 
+          ? `S${prevRace.season_id} W${prevRace.current_week}` 
+          : `Week ${prevRace.current_week}`;
+        const newIdentifier = isSeasonChange 
+          ? `S${seasonId} W${warWeek}` 
+          : `Week ${warWeek}`;
+        
+        console.log(
+          `[${changeType} Rollover] Detected ${changeType.toLowerCase()} change for ${clantag}: ${prevIdentifier} → ${newIdentifier}`,
+        );
+
+        // Create final snapshot for previous race's last day
+        const guildsTrackingQuery = await pool.query(
+          `SELECT DISTINCT guild_id FROM clans WHERE clantag = $1`,
+          [clantag],
+        );
+        const guildsTracking = guildsTrackingQuery.rows.map((r) => r.guild_id);
+
+        await Promise.all(
+          guildsTracking.map((guildId) =>
+            createDaySnapshot(
+              prevRace.race_id,
+              guildId,
+              prevRace.current_data,
+              prevRace.season_id,
+              prevRace.current_week,
+              prevRace.current_day,
+            ),
+          ),
+        );
+        console.log(`[${changeType} Rollover] Created final snapshots for ${guildsTracking.length} guild(s) at race ${prevRace.race_id} day ${prevRace.current_day}`);
+
+        // Set end_time on the previous race
+        await pool.query(`UPDATE river_races SET end_time = NOW() WHERE race_id = $1`, [prevRace.race_id]);
+      } else if ((isWeekChange || isSeasonChange) && prevPeriodType === 'training') {
+        console.log(`[Rollover] Skipping snapshot for ${clantag} - previous race was training day`);
+        // Still set end_time on previous race
+        await pool.query(`UPDATE river_races SET end_time = NOW() WHERE race_id = $1`, [prevRace.race_id]);
+      }
+    }
+
     const result = await pool.query(
       `
       INSERT INTO river_races 
@@ -876,10 +948,17 @@ function detectSeasonId(rrLog: CurrentRiverRaceLogResult): number | null {
   const clansWithHighestTrophies = lastRace.standings.filter((standing) => standing.trophyChange >= 20);
   const wasColosseumWeek = clansWithHighestTrophies.length >= 2;
 
+  // If last completed race was colosseum week (week 4), we're now in a new season
+  // But only if it finished recently (within 2 days to be safe)
   if (wasColosseumWeek) {
-    return lastRace.seasonId + 1;
+    if (daysSinceCreated <= 2) {
+      return lastRace.seasonId + 1;
+    } else {
+      // Too old, can't be sure
+      return null;
+    }
   } else {
-    // Same season
+    // Not colosseum week, so we're still in the same season
     return lastRace.seasonId;
   }
 }
