@@ -484,7 +484,6 @@ export async function createDaySnapshot(
       );
 
       await client.query('COMMIT');
-      console.log(`[Snapshot] Created/updated snapshot for race ${raceId} day ${day} with ${groups.length} groups`);
       return true;
     } catch (error) {
       await client.query('ROLLBACK');
@@ -528,7 +527,6 @@ export async function initializeOrUpdateRace(clantag: string): Promise<RaceUpdat
   // Check if there's already an ongoing update for this clan
   const existingUpdate = ongoingRaceUpdates.get(clantag);
   if (existingUpdate) {
-    console.log(`[Race Init] Reusing ongoing update for ${clantag}`);
     return existingUpdate;
   }
 
@@ -603,8 +601,6 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
     let guildsTracking: string[] = [];
     if (oldRaceData && isNewWarDay(oldRaceData, raceData)) {
       isRollover = true;
-      console.log(`[Rollover] Day rollover detected for ${clantag}: Day ${oldDay} → Day ${oldDay + 1}`);
-
       // Only create snapshots if old race was NOT training day
       if (oldRaceData.periodType !== 'training') {
         // Create snapshots for ALL guilds tracking this clan (snapshots are guild-specific)
@@ -617,9 +613,7 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
         await Promise.all(
           guildsTracking.map((guildId) => createDaySnapshot(raceId, guildId, oldRaceData, seasonId, warWeek, oldDay)),
         );
-        console.log(`[Rollover] Created snapshots for ${guildsTracking.length} guild(s)`);
       } else {
-        console.log(`[Rollover] Skipping snapshot - previous day was training`);
         // Still get guilds for potential staff channel notifications
         const guildsTrackingQuery = await pool.query(`SELECT DISTINCT guild_id FROM clans WHERE clantag = $1`, [
           clantag,
@@ -1023,7 +1017,6 @@ async function postRolloverToStaffChannels(
     );
 
     if (channelsQuery.rows.length === 0) {
-      console.log(`[Rollover] No staff channels configured for ${clantag}`);
       return;
     }
 
@@ -1035,7 +1028,6 @@ async function postRolloverToStaffChannels(
 
       // Skip if eod_stats_enabled is false
       if (!eodStatsEnabled) {
-        console.log(`[Rollover] Skipping ${clantag} for guild ${guildId} - EOD stats disabled`);
         continue;
       }
 
@@ -1071,7 +1063,6 @@ async function postRolloverToStaffChannels(
           });
         }
 
-        console.log(`[Rollover] Posted day ${oldDay} summary to guild ${guildId}`);
       } catch (error) {
         console.error(`[Rollover] Failed to post to channel ${staffChannelId}:`, error);
       }

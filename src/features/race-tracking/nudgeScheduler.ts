@@ -178,9 +178,6 @@ export class NudgeTrackingScheduler {
       const now = new Date();
       const currentHour = now.getUTCHours();
       const currentMinute = now.getUTCMinutes();
-      logger.info(
-        `⏰ Checking for pending nudges at ${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')} UTC`,
-      );
       // Query clans with nudge settings enabled
       // Use DISTINCT ON per GUILD+CLAN since different guilds have different nudge settings for same clan
       // Get only the LATEST race per guild+clan (most recently created)
@@ -227,9 +224,6 @@ export class NudgeTrackingScheduler {
     try {
       // Verify we're in war day or colosseum (not training day)
       if (clan.race_state !== 'warDay' && clan.race_state !== 'colosseum') {
-        logger.info(
-          `⏭️  Skipping nudge for ${clan.clan_name} [Guild:${clan.guild_id}] - not a war day (state: '${clan.race_state}', day: ${clan.current_day})`,
-        );
         return;
       }
 
@@ -356,9 +350,6 @@ export class NudgeTrackingScheduler {
       }
 
       // Send the nudge!
-      logger.info(
-        `🚀 SENDING NUDGE for ${clan.clan_name} - Nudge ${matchingNudgeIndex + 1}/${totalNudges} at ${timeString} UTC`,
-      );
       await NudgeTrackingScheduler.sendNudge(this.client, clan, false, matchingNudgeIndex + 1, totalNudges);
     } catch (error) {
       logger.error(`Error processing nudge for clan ${clan.clantag}:`, error);
@@ -605,9 +596,7 @@ export class NudgeTrackingScheduler {
         message.id,
       );
 
-      logger.info(
-        `Sent ${isManual ? 'manual' : 'automatic'} nudge for ${clan.clan_name} (${nudgeComponents.enrichedParticipants.length} players)`,
-      );
+      // Nudge sent successfully
     } catch (error) {
       logger.error(`Error sending nudge for clan ${clan.clantag}:`, error);
     }
