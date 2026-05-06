@@ -183,7 +183,7 @@ export class NudgeTrackingScheduler {
       );
       // Query clans with nudge settings enabled
       // Use DISTINCT ON per GUILD+CLAN since different guilds have different nudge settings for same clan
-      // Get only the LATEST race per guild+clan (highest current_week)
+      // Get only the LATEST race per guild+clan (most recently created)
       const result = await pool.query<ScheduledNudge>(
         `
         SELECT DISTINCT ON (c.guild_id, c.clantag)
@@ -211,7 +211,7 @@ export class NudgeTrackingScheduler {
             (c.nudge_method = 'interval' AND c.race_nudge_start_hour IS NOT NULL AND c.race_nudge_start_minute IS NOT NULL)
             OR (c.nudge_method = 'hours_before_end' AND c.race_nudge_hours_before_array IS NOT NULL)
           )
-        ORDER BY c.guild_id, c.clantag, rr.current_week DESC, rr.race_id DESC
+        ORDER BY c.guild_id, c.clantag, rr.created_at DESC
         `,
       );
 
