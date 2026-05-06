@@ -30,7 +30,7 @@ export async function fetchData<T>(
   tag: string,
   kind: 'player' | 'clan',
   endpoint?: string,
-  identifier?: string
+  identifier?: string,
 ): Promise<T | FetchError> {
   try {
     const data = await limitedGet<T>(url, endpoint, identifier);

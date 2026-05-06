@@ -147,7 +147,15 @@ const command: Command = {
         interaction.user.id,
       );
       await interaction.editReply(`✅ Nudge sent to <#${scheduledNudge.race_nudge_channel_id}>!`);
-    } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      // Handle training day error specifically
+      if (error?.name === 'training_day' && error?.embed) {
+        await interaction.editReply({ embeds: [error.embed] });
+        return;
+      }
+
+      // Handle all other errors
       console.error('Error sending nudge:', error);
       await interaction.editReply('❌ Failed to send nudge. Check bot permissions and channel configuration.');
     }

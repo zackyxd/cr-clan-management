@@ -1,4 +1,4 @@
-import { Client, TextChannel, MessageFlags } from 'discord.js';
+import { Client, TextChannel, MessageFlags, EmbedBuilder } from 'discord.js';
 import { pool } from '../../db.js';
 import logger from '../../logger.js';
 import { getRaceAttacks, initializeOrUpdateRace } from './service.js';
@@ -6,6 +6,7 @@ import { trackNudge, getNudgeMessage, buildNudgeComponents } from './nudgeHelper
 import { isDev } from '../../utils/env.js';
 import { getNextDayRelativeTimestamp } from './timeUtils.js';
 import cron from 'node-cron';
+import { EmbedColor } from '../../types/EmbedUtil.js';
 
 interface ScheduledNudge {
   race_id: number;
@@ -430,6 +431,12 @@ export class NudgeTrackingScheduler {
     totalNudges?: number,
     senderId?: string,
   ): Promise<void> {
+    if (clan.race_state === 'training') {
+      throw {
+        name: 'training_day',
+        embed: new EmbedBuilder().setDescription('Today is a training day.').setColor(EmbedColor.FAIL),
+      };
+    }
     try {
       // Fetch channel
       const channel = await client.channels.fetch(clan.race_nudge_channel_id);

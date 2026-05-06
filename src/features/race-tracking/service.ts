@@ -605,15 +605,27 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
       isRollover = true;
       console.log(`[Rollover] Day rollover detected for ${clantag}: Day ${oldDay} → Day ${oldDay + 1}`);
 
-      // Create snapshots for ALL guilds tracking this clan (snapshots are guild-specific)
-      const guildsTrackingQuery = await pool.query(`SELECT DISTINCT guild_id FROM clans WHERE clantag = $1`, [clantag]);
-      guildsTracking = guildsTrackingQuery.rows.map((r) => r.guild_id);
+      // Only create snapshots if old race was NOT training day
+      if (oldRaceData.periodType !== 'training') {
+        // Create snapshots for ALL guilds tracking this clan (snapshots are guild-specific)
+        const guildsTrackingQuery = await pool.query(`SELECT DISTINCT guild_id FROM clans WHERE clantag = $1`, [
+          clantag,
+        ]);
+        guildsTracking = guildsTrackingQuery.rows.map((r) => r.guild_id);
 
-      // Create snapshots in parallel for all guilds
-      await Promise.all(
-        guildsTracking.map((guildId) => createDaySnapshot(raceId, guildId, oldRaceData, seasonId, warWeek, oldDay)),
-      );
-      console.log(`[Rollover] Created snapshots for ${guildsTracking.length} guild(s)`);
+        // Create snapshots in parallel for all guilds
+        await Promise.all(
+          guildsTracking.map((guildId) => createDaySnapshot(raceId, guildId, oldRaceData, seasonId, warWeek, oldDay)),
+        );
+        console.log(`[Rollover] Created snapshots for ${guildsTracking.length} guild(s)`);
+      } else {
+        console.log(`[Rollover] Skipping snapshot - previous day was training`);
+        // Still get guilds for potential staff channel notifications
+        const guildsTrackingQuery = await pool.query(`SELECT DISTINCT guild_id FROM clans WHERE clantag = $1`, [
+          clantag,
+        ]);
+        guildsTracking = guildsTrackingQuery.rows.map((r) => r.guild_id);
+      }
     }
 
     // Update race, setting end_time only on rollover
@@ -650,6 +662,52 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
     }
     // console.log('Updated race record for', clantag, raceId);
   } else {
+    // No existing race for this week/season - finalize previous race if needed
+    const prevRaceQuery = await pool.query(
+      `SELECT race_id, current_day, current_data, season_id, current_week
+       FROM river_races WHERE clantag = $1 ORDER BY created_at DESC LIMIT 1`,
+      [clantag],
+    );
+
+    if (prevRaceQuery.rows.length > 0) {
+      const prev = prevRaceQuery.rows[0];
+      const prevType = prev.current_data?.periodType;
+
+      // Create final snapshot if previous was war/colosseum (not training)
+      if (prevType === 'warDay' || prevType === 'colosseum') {
+        const guilds = (await pool.query(`SELECT DISTINCT guild_id FROM clans WHERE clantag = $1`, [clantag])).rows.map(
+          (r) => r.guild_id,
+        );
+
+        await Promise.all(
+          guilds.map((gid) =>
+            createDaySnapshot(
+              prev.race_id,
+              gid,
+              prev.current_data,
+              prev.season_id,
+              prev.current_week,
+              prev.current_day,
+            ),
+          ),
+        );
+
+        await pool.query(`UPDATE river_races SET end_time = NOW() WHERE race_id = $1`, [prev.race_id]);
+
+        if (discordClient) {
+          await postRolloverToStaffChannels(
+            clantag,
+            prev.race_id,
+            prev.current_data,
+            prev.season_id,
+            prev.current_week,
+            prev.current_day,
+            guilds,
+          );
+        }
+      }
+    }
+
     const result = await pool.query(
       `
       INSERT INTO river_races 
@@ -875,7 +933,6 @@ function detectSeasonId(rrLog: CurrentRiverRaceLogResult): number | null {
 
   const clansWithHighestTrophies = lastRace.standings.filter((standing) => standing.trophyChange >= 20);
   const wasColosseumWeek = clansWithHighestTrophies.length >= 2;
-
   if (wasColosseumWeek) {
     return lastRace.seasonId + 1;
   } else {
@@ -957,11 +1014,11 @@ async function postRolloverToStaffChannels(
   }
 
   try {
-    // Get all staff channels for guilds tracking this clan (only if eod_stats_enabled)
+    // Get all staff channels for guilds tracking this clan
     const channelsQuery = await pool.query(
-      `SELECT DISTINCT guild_id, staff_channel_id 
+      `SELECT DISTINCT guild_id, staff_channel_id, eod_stats_enabled
        FROM clans 
-       WHERE clantag = $1 AND staff_channel_id IS NOT NULL AND eod_stats_enabled = true AND guild_id = ANY($2)`,
+       WHERE clantag = $1 AND staff_channel_id IS NOT NULL AND guild_id = ANY($2)`,
       [clantag, guildIds],
     );
 
@@ -974,6 +1031,13 @@ async function postRolloverToStaffChannels(
     for (const row of channelsQuery.rows) {
       const guildId = row.guild_id;
       const staffChannelId = row.staff_channel_id;
+      const eodStatsEnabled = row.eod_stats_enabled;
+
+      // Skip if eod_stats_enabled is false
+      if (!eodStatsEnabled) {
+        console.log(`[Rollover] Skipping ${clantag} for guild ${guildId} - EOD stats disabled`);
+        continue;
+      }
 
       try {
         const channel = await discordClient.channels.fetch(staffChannelId);

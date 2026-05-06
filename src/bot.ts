@@ -63,10 +63,10 @@ client.once(Events.ClientReady, async (c) => {
     name: 'over clans',
     type: ActivityType.Watching,
   });
-  
+
   // Set Discord client for race tracking service
   setDiscordClient(c);
-  
+
   const dbClient = await pool.connect();
   try {
     await dbClient.query('BEGIN');
@@ -87,9 +87,9 @@ client.once(Events.ClientReady, async (c) => {
 
   // Start race tracking scheduler
   const nudgeTrackingScheduler = new NudgeTrackingScheduler(c);
-  nudgeTrackingScheduler.start();
 
   const attacksTrackingScheduler = new AttacksTrackingScheduler(c);
+  nudgeTrackingScheduler.start();
   attacksTrackingScheduler.start();
 });
 
