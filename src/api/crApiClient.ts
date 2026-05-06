@@ -30,23 +30,22 @@ axiosRetry(crAxios, {
     // exponential backoff for 503 or 429
     const base = 500;
     const delay = base * Math.pow(2, retryCount);
-    console.warn(`Retrying [${retryCount}] after ${delay}ms (${error?.response?.status ?? 'no status'})`);
+    const status = error?.response?.status ?? error?.code ?? 'unknown';
+    console.warn(`Retrying [${retryCount}] after ${delay}ms (status: ${status})`);
     return delay;
   },
   retryCondition: (error) => {
-    // Retry on 5xx and 429
+    // Retry on 5xx, 429, timeouts, and network errors
     const status = error.response?.status ?? 0;
-    return status === 429 || status >= 500;
+    const isTimeout = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
+    const isNetworkError = !error.response && error.code !== 'ERR_BAD_REQUEST';
+    return status === 429 || status >= 500 || isTimeout || isNetworkError;
   },
 });
 
 // --- Wrap axios calls with Bottleneck ---
 // typed wrapper returns only .data
-async function getWithLimit<T = unknown>(
-  url: string,
-  endpoint?: string,
-  identifier?: string
-): Promise<T> {
+async function getWithLimit<T = unknown>(url: string, endpoint?: string, identifier?: string): Promise<T> {
   // Check for mock data first
   if (isMockingEnabled() && endpoint && identifier) {
     const mockData = await loadMockData<T>(endpoint, identifier);
@@ -69,5 +68,5 @@ async function getWithLimit<T = unknown>(
 export const limitedGet = limiter.wrap(getWithLimit) as <T>(
   url: string,
   endpoint?: string,
-  identifier?: string
+  identifier?: string,
 ) => Promise<T>;

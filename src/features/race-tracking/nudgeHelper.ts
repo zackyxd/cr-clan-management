@@ -10,12 +10,16 @@ import {
   SeparatorBuilder,
   SeparatorSpacingSize,
   ContainerBuilder,
+  ButtonBuilder,
+  ActionRowBuilder,
+  ButtonStyle,
 } from 'discord.js';
 import type { FormattedParticipant } from './attacksFormatter.js';
 import { enrichParticipantsWithLinks, formatParticipantsList, buildFooterLegend } from './attacksFormatter.js';
 import { BOTCOLOR } from '../../types/EmbedUtil.js';
 import type { RaceAttacksData } from './types.js';
 import { getNextDayRelativeTimestamp } from './timeUtils.js';
+import { makeCustomId } from '../../utils/customId.js';
 
 /**
  * Get the effective nudge message for a clan (custom or default)
@@ -152,7 +156,7 @@ export async function buildNudgeComponents(
   totalNudges?: number,
   end_time?: Date,
 ): Promise<{
-  components: ContainerBuilder[];
+  components: (ContainerBuilder | ActionRowBuilder<ButtonBuilder>)[];
   enrichedParticipants: FormattedParticipant[];
 } | null> {
   // Enrich participants with Discord linking and channel access
@@ -216,8 +220,18 @@ export async function buildNudgeComponents(
     container.addSeparatorComponents(separator3).addTextDisplayComponents(endTimeText);
   }
 
+  const attackingLateButton = new ButtonBuilder()
+    .setCustomId(makeCustomId('b', 'nudgeAttackingLate', guild.id, { cooldown: 3 }))
+    .setLabel('Attacking Late!')
+    .setStyle(ButtonStyle.Primary); // Primary style
+  const replaceMeButton = new ButtonBuilder()
+    .setCustomId(makeCustomId('b', 'nudgeReplaceMe', guild.id, { cooldown: 3 }))
+    .setLabel('Replace Me!')
+    .setStyle(ButtonStyle.Danger); // Primary style
+  const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(attackingLateButton, replaceMeButton);
+
   return {
-    components: [container],
+    components: [container, actionRow],
     enrichedParticipants,
   };
 }

@@ -583,6 +583,16 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
     [clantag, warWeek, seasonId],
   );
 
+  // Check for week/season rollover: get most recent race regardless of week or season
+  const previousRace = await pool.query(
+    `SELECT race_id, current_week, current_day, current_data, season_id
+     FROM river_races
+     WHERE clantag = $1
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [clantag],
+  );
+
   const oppClans = raceData.clans
     .map((clan) => ({ clantag: clan.tag, clan_name: clan.name }))
     .sort((a, b) => a.clantag.localeCompare(b.clantag));
@@ -927,10 +937,18 @@ function detectSeasonId(rrLog: CurrentRiverRaceLogResult): number | null {
 
   const clansWithHighestTrophies = lastRace.standings.filter((standing) => standing.trophyChange >= 20);
   const wasColosseumWeek = clansWithHighestTrophies.length >= 2;
+
+  // If last completed race was colosseum week (week 4), we're now in a new season
+  // But only if it finished recently (within 2 days to be safe)
   if (wasColosseumWeek) {
-    return lastRace.seasonId + 1;
+    if (daysSinceCreated <= 2) {
+      return lastRace.seasonId + 1;
+    } else {
+      // Too old, can't be sure
+      return null;
+    }
   } else {
-    // Same season
+    // Not colosseum week, so we're still in the same season
     return lastRace.seasonId;
   }
 }
@@ -1062,7 +1080,6 @@ async function postRolloverToStaffChannels(
             embeds: embeds,
           });
         }
-
       } catch (error) {
         console.error(`[Rollover] Failed to post to channel ${staffChannelId}:`, error);
       }

@@ -508,9 +508,11 @@ export class NudgeTrackingScheduler {
       const raceData = updateResult.raceData;
       const seasonId = updateResult.seasonId;
       const raceId = updateResult.raceId;
+      const currentWeek = updateResult.warWeek;
+      const currentDay = updateResult.warDay;
 
       // Use existing getRaceAttacks service that handles all the logic
-      const attacksData = await getRaceAttacks(guild.id, raceId, raceData, seasonId, clan.current_week);
+      const attacksData = await getRaceAttacks(guild.id, raceId, raceData, seasonId, currentWeek);
 
       if (!attacksData || attacksData.participants.length === 0) {
         logger.info(`No players to nudge for ${clan.clan_name}`);
@@ -523,8 +525,8 @@ export class NudgeTrackingScheduler {
         await trackNudge(
           raceId,
           clan.clantag,
-          clan.current_week,
-          clan.current_day,
+          currentWeek,
+          currentDay,
           isManual ? 'manual' : 'automatic',
           completionMessage,
           [], // Empty participants array
@@ -538,7 +540,7 @@ export class NudgeTrackingScheduler {
         guild.id,
         clan.clantag,
         clan.clan_name,
-        clan.current_day,
+        currentDay,
         clan.race_custom_nudge_message,
       );
 
@@ -554,9 +556,10 @@ export class NudgeTrackingScheduler {
         clan.race_nudge_channel_id,
         currentNudgeNumber,
         totalNudges,
-        clan.end_time,
+        updateResult.endTime ?? undefined,
       );
 
+      // TODO check what no nudge components actually does
       if (!nudgeComponents) {
         logger.info(`All players completed attacks for ${clan.clan_name}`);
         const completionMessage = `✅ All players have completed their attacks for ${clan.clan_name}!`;
@@ -568,8 +571,8 @@ export class NudgeTrackingScheduler {
         await trackNudge(
           raceId,
           clan.clantag,
-          clan.current_week,
-          clan.current_day,
+          currentWeek,
+          currentDay,
           isManual ? 'manual' : 'automatic',
           completionMessage,
           [], // Empty participants array
@@ -588,8 +591,8 @@ export class NudgeTrackingScheduler {
       await trackNudge(
         raceId,
         clan.clantag,
-        clan.current_week,
-        clan.current_day,
+        currentWeek,
+        currentDay,
         isManual ? 'manual' : 'automatic',
         nudgeMessage,
         nudgeComponents.enrichedParticipants,
