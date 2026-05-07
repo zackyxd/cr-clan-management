@@ -13,6 +13,7 @@ import { TicketInteractionRouter } from '../../features/tickets/router.js';
 import { PlayerLinksInteractionRouter } from '../../features/player-links/router.js';
 import logger from '../../logger.js';
 import { ClanInvitesInteractionRouter } from '../../features/clan-invites/router.js';
+import { RaceTrackingInteractionRouter } from '../../features/race-tracking/router.js';
 
 // Define router interface
 interface FeatureRouter {
@@ -55,6 +56,7 @@ export class InteractionDispatcher {
 
     // Add other features here as they're migrated:
     // ['playerLink', PlayerLinkingInteractionRouter],
+    ['nudge', RaceTrackingInteractionRouter],
   ]);
 
   /**

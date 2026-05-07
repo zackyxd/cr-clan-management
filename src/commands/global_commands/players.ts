@@ -16,6 +16,7 @@ import { CR_API, FetchError, isFetchError, PlayerResult } from '../../api/CR_API
 import { formatPlayerData } from '../../api/FORMAT_DATA.js';
 import { playerEmbedCache } from '../../cache/playerEmbedCache.js';
 import { makeCustomId } from '../../utils/customId.js';
+import { updateUsernameIfChanged } from '../../services/usernameTracking.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -74,6 +75,20 @@ const command: Command = {
     const results: (PlayerResult | FetchError)[] = await Promise.all(
       playertagData.map((row) => queue.push(row.playertag)),
     );
+
+    // Update usernames for successfully fetched players
+    const client = await pool.connect();
+    try {
+      for (const result of results) {
+        if (!('error' in result)) {
+          // Successfully fetched player data - update username if changed
+          await updateUsernameIfChanged(client, guild.id, result.tag, result.name);
+        }
+      }
+    } finally {
+      client.release();
+    }
+
     // Sort by expLevel -> Name
     results.sort((a, b) => {
       const aLevel = 'error' in a ? 0 : a.expLevel;

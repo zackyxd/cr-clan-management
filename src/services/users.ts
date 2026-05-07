@@ -23,6 +23,9 @@ export async function linkUser(
     };
   }
 
+  // Get player username from API response
+  const playerUsername = confirmPlayerExists.name;
+
   // Get max_links from link_settings to ensure they arent going to be over
   const maxLinkRes = await client.query(
     `SELECT max_player_links
@@ -51,7 +54,7 @@ export async function linkUser(
     };
   }
 
-  const insertUserSQL = buildInsertPlayerLinkQuery(guildId, originalDiscordId, playertag);
+  const insertUserSQL = buildInsertPlayerLinkQuery(guildId, originalDiscordId, playertag, playerUsername);
   const res = await client.query(insertUserSQL);
   const insertedTag = res.rows[0].inserted_tag; // 1 for inserted, null for not inserted
   // const wasUserInserted = Boolean(insertedUser);

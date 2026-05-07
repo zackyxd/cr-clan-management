@@ -1,7 +1,7 @@
 import format from 'pg-format';
 import { CR_API } from '../api/CR_API.js';
 
-export function buildInsertPlayerLinkQuery(guildId: string, discordId: string, playertag: string): string {
+export function buildInsertPlayerLinkQuery(guildId: string, discordId: string, playertag: string, username?: string): string {
   return format(
     `
     WITH inserted_user AS (
@@ -11,8 +11,8 @@ export function buildInsertPlayerLinkQuery(guildId: string, discordId: string, p
       RETURNING discord_id  
     ),
     inserted_tag AS (
-      INSERT INTO user_playertags (guild_id, discord_id, playertag)
-      VALUES (%L, %L, %L)
+      INSERT INTO user_playertags (guild_id, discord_id, playertag, current_username)
+      VALUES (%L, %L, %L, %L)
       ON CONFLICT (guild_id, playertag) DO NOTHING
       RETURNING playertag
     )
@@ -24,7 +24,8 @@ export function buildInsertPlayerLinkQuery(guildId: string, discordId: string, p
     discordId,
     guildId,
     discordId,
-    playertag
+    playertag,
+    username || null
   );
 }
 
@@ -59,7 +60,7 @@ export function buildUnlinkPlayertag(guildId: string, playertag: string): string
   );
 }
 
-export function buildUpsertRelinkPlayertag(guildId: string, discordId: string, playertag: string): string {
+export function buildUpsertRelinkPlayertag(guildId: string, discordId: string, playertag: string, username?: string): string {
   return format(
     `
     WITH inserted_user AS (
@@ -69,10 +70,10 @@ export function buildUpsertRelinkPlayertag(guildId: string, discordId: string, p
       RETURNING discord_id  
     ),
     inserted_tag AS (
-      INSERT INTO user_playertags (guild_id, discord_id, playertag)
-      VALUES (%L, %L, %L)
+      INSERT INTO user_playertags (guild_id, discord_id, playertag, current_username)
+      VALUES (%L, %L, %L, %L)
       ON CONFLICT (guild_id, playertag)
-      DO UPDATE SET discord_id = EXCLUDED.discord_id
+      DO UPDATE SET discord_id = EXCLUDED.discord_id, current_username = EXCLUDED.current_username
       RETURNING 
         playertag, -- always returned
         user_playertags.discord_id AS new_discord_id
@@ -86,7 +87,8 @@ export function buildUpsertRelinkPlayertag(guildId: string, discordId: string, p
     discordId,
     guildId,
     discordId,
-    playertag
+    playertag,
+    username || null
   );
 }
 

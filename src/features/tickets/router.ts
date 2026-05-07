@@ -214,21 +214,22 @@ export class TicketInteractionRouter {
       const currentDiscordIdQuery = await client.query(buildFindLinkedDiscordId(guildId, playertag));
       const currentDiscordId = currentDiscordIdQuery.rows[0].discord_id;
 
+      // Fetch player data to get username
+      const playerData = await CR_API.getPlayer(playertag);
+      if ('error' in playerData) {
+        await interaction.editReply({
+          content: `⚠️ Could not fetch data for ${playertag}: ${playerData.error}`,
+        });
+        await client.query('ROLLBACK');
+        return;
+      }
+
       // New account - relink to new discord id
-      const relinkQuery = buildUpsertRelinkPlayertag(guildId, originalDiscordId, playertag);
+      const relinkQuery = buildUpsertRelinkPlayertag(guildId, originalDiscordId, playertag, playerData.name);
       const relinkRes = await client.query(relinkQuery);
       const newDiscordId = relinkRes.rows[0].new_discord_id;
 
       if (currentDiscordId !== newDiscordId) {
-        const playerData = await CR_API.getPlayer(playertag);
-        if ('error' in playerData) {
-          await interaction.editReply({
-            content: `⚠️ Could not fetch data for ${playertag}: ${playerData.error}`,
-          });
-          await client.query('ROLLBACK');
-          return;
-        }
-
         const playerEmbed = formatPlayerData(playerData);
         if (!playerEmbed) {
           await interaction.editReply({ content: 'There was an error with showing player data' });
