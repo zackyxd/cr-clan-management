@@ -9,14 +9,15 @@ export const shorthands = undefined;
  * @returns {Promise<void> | void}
  */
 export const up = (pgm) => {
-
   pgm.createTable('server_settings', {
     guild_id: { type: 'varchar(30)', references: 'guilds(guild_id)', onDelete: 'CASCADE', primaryKey: true },
     max_clans: { type: 'integer', default: 15 },
     max_family_clans: { type: 'integer', default: 10 },
     logs_channel_id: { type: 'varchar(30)', default: null },
     lower_leader_role_id: { type: 'text[]', default: pgm.func(`'{}'`) },
-    higher_leader_role_id: { type: 'text[]', default: pgm.func(`'{}'`) }
+    higher_leader_role_id: { type: 'text[]', default: pgm.func(`'{}'`) },
+    replace_me_role_id: { type: 'varchar(30)', default: null },
+    attacking_late_role_id: { type: 'varchar(30)', default: null },
   });
 };
 

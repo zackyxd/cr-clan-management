@@ -4,6 +4,7 @@ import {
   StringSelectMenuInteraction,
   ModalBuilder,
   ChannelSelectMenuBuilder,
+  RoleSelectMenuBuilder,
   LabelBuilder,
   TextInputBuilder,
   TextInputStyle,
@@ -448,6 +449,36 @@ export class ServerSettingsInteractionRouter {
             ),
           );
         return interaction.showModal(modal);
+      } else if (settingKey === 'replace_me_role_id') {
+        const modal = new ModalBuilder()
+          .setTitle('Set Replace Me Role')
+          .setCustomId(
+            makeCustomId('m', `serverSetting_${settingKey}`, guildId, {
+              extra: [tableName || '', featureName || ''],
+            }),
+          )
+          .addLabelComponents(
+            new LabelBuilder()
+              .setLabel('Role Select')
+              .setDescription('Select the role for players who want to be replaced')
+              .setRoleSelectMenuComponent(new RoleSelectMenuBuilder().setCustomId('input').setMaxValues(1)),
+          );
+        return interaction.showModal(modal);
+      } else if (settingKey === 'attacking_late_role_id') {
+        const modal = new ModalBuilder()
+          .setTitle('Set Attacking Late Role')
+          .setCustomId(
+            makeCustomId('m', `serverSetting_${settingKey}`, guildId, {
+              extra: [tableName || '', featureName || ''],
+            }),
+          )
+          .addLabelComponents(
+            new LabelBuilder()
+              .setLabel('Role Select')
+              .setDescription('Select the role for players attacking late')
+              .setRoleSelectMenuComponent(new RoleSelectMenuBuilder().setCustomId('input').setMaxValues(1)),
+          );
+        return interaction.showModal(modal);
       } else if (settingKey === '') {
         return;
       }
@@ -666,6 +697,43 @@ export class ServerSettingsInteractionRouter {
       await message.edit({ embeds: [embed], components });
       await interaction.editReply({
         content: `✅ ${settingKey === 'logs_channel_id' ? 'Logs channel' : 'Category'} updated successfully`,
+      });
+      return;
+    }
+
+    // Handle role selection (for replace_me_role_id and attacking_late_role_id)
+    if (settingKey === 'replace_me_role_id' || settingKey === 'attacking_late_role_id') {
+      const roleField = interaction.fields.getSelectedRoles('input');
+      if (!roleField || roleField.size === 0) {
+        await interaction.editReply({
+          content: `No role selected.`,
+        });
+        return;
+      }
+
+      const selectedRole = roleField.first();
+
+      // Update via service (reuse updateChannelSetting but for roleId)
+      const result = await serverSettingsService.updateRoleSetting({
+        guildId,
+        settingKey,
+        tableName,
+        featureName,
+        roleId: selectedRole!.id,
+        client: interaction.client,
+        userId: interaction.user.id,
+      });
+
+      if (!result.success) {
+        await interaction.editReply({ content: result.error || 'Failed to update role setting.' });
+        return;
+      }
+
+      // Update the UI
+      const { embed, components } = await buildFeatureEmbedAndComponents(guildId, ownerId, featureName);
+      await message.edit({ embeds: [embed], components });
+      await interaction.editReply({
+        content: `✅ ${settingKey === 'replace_me_role_id' ? 'Replace Me role' : 'Attacking Late role'} updated successfully`,
       });
       return;
     }

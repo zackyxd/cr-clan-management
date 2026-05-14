@@ -45,6 +45,13 @@ export const CLAN_FEATURE_SETTINGS = [
     ],
   },
   {
+    key: 'ping_settings',
+    label: 'Attack Late/Replace Pings',
+    buttonLabel: 'Ping Settings',
+    type: 'grouped_modal',
+    group: ['channel_id', 'ping_attacking_late', 'ping_replace_me'],
+  },
+  {
     key: 'invites_enabled',
     label: 'Show/Generate Clan Invites',
     buttonLabel: 'Invites',
@@ -76,6 +83,9 @@ export const DEFAULT_CLAN_SETTINGS = {
   invites_enabled: true,
   abbreviation: '',
   clan_role_id: '',
+  ping_replace_me: false,
+  ping_attacking_late: false,
+  race_ping_channel_id: '',
   // ...add more as needed, matching your CLAN_FEATURE_SETTINGS keys
 };
 
@@ -84,7 +94,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
   const res = await pool.query(
     `SELECT family_clan, nudge_method, race_nudge_channel_id, race_custom_nudge_message, 
             race_nudge_start_hour, race_nudge_start_minute, race_nudge_interval_hours, race_nudge_hours_before_array,
-            eod_stats_enabled, staff_channel_id, invites_enabled, clan_role_id, abbreviation 
+            eod_stats_enabled, staff_channel_id, invites_enabled, clan_role_id, abbreviation, ping_replace_me, ping_attacking_late, race_ping_channel_id
      FROM clans WHERE guild_id = $1 AND clantag = $2`,
     [guildId, clantag],
   );
@@ -109,6 +119,9 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
     invites_enabled: dbRow.invites_enabled || false,
     clan_role_id: dbRow.clan_role_id || '',
     abbreviation: dbRow.abbreviation || '',
+    ping_attacking_late: dbRow.ping_attacking_late || false,
+    ping_replace_me: dbRow.ping_replace_me || false,
+    race_ping_channel_id: dbRow.race_ping_channel_id || '',
   };
   const embed = new EmbedBuilder().setTitle(`Clan Settings: ${clanName}`).setColor(BOTCOLOR);
 
@@ -196,6 +209,18 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
         lines.push(` * Abbreviation: ${abbreviation ? `__${abbreviation}__` : '*Not set*'}`);
         lines.push(` * Clan Role: ${clanRoleId ? `<@&${clanRoleId}>` : '*Not set*'}`);
         lines.push(` * Staff Channel: ${staffChannelId ? `<#${staffChannelId}>` : '*Not set*'}`);
+
+        displayValue = '\n' + lines.join('\n');
+      } else if (settingConfig.key === 'ping_settings') {
+        console.log(settings);
+        const lines: string[] = [];
+        const pingAttackingLate = settings['ping_attacking_late'] ? '✅ Ping' : '❌ No Ping';
+        const pingReplaceMe = settings['ping_replace_me'] ? '✅ Ping' : '❌ No Ping';
+        const channelId = settings['race_ping_channel_id'] ? `<#${settings['race_ping_channel_id']}>` : '*Not set*';
+
+        lines.push(` * Channel: ${channelId}`);
+        lines.push(` * Ping Attacking Late: ${pingAttackingLate}`);
+        lines.push(` * Ping Replace Me: ${pingReplaceMe}`);
 
         displayValue = '\n' + lines.join('\n');
       }

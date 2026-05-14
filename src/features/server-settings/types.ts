@@ -43,6 +43,19 @@ export interface UpdateTextSettingParams {
 }
 
 /**
+ * Parameters for updating a role setting
+ */
+export interface UpdateRoleSettingParams {
+  guildId: string;
+  settingKey: string;
+  tableName: string;
+  featureName: string;
+  roleId: string;
+  client: Client;
+  userId: string;
+}
+
+/**
  * Parameters for toggling a setting
  */
 export interface ToggleSettingParams {

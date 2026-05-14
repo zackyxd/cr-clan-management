@@ -77,6 +77,18 @@ export const FeatureRegistry: Record<string, Feature> = {
         description: 'Number of players currently linked to this server.',
         type: 'info',
       },
+      {
+        key: 'replace_me_role_id',
+        label: 'Replace Me Role',
+        description: 'The role used when players want to be replaced for a war day',
+        type: 'role',
+      },
+      {
+        key: 'attacking_late_role_id',
+        label: 'Attacking Late Role',
+        description: 'The role used when players are attacking late for a war day',
+        type: 'role',
+      },
     ],
   },
   links: {

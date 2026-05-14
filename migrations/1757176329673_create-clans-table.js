@@ -22,9 +22,11 @@ export const up = (pgm) => {
       family_clan: { type: 'boolean', default: false },
       nudge_enabled: { type: 'boolean', default: true },
       invites_enabled: { type: 'boolean', default: false },
-      clan_role_id: { type: 'varchar(30)' }, // Discord role ID
-      staff_channel_id: { type: 'varchar(30)' }, // Channel for end-of-day stats and staff updates
-
+      clan_role_id: { type: 'varchar(30)', default: null }, // Discord role ID
+      staff_channel_id: { type: 'varchar(30)', default: null }, // Channel for end-of-day stats and staff updates
+      race_ping_channel_id: { type: 'varchar(30)', default: null },
+      ping_attacking_late: { type: 'boolean', default: false },
+      ping_replace_me: { type: 'boolean', default: false },
       // Clan Link Settings
       show_clan_link: { type: 'boolean', default: true },
     },

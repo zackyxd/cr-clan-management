@@ -14,6 +14,7 @@ import { EodStatsHandler } from './handlers/eodStats.js';
 import { InvitesHandler } from './handlers/invites.js';
 import { NudgesHandler } from './handlers/nudges.js';
 import { ChannelsHandler } from './handlers/channels.js';
+import { RacePingsHandler } from './handlers/racePings.js';
 
 export class ClanSettingsInteractionRouter {
   /**
@@ -96,6 +97,10 @@ export class ClanSettingsInteractionRouter {
         await NudgesHandler.showModal(interaction, settingsData);
         break;
 
+      case 'ping_settings':
+        await RacePingsHandler.showModal(interaction, settingsData);
+        break;
+
       default:
         await interaction.reply({
           content: `Unknown modal type: ${action}`,
@@ -121,6 +126,10 @@ export class ClanSettingsInteractionRouter {
 
       case 'clanSettings_nudge_settings':
         await NudgesHandler.handleModal(interaction);
+        break;
+
+      case 'clanSettings_race_ping_settings':
+        await RacePingsHandler.handleModal(interaction);
         break;
 
       default:

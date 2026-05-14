@@ -115,7 +115,7 @@ export async function buildFeatureEmbedAndComponents(
         .setLabel(`${value ? 'Disable' : 'Enable'} ${setting.label}`)
         .setCustomId(makeCustomId('b', 'serverSettingToggle', guildId, { cooldown: 1, extra: [cacheKey] }))
         .setStyle(ButtonStyle.Primary);
-    } else if (setting.type === 'modal' || setting.type === 'channel' || setting.type === 'number') {
+    } else if (setting.type === 'modal' || setting.type === 'channel' || setting.type === 'number' || setting.type === 'role') {
       const cacheKey = storeServerSettingsData({
         settingKey: setting.key,
         featureName: featureName,

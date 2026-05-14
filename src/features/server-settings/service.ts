@@ -6,6 +6,7 @@ import logger from '../../logger.js';
 import type {
   ServerSettingsResponse,
   UpdateChannelSettingParams,
+  UpdateRoleSettingParams,
   UpdateTextSettingParams,
   ToggleSettingParams,
   SwapSettingParams,
@@ -438,6 +439,43 @@ export class ServerSettingsService {
       return {
         success: true,
         newValue: channelId,
+      };
+    } catch (error) {
+      logger.error(`Error updating ${settingKey}:`, error);
+      return {
+        success: false,
+        error: `Failed to update ${settingKey}`,
+      };
+    }
+  }
+
+  /**
+   * Update a role-based setting
+   */
+  async updateRoleSetting(params: UpdateRoleSettingParams): Promise<ServerSettingsResponse> {
+    const { guildId, settingKey, tableName, featureName, roleId, client, userId } = params;
+
+    try {
+      await pool.query(`UPDATE ${tableName} SET ${settingKey} = $1 WHERE guild_id = $2`, [roleId, guildId]);
+
+      logger.info(`${settingKey} updated to ${roleId} for guild ${guildId}`);
+
+      // Get feature display name and setting label from registry
+      const featureDisplayName = FeatureRegistry[featureName]?.displayName || featureName;
+      const settingLabel =
+        FeatureRegistry[featureName]?.settings.find((s) => s.key === settingKey)?.label || settingKey;
+
+      // Fire-and-forget audit log
+      this.sendLog(
+        client,
+        guildId,
+        '📝 Setting Updated',
+        `**Feature:** ${featureDisplayName}\n**Setting:** ${settingLabel}\n**New Value:** <@&${roleId}>\n**Changed by:** <@${userId}>`,
+      ).catch((err) => logger.error('Failed to log role setting update:', err));
+
+      return {
+        success: true,
+        newValue: roleId,
       };
     } catch (error) {
       logger.error(`Error updating ${settingKey}:`, error);
