@@ -17,6 +17,8 @@ export interface FormatOptions {
   currentNudgeNumber?: number;
   /** Total nudges in the cycle for attacking-late logic */
   totalNudges?: number;
+  /** All nudge times for calculating next full nudge */
+  nudgeTimes?: Array<{ hour: number; minute: number; hoursBefore?: number }>;
 }
 
 /**
@@ -120,8 +122,8 @@ export function formatParticipantLine(participant: FormattedParticipant, options
     shouldMention = false;
   }
 
-  // Skip attacking-late players for first half of nudges
-  if (participant.isAttackingLate && options.currentNudgeNumber && options.totalNudges) {
+  // Skip attacking-late players for first half of nudges (only if there are multiple nudges)
+  if (participant.isAttackingLate && options.currentNudgeNumber && options.totalNudges && options.totalNudges > 1) {
     const skipCount = Math.ceil(options.totalNudges / 2);
     if (options.currentNudgeNumber <= skipCount) {
       shouldMention = false;
@@ -150,8 +152,8 @@ export function formatParticipantLine(participant: FormattedParticipant, options
   if (participant.isReplacementPlayer) {
     line += ' ⚠️';
   }
-  // Only show clock if they're NOT getting pinged (either skipped or no mention at all)
-  if (participant.isAttackingLate && !shouldMention) {
+  // Only show clock if they're being skipped due to attacking-late logic (only when there are multiple nudges)
+  if (participant.isAttackingLate && !shouldMention && options.totalNudges && options.totalNudges > 1) {
     line += ' ⏰';
   }
   if (!participant.isInClan) {
@@ -229,8 +231,12 @@ export function buildFooterLegend(participants: FormattedParticipant[], options:
   const hasReplacementPlayers = filteredParticipants.some((p) => p.isReplacementPlayer);
 
   // Only show attacking-late legend if there are players who ARE attacking late but NOT being pinged yet
+  // (and only if there are multiple nudges)
   const hasAttackingLateWithoutPing = filteredParticipants.some((p) => {
     if (!p.isAttackingLate) return false;
+
+    // Only show if there are multiple nudges
+    if (!options.totalNudges || options.totalNudges <= 1) return false;
 
     // Check if they would be skipped (same logic as formatParticipantLine)
     if (options.currentNudgeNumber && options.totalNudges) {
@@ -238,7 +244,7 @@ export function buildFooterLegend(participants: FormattedParticipant[], options:
       return options.currentNudgeNumber <= skipCount; // Only show if currently skipped
     }
 
-    return true; // Show if no nudge context
+    return false;
   });
 
   const hasLeftClan = filteredParticipants.some((p) => !p.isInClan);
@@ -248,7 +254,43 @@ export function buildFooterLegend(participants: FormattedParticipant[], options:
   if (hasSplitAttackers) footerParts.push('☠️ = Split attacker\n');
   if (hasAttackedElsewhere) footerParts.push('🚫 = Do not attack (started elsewhere)\n');
   if (hasReplacementPlayers) footerParts.push('⚠️ = Replace me\n');
-  if (hasAttackingLateWithoutPing) footerParts.push('⏰ = Attacking late\n');
+
+  if (hasAttackingLateWithoutPing) {
+    let attackingLateText = '⏰ = Attacking late';
+
+    // Add next full nudge time if available
+    if (options.currentNudgeNumber && options.totalNudges && options.nudgeTimes && options.totalNudges > 1) {
+      const skipCount = Math.ceil(options.totalNudges / 2);
+      const nextFullNudgeIndex = skipCount; // Index for the first nudge that pings them
+      const nextNudgeTime = options.nudgeTimes[nextFullNudgeIndex];
+
+      if (nextNudgeTime) {
+        // Calculate Unix timestamp for the next occurrence of this time
+        const now = new Date();
+        const nextDate = new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            now.getUTCDate(),
+            nextNudgeTime.hour,
+            nextNudgeTime.minute,
+            0,
+          ),
+        );
+
+        // If the time has already passed today, add a day
+        if (nextDate.getTime() < now.getTime()) {
+          nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+        }
+
+        const unixTimestamp = Math.floor(nextDate.getTime() / 1000);
+        attackingLateText += ` (next ping: <t:${unixTimestamp}:t>)`;
+      }
+    }
+
+    footerParts.push(attackingLateText + '\n');
+  }
+
   if (hasLeftClan) footerParts.push('❌ = Left clan\n');
 
   return footerParts.join('');

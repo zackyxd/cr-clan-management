@@ -110,23 +110,104 @@ export class NudgeTrackingScheduler {
     const currentHour = now.getUTCHours();
     const currentMinute = now.getUTCMinutes();
 
-    // Find the most recent nudge time that has passed
+    // Find which nudge is NEXT (upcoming), not which one last passed
+    // This ensures attacking-late logic works correctly outside the nudge window
     let currentNudgeNumber = 1; // Default to first nudge
-    for (let idx = nudgeTimes.length - 1; idx >= 0; idx--) {
+    const nowMinutes = currentHour * 60 + currentMinute;
+
+    for (let idx = 0; idx < nudgeTimes.length; idx++) {
       const nudgeTime = nudgeTimes[idx];
       const nudgeMinutes = nudgeTime.hour * 60 + nudgeTime.minute;
-      const nowMinutes = currentHour * 60 + currentMinute;
 
       // Handle midnight wraparound
       if (crossesMidnight) {
-        // If nudge time is before midnight and current time is after midnight
-        if (nudgeMinutes >= startTotalMinutes && nowMinutes < stopTotalMinutes) {
-          continue; // This nudge hasn't happened yet
+        // If current time is after midnight (before stop time)
+        if (nowMinutes < stopTotalMinutes) {
+          // Look for next nudge after midnight
+          if (nudgeMinutes < stopTotalMinutes && nudgeMinutes >= nowMinutes) {
+            currentNudgeNumber = idx + 1;
+            break;
+          }
+        } else {
+          // Current time is before midnight
+          // Look for next nudge before midnight, or first nudge after midnight
+          if (nudgeMinutes >= nowMinutes || nudgeMinutes < stopTotalMinutes) {
+            currentNudgeNumber = idx + 1;
+            break;
+          }
+        }
+      } else {
+        // No midnight crossing - simple comparison
+        if (nudgeMinutes >= nowMinutes) {
+          currentNudgeNumber = idx + 1;
+          break;
         }
       }
+    }
 
-      if (nowMinutes >= nudgeMinutes) {
-        currentNudgeNumber = idx + 1;
+    // If no upcoming nudge found, we're past all nudges - wrap to first nudge (next cycle)
+    // This ensures attacking-late players are NOT pinged when outside the nudge window
+
+    return {
+      currentNudgeNumber,
+      totalNudges: nudgeTimes.length,
+      nudgeTimes,
+    };
+  }
+
+  /**
+   * Calculate nudge context for hours_before_end mode
+   * Returns { currentNudgeNumber, totalNudges } based on current UTC time
+   */
+  static calculateHoursBeforeEndContext(hoursBeforeArray: number[]): {
+    currentNudgeNumber: number;
+    totalNudges: number;
+    nudgeTimes: { hour: number; minute: number; hoursBefore: number }[];
+  } {
+    const WAR_END_HOUR = 9;
+    const WAR_END_MINUTE = 0;
+
+    // Calculate all nudge times (war end - X hours)
+    const nudgeTimes: { hour: number; minute: number; hoursBefore: number }[] = [];
+
+    for (const hoursBefore of hoursBeforeArray) {
+      const targetTotalMinutes = WAR_END_HOUR * 60 + WAR_END_MINUTE - hoursBefore * 60;
+      let targetHour = Math.floor(targetTotalMinutes / 60);
+      let targetMinute = targetTotalMinutes % 60;
+
+      // Handle negative hours (wraps to previous day)
+      if (targetHour < 0) {
+        targetHour += 24;
+      }
+
+      // Handle negative minutes
+      if (targetMinute < 0) {
+        targetMinute += 60;
+      }
+
+      // Round to nearest whole minute
+      targetMinute = Math.round(targetMinute);
+
+      nudgeTimes.push({ hour: targetHour, minute: targetMinute, hoursBefore });
+    }
+
+    // Find which nudge we're currently at based on current UTC time
+    const now = new Date();
+    const currentHour = now.getUTCHours();
+    const currentMinute = now.getUTCMinutes();
+    const currentTotalMinutes = currentHour * 60 + currentMinute;
+
+    let currentNudgeNumber = 1; // Default to first nudge
+
+    // Find the most recent nudge time that has passed
+    for (let i = nudgeTimes.length - 1; i >= 0; i--) {
+      const nudgeTime = nudgeTimes[i];
+      const nudgeTotalMinutes = nudgeTime.hour * 60 + nudgeTime.minute;
+
+      // Check if this nudge time has passed
+      // Handle wrap-around for nudges after midnight
+      if (nudgeTotalMinutes <= currentTotalMinutes) {
+        currentNudgeNumber = i + 1;
         break;
       }
     }
@@ -254,58 +335,23 @@ export class NudgeTrackingScheduler {
         timeString = `${String(matchingTime.hour).padStart(2, '0')}:${String(matchingTime.minute).padStart(2, '0')}:00`;
       } else if (clan.nudge_method === 'hours_before_end') {
         // Hours before end method: Check if current time matches X hours before 9am UTC
-        const WAR_END_HOUR = 9;
-        const WAR_END_MINUTE = 0;
         const hoursBeforeArray = clan.race_nudge_hours_before_array!;
-        totalNudges = hoursBeforeArray.length;
 
-        // logger.info(
-        //   `🔍 Checking hours_before_end for ${clan.clan_name} - Current time: ${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')} UTC`,
-        // );
+        // Calculate all nudge times using shared method
+        const nudgeContext = NudgeTrackingScheduler.calculateHoursBeforeEndContext(hoursBeforeArray);
+        const { nudgeTimes } = nudgeContext;
+        totalNudges = nudgeContext.totalNudges;
 
-        // Calculate target times (war end - X hours) and check if current time matches
-        for (let i = 0; i < hoursBeforeArray.length; i++) {
-          const hoursBefore = hoursBeforeArray[i];
-
-          // Calculate target time: 9:00 - X hours
-          const targetTotalMinutes = WAR_END_HOUR * 60 + WAR_END_MINUTE - hoursBefore * 60;
-          let targetHour = Math.floor(targetTotalMinutes / 60);
-          let targetMinute = targetTotalMinutes % 60;
-
-          // logger.info(
-          //   `  📊 Nudge ${i + 1}/${hoursBeforeArray.length}: ${hoursBefore}h before - Raw calculation: ${targetTotalMinutes} total mins, hour=${targetHour}, minute=${targetMinute}`,
-          // );
-
-          // Handle negative hours (wraps to previous day)
-          if (targetHour < 0) {
-            targetHour += 24;
-          }
-
-          // Handle negative minutes (JavaScript modulo returns negative for negative numbers)
-          if (targetMinute < 0) {
-            targetMinute += 60;
-          }
-
-          // Round to nearest whole minute (decimal hours create fractional minutes)
-          targetMinute = Math.round(targetMinute);
-
-          // logger.info(
-          //   `  ⏰ Target time: ${String(targetHour).padStart(2, '0')}:${String(targetMinute).padStart(2, '0')} UTC - Match: ${currentHour === targetHour && currentMinute === targetMinute ? '✅ YES' : '❌ NO'}`,
-          // );
-
-          // Check if current time matches this target time
-          if (currentHour === targetHour && currentMinute === targetMinute) {
-            matchingNudgeIndex = i;
-            timeString = `${String(targetHour).padStart(2, '0')}:${String(targetMinute).padStart(2, '0')}:00 (${hoursBefore}h before war end)`;
-            // logger.info(`  ✅ MATCHED! Will attempt to send nudge at ${timeString}`);
-            break;
-          }
-        }
+        // Find which nudge time matches current time (if any)
+        matchingNudgeIndex = nudgeTimes.findIndex((time) => time.hour === currentHour && time.minute === currentMinute);
 
         if (matchingNudgeIndex === -1) {
           // Not time for a nudge yet
           return;
         }
+
+        const matchingTime = nudgeTimes[matchingNudgeIndex];
+        timeString = `${String(matchingTime.hour).padStart(2, '0')}:${String(matchingTime.minute).padStart(2, '0')}:00 (${matchingTime.hoursBefore}h before war end)`;
       } else {
         // Unknown method
         logger.info(`❌ Unknown nudge method for ${clan.clan_name}: ${clan.nudge_method}`);
@@ -422,13 +468,31 @@ export class NudgeTrackingScheduler {
     totalNudges?: number,
     senderId?: string,
   ): Promise<void> {
-    if (clan.race_state === 'training') {
-      throw {
-        name: 'training_day',
-        embed: new EmbedBuilder().setDescription('Today is a training day.').setColor(EmbedColor.FAIL),
-      };
-    }
     try {
+      // Calculate nudge times based on nudge method
+      let nudgeTimes: Array<{ hour: number; minute: number; hoursBefore?: number }> | undefined;
+
+      if (
+        clan.nudge_method === 'interval' &&
+        clan.race_nudge_start_hour !== null &&
+        clan.race_nudge_start_minute !== null &&
+        clan.race_nudge_interval_hours !== null
+      ) {
+        const context = NudgeTrackingScheduler.calculateNudgeContext(
+          clan.race_nudge_start_hour,
+          clan.race_nudge_start_minute,
+          clan.race_nudge_interval_hours,
+        );
+        nudgeTimes = context.nudgeTimes;
+      } else if (
+        clan.nudge_method === 'hours_before_end' &&
+        clan.race_nudge_hours_before_array &&
+        clan.race_nudge_hours_before_array.length > 0
+      ) {
+        const context = NudgeTrackingScheduler.calculateHoursBeforeEndContext(clan.race_nudge_hours_before_array);
+        nudgeTimes = context.nudgeTimes;
+      }
+
       // Fetch channel
       const channel = await client.channels.fetch(clan.race_nudge_channel_id);
       if (!channel?.isTextBased() || !(channel instanceof TextChannel)) {
@@ -511,6 +575,14 @@ export class NudgeTrackingScheduler {
       const currentWeek = updateResult.warWeek;
       const currentDay = updateResult.warDay;
 
+      // Check if it's training day after getting fresh race data
+      if (raceData.periodType === 'training') {
+        throw {
+          name: 'training_day',
+          embed: new EmbedBuilder().setDescription('Today is a training day.').setColor(EmbedColor.FAIL),
+        };
+      }
+
       // Use existing getRaceAttacks service that handles all the logic
       const attacksData = await getRaceAttacks(guild.id, raceId, raceData, seasonId, currentWeek);
 
@@ -557,6 +629,7 @@ export class NudgeTrackingScheduler {
         currentNudgeNumber,
         totalNudges,
         updateResult.endTime ?? undefined,
+        nudgeTimes,
       );
 
       // TODO check what no nudge components actually does

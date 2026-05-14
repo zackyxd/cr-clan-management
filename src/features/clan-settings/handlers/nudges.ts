@@ -101,7 +101,6 @@ export class NudgesHandler {
       // Build interval method value (HH:MM,interval)
       const intervalMethodValue =
         startHour && intervalHours ? `${startHour}:${startMinute.padStart(2, '0')},${intervalHours}` : '';
-      console.log('intervalMethodValue:', intervalMethodValue, startHour, startMinute, intervalHours);
       const modal = new ModalBuilder()
         .setTitle('Race Nudge Settings')
         .setCustomId(makeCustomId('m', 'clanSettings_nudge_settings', guildId, { extra: [clantag] }))
@@ -368,7 +367,7 @@ export class NudgesHandler {
           }
         }
 
-        // Process hours before end data if provided (regardless of selected method)  
+        // Process hours before end data if provided (regardless of selected method)
         if (hoursBeforeEndStr) {
           // Parse comma-separated hours
           const hoursArray = hoursBeforeEndStr

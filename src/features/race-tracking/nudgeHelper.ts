@@ -155,6 +155,7 @@ export async function buildNudgeComponents(
   currentNudgeNumber?: number,
   totalNudges?: number,
   end_time?: Date,
+  nudgeTimes?: Array<{ hour: number; minute: number; hoursBefore?: number }>,
 ): Promise<{
   components: (ContainerBuilder | ActionRowBuilder<ButtonBuilder>)[];
   enrichedParticipants: FormattedParticipant[];
@@ -166,6 +167,7 @@ export async function buildNudgeComponents(
     guild: guild,
     currentNudgeNumber,
     totalNudges,
+    nudgeTimes,
   });
 
   // Format participant lines with mentions
@@ -179,6 +181,7 @@ export async function buildNudgeComponents(
       guild: guild,
       currentNudgeNumber,
       totalNudges,
+      nudgeTimes,
     },
   );
 
@@ -193,6 +196,7 @@ export async function buildNudgeComponents(
     guild: guild,
     currentNudgeNumber,
     totalNudges,
+    nudgeTimes,
   });
 
   // Build Components v2 message with builders

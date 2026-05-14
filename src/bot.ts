@@ -1,10 +1,20 @@
+import 'dotenv-flow/config';
 import { Client, Collection, GatewayIntentBits, Events, ActivityType } from 'discord.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Command } from './types/Command.ts';
+import { insert_guilds_on_startup, remove_guilds_on_startup, sync_default_features } from './services/guilds.js';
+import logger from './logger.js';
+import { pool } from './db.js';
+import { InviteScheduler } from './features/clan-invites/scheduler.js';
+import { NudgeTrackingScheduler } from './features/race-tracking/nudgeScheduler.js';
+import { AttacksTrackingScheduler } from './features/race-tracking/attacksScheduler.js';
+import { setDiscordClient } from './features/race-tracking/service.js';
 
 // import { isDev, isProd } from './utils/env.js';
+
+logger.info(`🌱 Environment: ${process.env.NODE_ENV || 'development (default)'}`);
 
 // Global error handlers to prevent crashes
 process.on('unhandledRejection', (error: Error) => {
@@ -119,22 +129,4 @@ for (const file of eventFiles) {
   }
 }
 
-process.on('uncaughtException', (err) => {
-  logger.error('Uncaught Exception: %O', err);
-});
-process.on('unhandledRejection', (err) => {
-  logger.error('Unhandled Rejection: %O', err);
-});
-
-import 'dotenv-flow/config';
-import { insert_guilds_on_startup, remove_guilds_on_startup, sync_default_features } from './services/guilds.js';
-import logger from './logger.js';
-import { pool } from './db.js';
-import { InviteScheduler } from './features/clan-invites/scheduler.js';
-import { NudgeTrackingScheduler } from './features/race-tracking/nudgeScheduler.js';
-import { AttacksTrackingScheduler } from './features/race-tracking/attacksScheduler.js';
-import { setDiscordClient } from './features/race-tracking/service.js';
-
-// import { pool } from './dbConfig.js';
-logger.info(`🌱 Environment: ${process.env.NODE_ENV || 'development (default)'}`);
 client.login(process.env.TOKEN);

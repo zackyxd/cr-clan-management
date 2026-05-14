@@ -32,6 +32,7 @@ export async function fetchData<T>(
   endpoint?: string,
   identifier?: string,
 ): Promise<T | FetchError> {
+  console.log('api call');
   try {
     const data = await limitedGet<T>(url, endpoint, identifier);
     if (!data) {

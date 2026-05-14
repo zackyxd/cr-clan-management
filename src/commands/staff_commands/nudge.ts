@@ -1,10 +1,8 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
 import { Command } from '../../types/Command.js';
-import { checkFeature } from '../../utils/checkFeatureEnabled.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { normalizeTag } from '../../api/CR_API.js';
 import { pool } from '../../db.js';
-import { initializeOrUpdateRace } from '../../features/race-tracking/service.js';
 import { NudgeTrackingScheduler } from '../../features/race-tracking/nudgeScheduler.js';
 
 const command: Command = {
@@ -44,6 +42,7 @@ const command: Command = {
         c.race_nudge_start_hour, 
         c.race_nudge_start_minute, 
         c.race_nudge_interval_hours,
+        c.race_nudge_hours_before_array,
         rr.race_id,
         rr.current_day,
         rr.current_week,
@@ -65,7 +64,6 @@ const command: Command = {
     }
 
     const clanData = clanRes.rows[0];
-    const fixedClantag = clanData.clantag;
 
     if (clanData.nudge_method === 'disabled') {
       await interaction.editReply({
@@ -81,59 +79,35 @@ const command: Command = {
       return;
     }
 
-    // Update race data from API
-    const result = await initializeOrUpdateRace(fixedClantag);
-    if (!result) {
-      await interaction.editReply('❌ Failed to fetch race data. Please try again later.');
-      return;
-    }
-
-    // Re-query to get updated race info (including race_id if it was just created)
-    const updatedClanRes = await pool.query(
-      `SELECT 
-        c.guild_id,
-        c.clantag, 
-        c.clan_name, 
-        c.staff_channel_id,
-        c.race_custom_nudge_message, 
-        c.race_nudge_channel_id,
-        c.race_nudge_start_hour, 
-        c.race_nudge_start_minute, 
-        c.race_nudge_interval_hours,
-        rr.race_id,
-        rr.current_day,
-        rr.current_week,
-        rr.race_state,
-        rr.end_time
-       FROM clans c
-       JOIN river_races rr ON c.clantag = rr.clantag 
-       WHERE c.guild_id = $1 AND c.clantag = $2`,
-      [guild.id, fixedClantag],
-    );
-
-    if (updatedClanRes.rows.length === 0) {
-      await interaction.editReply('❌ Failed to fetch updated race data. Please try again later.');
-      return;
-    }
-
-    const scheduledNudge = updatedClanRes.rows[0];
+    // sendNudge() will call initializeOrUpdateRace() internally, so we just need to pass clan data
+    const scheduledNudge = clanData;
 
     // Calculate nudge context based on schedule
     let currentNudgeNumber: number | undefined;
     let totalNudges: number | undefined;
 
-    if (
-      scheduledNudge.race_nudge_start_hour !== null &&
-      scheduledNudge.race_nudge_start_minute !== null &&
-      scheduledNudge.race_nudge_interval_hours !== null
-    ) {
-      const nudgeContext = NudgeTrackingScheduler.calculateNudgeContext(
-        scheduledNudge.race_nudge_start_hour,
-        scheduledNudge.race_nudge_start_minute,
-        scheduledNudge.race_nudge_interval_hours,
-      );
-      currentNudgeNumber = nudgeContext.currentNudgeNumber;
-      totalNudges = nudgeContext.totalNudges;
+    if (scheduledNudge.nudge_method === 'interval') {
+      if (
+        scheduledNudge.race_nudge_start_hour !== null &&
+        scheduledNudge.race_nudge_start_minute !== null &&
+        scheduledNudge.race_nudge_interval_hours !== null
+      ) {
+        const nudgeContext = NudgeTrackingScheduler.calculateNudgeContext(
+          scheduledNudge.race_nudge_start_hour,
+          scheduledNudge.race_nudge_start_minute,
+          scheduledNudge.race_nudge_interval_hours,
+        );
+        currentNudgeNumber = nudgeContext.currentNudgeNumber;
+        totalNudges = nudgeContext.totalNudges;
+      }
+    } else if (scheduledNudge.nudge_method === 'hours_before_end') {
+      if (scheduledNudge.race_nudge_hours_before_array && scheduledNudge.race_nudge_hours_before_array.length > 0) {
+        const nudgeContext = NudgeTrackingScheduler.calculateHoursBeforeEndContext(
+          scheduledNudge.race_nudge_hours_before_array,
+        );
+        currentNudgeNumber = nudgeContext.currentNudgeNumber;
+        totalNudges = nudgeContext.totalNudges;
+      }
     }
 
     // Use shared sendNudge method from scheduler
