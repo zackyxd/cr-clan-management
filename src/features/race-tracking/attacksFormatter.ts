@@ -117,13 +117,24 @@ export function formatParticipantLine(participant: FormattedParticipant, options
   // Determine if we should ping this user
   let shouldMention = options.mentionUsers && participant.discordUserId && participant.pingUser;
 
-  // NEVER ping replacement players
+  // Ping replacement players if they have attacks used in the clan (1-3 remaining)
   if (participant.isReplacementPlayer) {
-    shouldMention = false;
+    if (participant.attacksUsedToday > 0) {
+      shouldMention = true; // Ping them - they started attacking here
+    } else {
+      shouldMention = false; // Don't ping - haven't attacked here yet
+    }
   }
 
   // Skip attacking-late players for first half of nudges (only if there are multiple nudges)
-  if (participant.isAttackingLate && options.currentNudgeNumber && options.totalNudges && options.totalNudges > 1) {
+  // Don't apply this logic to replacement players
+  if (
+    participant.isAttackingLate &&
+    !participant.isReplacementPlayer &&
+    options.currentNudgeNumber &&
+    options.totalNudges &&
+    options.totalNudges > 1
+  ) {
     const skipCount = Math.ceil(options.totalNudges / 2);
     if (options.currentNudgeNumber <= skipCount) {
       shouldMention = false;
@@ -153,7 +164,14 @@ export function formatParticipantLine(participant: FormattedParticipant, options
     line += ' ⚠️';
   }
   // Only show clock if they're being skipped due to attacking-late logic (only when there are multiple nudges)
-  if (participant.isAttackingLate && !shouldMention && options.totalNudges && options.totalNudges > 1) {
+  // Don't show for replacement players
+  if (
+    participant.isAttackingLate &&
+    !participant.isReplacementPlayer &&
+    !shouldMention &&
+    options.totalNudges &&
+    options.totalNudges > 1
+  ) {
     line += ' ⏰';
   }
   if (!participant.isInClan) {
@@ -191,8 +209,18 @@ export function formatParticipantsList(
 
   // Count participants per attack group
   const groupCounts = new Map<number, number>();
+  const replacementCounts = new Map<number, number>();
+
   for (const participant of filteredParticipants) {
     groupCounts.set(participant.attacksRemaining, (groupCounts.get(participant.attacksRemaining) || 0) + 1);
+
+    // Count replacement players with 4 attacks (they won't attack here)
+    if (participant.isReplacementPlayer && participant.attacksRemaining === 4) {
+      replacementCounts.set(
+        participant.attacksRemaining,
+        (replacementCounts.get(participant.attacksRemaining) || 0) + 1,
+      );
+    }
   }
 
   // Group by attacks remaining
@@ -202,9 +230,17 @@ export function formatParticipantsList(
     // Add section header when entering new attack count group
     if (participant.attacksRemaining !== currentAttacksGroup) {
       currentAttacksGroup = participant.attacksRemaining;
-      const count = groupCounts.get(currentAttacksGroup) || 0;
+      const totalCount = groupCounts.get(currentAttacksGroup) || 0;
+      const replacementCount = replacementCounts.get(currentAttacksGroup) || 0;
+
+      // Show count with replacement players subtracted if applicable
+      let countDisplay = `${totalCount}`;
+      if (replacementCount > 0) {
+        countDisplay = `${totalCount} - ${replacementCount}`;
+      }
+
       if (lines.length > 0) lines.push(''); // Blank line between groups
-      lines.push(`__**${currentAttacksGroup} Attack${currentAttacksGroup !== 1 ? 's' : ''} (${count})**__`);
+      lines.push(`__**${currentAttacksGroup} Attack${currentAttacksGroup !== 1 ? 's' : ''} (${countDisplay})**__`);
     }
 
     // Format participant line
@@ -232,8 +268,9 @@ export function buildFooterLegend(participants: FormattedParticipant[], options:
 
   // Only show attacking-late legend if there are players who ARE attacking late but NOT being pinged yet
   // (and only if there are multiple nudges)
+  // Exclude replacement players from this check
   const hasAttackingLateWithoutPing = filteredParticipants.some((p) => {
-    if (!p.isAttackingLate) return false;
+    if (!p.isAttackingLate || p.isReplacementPlayer) return false;
 
     // Only show if there are multiple nudges
     if (!options.totalNudges || options.totalNudges <= 1) return false;

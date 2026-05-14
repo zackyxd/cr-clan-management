@@ -10,18 +10,79 @@ export class RaceTrackingInteractionRouter {
 
     if (action === 'nudgeAttackingLate') {
       await this.handleNudgeAttackingLate(interaction, parsed);
+    } else if (action === 'nudgeReplaceMe') {
+      await this.handleNudgeReplaceMe(interaction, parsed);
+    } else {
+      await interaction.reply({ content: 'Unknown button for race tracking.', flags: MessageFlags.Ephemeral });
+    }
+  }
+
+  private static async handleNudgeReplaceMe(interaction: ButtonInteraction, parsed: ParsedCustomId): Promise<void> {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const guildId = parsed.guildId;
+    const discordId = interaction.user.id;
+
+    try {
+      // Get current replace_me status and links
+      const selectRes = await pool.query(
+        `
+        SELECT 
+          u.is_replace_me,
+          up.playertag,
+          up.current_username
+        FROM users u
+        LEFT JOIN user_playertags up ON u.guild_id = up.guild_id AND u.discord_id = up.discord_id
+        WHERE u.guild_id = $1 AND u.discord_id = $2
+        `,
+        [guildId, discordId],
+      );
+
+      if (selectRes.rows.length === 0) {
+        await interaction.editReply({
+          content: 'You do not have any linked accounts in this server.',
+        });
+        return;
+      }
+
+      const currentStatus = selectRes.rows[0].is_replace_me;
+      const newStatus = !currentStatus;
+
+      // Toggle is_replace_me
+      await pool.query(
+        `
+        UPDATE users 
+        SET is_replace_me = $3
+        WHERE guild_id = $1 AND discord_id = $2
+        `,
+        [guildId, discordId, newStatus],
+      );
+
+      // Build response with player info
+      const linkedPlayers = selectRes.rows
+        .filter((row) => row.playertag)
+        .map((row) => `${row.current_username || 'Unknown'} (\`${row.playertag}\`)`)
+        .join('\n');
+
+      if (newStatus) {
+        await interaction.editReply({
+          content: `✅ **You are now marked as "Replace Me"**.\nYour accounts are:\n${linkedPlayers}\n\nYou will be excluded from nudges and will be listed as needing a replacement.\n**If possible, leave the clan to make room for a replacement.**`,
+        });
+      } else {
+        await interaction.editReply({
+          content: `❌ **You are no longer marked as "Replace Me"**.\nYour accounts are:\n${linkedPlayers}\n\nYou will now receive nudges as normal and will not be listed as needing a replacement.`,
+        });
+      }
+    } catch (error) {
+      console.log('Error toggling replace_me:', error);
+      await interaction.editReply({
+        content: '❌ An error occurred while updating your Replace Me status.',
+      });
     }
   }
 
   private static async handleNudgeAttackingLate(interaction: ButtonInteraction, parsed: ParsedCustomId): Promise<void> {
     const timer = new Timer('attack-late button');
-
-    /**
-     * 1. Anyone can use this button
-     * 2. Change toggle in users table to opposite
-     * 3. If attacking late, show them which accounts it's set for and which clan.
-     * 4. If changed mind, turn it off and say removed.
-     */
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
