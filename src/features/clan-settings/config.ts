@@ -95,7 +95,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
   const res = await pool.query(
     `SELECT family_clan, nudge_method, race_nudge_channel_id, race_custom_nudge_message, 
             race_nudge_start_hour, race_nudge_start_minute, race_nudge_interval_hours, race_nudge_hours_before_array,
-            eod_stats_enabled, staff_channel_id, invites_enabled, clan_role_id, abbreviation, ping_replace_me, ping_attacking_late, race_ping_channel_id
+            eod_stats_enabled, staff_channel_id, invites_enabled, clan_role_id, abbreviation, ping_replace_me, ping_attacking_late, race_ping_channel_id, ping_replace_me_role_id
      FROM clans WHERE guild_id = $1 AND clantag = $2`,
     [guildId, clantag],
   );
