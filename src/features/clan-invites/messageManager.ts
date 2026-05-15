@@ -139,6 +139,11 @@ export async function repostInviteMessage(options: RepostInviteMessageOptions): 
     messageIdColumn = 'message_id',
   } = options;
 
+  // Validate channelId
+  if (!channelId) {
+    throw new Error('Channel ID is required but was not provided.');
+  }
+
   // Fetch channel
   const channel = await client.channels.fetch(channelId);
   if (!channel?.isTextBased() || !(channel instanceof TextChannel || channel instanceof NewsChannel)) {

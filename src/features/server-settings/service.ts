@@ -196,16 +196,18 @@ export class ServerSettingsService {
 
       logger.info(`show_inactive toggled to ${show_inactive} for guild ${guildId}`);
 
-      // Return data needed to update invite message
+      // Return data needed to update invite message (only if channel is configured)
       return {
         success: true,
         newValue: show_inactive,
-        requiresInviteUpdate: true,
-        inviteData: {
-          channelId: channel_id,
-          messageId: message_id,
-          pinMessage: pin_message,
-        },
+        requiresInviteUpdate: channel_id ? true : false,
+        inviteData: channel_id
+          ? {
+              channelId: channel_id,
+              messageId: message_id,
+              pinMessage: pin_message,
+            }
+          : undefined,
       };
     } catch (error) {
       logger.error(`Error toggling show_inactive:`, error);

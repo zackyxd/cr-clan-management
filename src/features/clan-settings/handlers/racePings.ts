@@ -119,7 +119,17 @@ export class RacePingsHandler {
       const channelId = channelIds?.first()?.id || null;
       const pingAttackingLate = interaction.fields.getCheckboxGroup('checkbox_group').includes('ping_attacking_late');
       const pingReplaceMe = interaction.fields.getCheckboxGroup('checkbox_group').includes('ping_replace_me');
-      const pingReplaceMeRoleId = interaction.fields.getSelectedRoles('replace_me_role_id')?.first()?.id || null;
+
+      // Check if role select field exists before accessing (optional fields may not be present)
+      let pingReplaceMeRoleId: string | null = null;
+      try {
+        const roles = interaction.fields.getSelectedRoles('ping_replace_me_role_id');
+        pingReplaceMeRoleId = roles?.first()?.id || null;
+      } catch (error) {
+        // Field not present (nothing selected in optional role menu)
+        pingReplaceMeRoleId = null;
+      }
+
       // Check permissions (defers interaction if hideNoPerms is true)
       const allowed = await checkPerms(interaction, guildId, 'modal', 'either', { hideNoPerms: true });
       if (!allowed) return;
