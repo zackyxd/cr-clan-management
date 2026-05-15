@@ -74,8 +74,10 @@ export class RacePingsHandler {
             .setDescription('Ping special role for people that want replacement.')
             .setRoleSelectMenuComponent(
               new RoleSelectMenuBuilder()
-                .setCustomId('replace_me_role_id')
-                .setDefaultRoles(currentSettings.replace_me_role_id ? [currentSettings.replace_me_role_id] : [])
+                .setCustomId('ping_replace_me_role_id')
+                .setDefaultRoles(
+                  currentSettings.ping_replace_me_role_id ? [currentSettings.ping_replace_me_role_id] : [],
+                )
                 .setMaxValues(1)
                 .setRequired(false),
             ),
