@@ -3,6 +3,7 @@ import { ParsedCustomId } from '../../types/ParsedCustomId.js';
 import { pool } from '../../db.js';
 import { Timer } from '../../utils/timing.js';
 import { NudgeTrackingScheduler } from './nudgeScheduler.js';
+import { postRacePingsToChannels } from './service.js';
 
 export class RaceTrackingInteractionRouter {
   static async handleButton(interaction: ButtonInteraction, parsed: ParsedCustomId): Promise<void> {
@@ -66,11 +67,15 @@ export class RaceTrackingInteractionRouter {
 
       if (newStatus) {
         await interaction.editReply({
-          content: `✅ **You are now marked as "Replace Me"**.\nYour accounts are:\n${linkedPlayers}\n\nYou will be excluded from nudges and will be listed as needing a replacement.\n**If possible, leave the clan to make room for a replacement.**`,
+          content: `✅ **You are now marked as "Replace Me"** and accounts have been posted to the appropriate channel for staff.\n\nYou will be excluded from nudges and will be listed as needing a replacement.\n\n**If possible**\n* Leave a message why you need replacement\n * Leave the clan to make room for a replacement.`,
         });
+        const playertags = selectRes.rows.map((row) => row.playertag).filter((tag) => tag);
+        postRacePingsToChannels(guildId, playertags, 'replace').catch((err) =>
+          console.error('Error posting race pings after toggling replace me:', err),
+        );
       } else {
         await interaction.editReply({
-          content: `❌ **You are no longer marked as "Replace Me"**.\nYour accounts are:\n${linkedPlayers}\n\nYou will now receive nudges as normal and will not be listed as needing a replacement.`,
+          content: `❌ **You are no longer marked as "Replace Me"**.\n\nYou will now receive nudges as normal and will not be listed as needing a replacement.`,
         });
       }
     } catch (error) {
@@ -240,13 +245,18 @@ export class RaceTrackingInteractionRouter {
 
       if (newStatus) {
         await interaction.editReply({
-          content: `✅ **You are now marked as attacking late**.\nYour accounts are:\n${linkedPlayers}\n\nYou will be excluded from the first half of attack reminders.${nextNudgeInfo}`,
+          content: `✅ **You are now marked as attacking late**.\n\nYou will be excluded from the first half of attack reminders. ${nextNudgeInfo}`,
         });
+        const playertags = selectRes.rows.map((row) => row.playertag).filter((tag) => tag);
+        postRacePingsToChannels(guildId, playertags, 'late').catch((err) =>
+          console.error('Error posting race pings after toggling attacking late:', err),
+        );
       } else {
         await interaction.editReply({
-          content: `❌ **You are no longer marked as attacking late**.\nYour accounts are:\n${linkedPlayers}\n\nYou will now receive all attack reminders.`,
+          content: `❌ **You are no longer marked as attacking late**.\n\nYou will now receive all attack reminders.`,
         });
       }
+
       timer.end();
     } catch (error) {
       timer.end();

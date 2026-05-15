@@ -27,6 +27,7 @@ export const up = (pgm) => {
       race_ping_channel_id: { type: 'varchar(30)', default: null },
       ping_attacking_late: { type: 'boolean', default: false },
       ping_replace_me: { type: 'boolean', default: false },
+      ping_replace_me_role_id: { type: 'varchar(30)', default: null },
       // Clan Link Settings
       show_clan_link: { type: 'boolean', default: true },
     },

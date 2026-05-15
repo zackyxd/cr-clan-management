@@ -49,7 +49,7 @@ export const CLAN_FEATURE_SETTINGS = [
     label: 'Attack Late/Replace Pings',
     buttonLabel: 'Ping Settings',
     type: 'grouped_modal',
-    group: ['channel_id', 'ping_attacking_late', 'ping_replace_me'],
+    group: ['channel_id', 'ping_attacking_late', 'ping_replace_me', 'ping_replace_me_role_id'],
   },
   {
     key: 'invites_enabled',
@@ -84,6 +84,7 @@ export const DEFAULT_CLAN_SETTINGS = {
   abbreviation: '',
   clan_role_id: '',
   ping_replace_me: false,
+  ping_replace_me_role_id: false,
   ping_attacking_late: false,
   race_ping_channel_id: '',
   // ...add more as needed, matching your CLAN_FEATURE_SETTINGS keys
@@ -121,6 +122,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
     abbreviation: dbRow.abbreviation || '',
     ping_attacking_late: dbRow.ping_attacking_late || false,
     ping_replace_me: dbRow.ping_replace_me || false,
+    ping_replace_me_role_id: dbRow.ping_replace_me_role_id || '',
     race_ping_channel_id: dbRow.race_ping_channel_id || '',
   };
   const embed = new EmbedBuilder().setTitle(`Clan Settings: ${clanName}`).setColor(BOTCOLOR);
@@ -217,10 +219,13 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
         const pingAttackingLate = settings['ping_attacking_late'] ? '✅ Ping' : '❌ No Ping';
         const pingReplaceMe = settings['ping_replace_me'] ? '✅ Ping' : '❌ No Ping';
         const channelId = settings['race_ping_channel_id'] ? `<#${settings['race_ping_channel_id']}>` : '*Not set*';
-
+        const pingReplaceMeRoleId = settings['ping_replace_me_role_id']
+          ? `<@&${settings['ping_replace_me_role_id']}>`
+          : '*Not set*';
         lines.push(` * Channel: ${channelId}`);
         lines.push(` * Ping Attacking Late: ${pingAttackingLate}`);
         lines.push(` * Ping Replace Me: ${pingReplaceMe}`);
+        lines.push(`  * Ping Replace Me Role: ${pingReplaceMeRoleId}`);
 
         displayValue = '\n' + lines.join('\n');
       }

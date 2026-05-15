@@ -32,7 +32,7 @@ export async function fetchData<T>(
   endpoint?: string,
   identifier?: string,
 ): Promise<T | FetchError> {
-  console.log('api call');
+  // console.log('api call');
   try {
     const data = await limitedGet<T>(url, endpoint, identifier);
     if (!data) {
@@ -99,6 +99,13 @@ export async function fetchData<T>(
 const PlayerSchema = z.looseObject({
   tag: z.string(),
   name: z.string(),
+  clan: z
+    .object({
+      tag: z.string(),
+      name: z.string(),
+      badgeId: z.number(),
+    })
+    .optional(),
   expLevel: z.number(),
   badges: z.array(z.object({}).loose()),
 });
@@ -129,47 +136,69 @@ export async function getPlayer(playertag: string): Promise<PlayerResult> {
   return parsed.data;
 }
 
-// const BattleSchema = z.looseObject({
-//   type: z.string(),
-//   battleTime: z.string(),
-//   gameMode: z.object({
-//     name: z.string(),
-//   }),
-// });
+const BattlePlayerSchema = z
+  .object({
+    tag: z.string(),
+    name: z.string(),
+    clan: z
+      .object({
+        tag: z.string().optional(),
+        name: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough(); // Allow all other fields
 
-// const BattleLogSchema = z.array(BattleSchema);
+const BattleSchema = z
+  .object({
+    type: z.string(),
+    battleTime: z.string(),
+    gameMode: z
+      .object({
+        name: z.string(),
+      })
+      .passthrough(),
+    team: z.array(BattlePlayerSchema).optional(),
+    opponent: z.array(BattlePlayerSchema).optional(),
+  })
+  .passthrough(); // Allow any extra fields
 
-// type Battle = z.infer<typeof BattleSchema>;
-// type BattleResult = Battle[] | FetchError;
+const BattleLogSchema = z.array(BattleSchema);
 
-// export async function getBattleLog(playertag: string): Promise<BattleResult> {
-//   playertag = normalizeTag(playertag);
-//   const url = `https://proxy.royaleapi.dev/v1/players/${encodeURIComponent(playertag)}/battlelog`;
-//   const data = await fetchData(url);
-//   if (isFetchError(data)) {
-//     return data; // Error data
-//   }
+type Battle = z.infer<typeof BattleSchema>;
+type BattleResult = Battle[] | FetchError;
 
-//   const parsed = BattleLogSchema.safeParse(data);
+export async function getBattleLog(playertag: string): Promise<BattleResult> {
+  const normalizedTag = normalizeTag(playertag);
+  const url = `players/${encodeURIComponent(normalizedTag)}/battlelog`;
+  const data = await fetchData<z.infer<typeof BattleLogSchema>>(
+    url,
+    normalizedTag,
+    'player',
+    'getBattleLog',
+    normalizedTag,
+  );
+  if ('error' in data) {
+    return data; // already a FetchError with embed + tag
+  }
 
-//   if (!parsed.success) {
-//     return {
-//       error: true,
-//       statusCode: 400,
-//       reason: 'Invalid battlelog structure',
-//     };
-//   }
+  const parsed = BattleLogSchema.safeParse(data);
 
-//   if (parsed.data.length === 0) {
-//     return {
-//       error: true,
-//       statusCode: 404,
-//       reason: 'No battle log found or invalid player tag',
-//     };
-//   }
+  if (!parsed.success) {
+    return {
+      error: true,
+      statusCode: 400,
+      reason: 'Invalid battle log structure',
+      tag: normalizedTag,
+      embed: new EmbedBuilder()
+        .setDescription('⚠️ API battle log data format may have changed. Requires <@272201620446511104> to fix.')
+        .setColor('Red'),
+    };
+  }
 
-//   return parsed.data;
-// }
+  return parsed.data;
+}
 
 const ClanMemberSchema = z
   .object({
@@ -384,6 +413,6 @@ export const CR_API = {
   // getClanMembers,
   getCurrentRiverRace,
   getRiverRaceLog,
-  // getBattleLog,
+  getBattleLog,
   normalizeTag,
 };

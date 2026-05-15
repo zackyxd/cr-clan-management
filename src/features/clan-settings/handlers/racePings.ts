@@ -7,6 +7,7 @@ import {
   MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
+  RoleSelectMenuBuilder,
 } from 'discord.js';
 import { ClanSettingsData } from '../types.js';
 import logger from '../../../logger.js';
@@ -21,7 +22,7 @@ export class RacePingsHandler {
     try {
       const currentResult = await pool.query(
         `
-        SELECT ss.replace_me_role_id, ss.attacking_late_role_id, c.race_ping_channel_id, c.ping_attacking_late, c.ping_replace_me
+        SELECT ss.replace_me_role_id, ss.attacking_late_role_id, c.race_ping_channel_id, c.ping_attacking_late, c.ping_replace_me, c.ping_replace_me_role_id
         FROM clans c
         LEFT JOIN server_settings ss ON c.guild_id = ss.guild_id
         WHERE c.guild_id = $1 AND c.clantag = $2
@@ -68,6 +69,16 @@ export class RacePingsHandler {
                 )
                 .setRequired(false),
             ),
+          new LabelBuilder()
+            .setLabel('Role for replace me pings')
+            .setDescription('Ping special role for people that want replacement.')
+            .setRoleSelectMenuComponent(
+              new RoleSelectMenuBuilder()
+                .setCustomId('replace_me_role_id')
+                .setDefaultRoles(currentSettings.replace_me_role_id ? [currentSettings.replace_me_role_id] : [])
+                .setMaxValues(1)
+                .setRequired(false),
+            ),
         );
       await interaction.showModal(modal);
     } catch (error) {
@@ -106,7 +117,7 @@ export class RacePingsHandler {
       const channelId = channelIds?.first()?.id || null;
       const pingAttackingLate = interaction.fields.getCheckboxGroup('checkbox_group').includes('ping_attacking_late');
       const pingReplaceMe = interaction.fields.getCheckboxGroup('checkbox_group').includes('ping_replace_me');
-      console.log(pingAttackingLate, pingReplaceMe);
+      const pingReplaceMeRoleId = interaction.fields.getSelectedRoles('replace_me_role_id')?.first()?.id || null;
       // Check permissions (defers interaction if hideNoPerms is true)
       const allowed = await checkPerms(interaction, guildId, 'modal', 'either', { hideNoPerms: true });
       if (!allowed) return;
@@ -118,7 +129,7 @@ export class RacePingsHandler {
         // Get old values and clan name for audit log
         const oldResult = await client.query(
           `
-          SELECT c.clan_name, c.race_ping_channel_id, c.ping_attacking_late, c.ping_replace_me
+          SELECT c.clan_name, c.race_ping_channel_id, c.ping_attacking_late, c.ping_replace_me, c.ping_replace_me_role_id
           FROM clans c
           WHERE c.guild_id = $1 AND c.clantag = $2
           `,
@@ -129,7 +140,7 @@ export class RacePingsHandler {
         const oldChannelId = oldResult.rows[0]?.race_ping_channel_id;
         const oldPingAttackingLate = oldResult.rows[0]?.ping_attacking_late || false;
         const oldPingReplaceMe = oldResult.rows[0]?.ping_replace_me || false;
-
+        const oldPingReplaceMeRoleId = oldResult.rows[0]?.ping_replace_me_role_id || null;
         // Track what changed for the log
         const changes: string[] = [];
 
@@ -167,6 +178,17 @@ export class RacePingsHandler {
           changes.push(
             `Ping Replace Me: ${oldPingReplaceMe ? 'Enabled' : 'Disabled'} → ${pingReplaceMe ? 'Enabled' : 'Disabled'}`,
           );
+        }
+
+        if (pingReplaceMeRoleId !== oldPingReplaceMeRoleId) {
+          await client.query(`UPDATE clans SET ping_replace_me_role_id = $1 WHERE guild_id = $2 AND clantag = $3`, [
+            pingReplaceMeRoleId,
+            guildId,
+            clantag,
+          ]);
+          const oldDisplay = oldPingReplaceMeRoleId ? `<@&${oldPingReplaceMeRoleId}>` : 'None';
+          const newDisplay = pingReplaceMeRoleId ? `<@&${pingReplaceMeRoleId}>` : 'None';
+          changes.push(`Ping Replace Me Role: ${oldDisplay} → ${newDisplay}`);
         }
 
         await client.query('COMMIT');

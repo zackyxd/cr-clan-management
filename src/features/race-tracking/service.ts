@@ -9,9 +9,10 @@ import { pool } from '../../db.js';
 import { CR_API, isFetchError } from '../../api/CR_API.js';
 import type { CurrentRiverRace, CurrentRiverRaceLogResult } from '../../api/CR_API.js';
 import type { RaceAttacksData, RaceHistoryData, RaceStatsData, RaceUpdateResult } from './types.js';
-import { Client, TextChannel } from 'discord.js';
+import { Client, EmbedBuilder, TextChannel } from 'discord.js';
 import { buildAttacksEmbed, buildRaceEmbed } from './embedBuilders.js';
 import { resetCustomNudgeMessageOnNewDay } from './nudgeHelper.js';
+import { BOTCOLOR, EmbedColor } from '../../types/EmbedUtil.js';
 
 // In-memory cache to prevent concurrent updates to the same race
 const ongoingRaceUpdates = new Map<string, Promise<RaceUpdateResult | null>>();
@@ -161,6 +162,8 @@ export async function getRaceAttacks(
         attacksRemaining: 4 - totalAttacks,
         fame: member.fame,
         totalDecksUsed: member.decksUsed,
+        clantag: raceData.clan.tag,
+        clanName: raceData.clan.name,
         clansAttackedIn: clansAttackedNames,
         isSplitAttacker: clantagsAttacked.length > 1,
         isInClan,
@@ -805,7 +808,7 @@ export async function updateParticipantTracking(
     }
 
     // Build bulk upset values (multi-row insert)
-    const values: any[] = [];
+    const values: (number | string | string[])[] = [];
     const placeholders: string[] = [];
     let paramIndex = 1;
 
@@ -1080,4 +1083,144 @@ async function postRolloverToStaffChannels(
  */
 export function testRolloverDetection(oldData: CurrentRiverRace, newData: CurrentRiverRace): boolean {
   return isNewWarDay(oldData, newData);
+}
+
+export async function postRacePingsToChannels(
+  guildId: string,
+  playertags: Array<string>,
+  type: 'replace' | 'late',
+  messages?: Map<string, string>, // Optional map of playertag -> message
+): Promise<void> {
+  if (!playertags || playertags.length === 0) {
+    console.log('No playertags provided');
+    return;
+  }
+
+  if (!discordClient) {
+    console.error('[Race Pings] Discord client not set');
+    return;
+  }
+
+  // Structure to hold player data grouped by channel
+  const channelData = new Map<
+    string,
+    {
+      channelId: string;
+      rolePing: string;
+      players: Array<{ name: string; tag: string; clans: string[]; message?: string }>;
+    }
+  >();
+
+  // Collect all player data and their associated clans
+  for (const tag of playertags) {
+    const battleLog = await CR_API.getBattleLog(tag);
+    if (isFetchError(battleLog)) continue;
+
+    const player = await CR_API.getPlayer(tag);
+    if (isFetchError(player)) continue;
+
+    const clansApplicable = new Set<string>();
+
+    // Add current clan
+    if (player?.clan?.tag) {
+      clansApplicable.add(player.clan.tag);
+    }
+
+    // Add clans from battle log
+    battleLog.forEach((battle) => {
+      if (battle.team && battle.team.length > 0 && battle.gameMode.name !== 'TeamVsTeam') {
+        battle.team.forEach((teamPlayer) => {
+          if (teamPlayer.clan && teamPlayer.clan.tag && !clansApplicable.has(teamPlayer.clan.tag)) {
+            clansApplicable.add(teamPlayer.clan.tag);
+          }
+        });
+      }
+    });
+
+    const clanTags = Array.from(clansApplicable);
+    if (clanTags.length === 0) continue;
+
+    // Query clans table for matching clan tags with race_ping_channel_id
+    const clansQuery = await pool.query(
+      `SELECT clantag, clan_name, race_ping_channel_id, ping_replace_me_role_id
+       FROM clans 
+       WHERE guild_id = $1 
+         AND clantag = ANY($2) 
+         AND race_ping_channel_id IS NOT NULL`,
+      [guildId, clanTags],
+    );
+
+    if (clansQuery.rows.length === 0) continue;
+
+    // Group data by channel
+    for (const clan of clansQuery.rows) {
+      const channelId = clan.race_ping_channel_id;
+
+      if (!channelData.has(channelId)) {
+        channelData.set(channelId, {
+          channelId,
+          rolePing: clan.ping_replace_me_role_id && type === 'replace' ? `<@&${clan.ping_replace_me_role_id}>` : '',
+          players: [],
+        });
+      }
+
+      const channelInfo = channelData.get(channelId)!;
+
+      // Check if player already added to this channel
+      const existingPlayer = channelInfo.players.find((p) => p.tag === tag);
+      if (existingPlayer) {
+        // Add clan if not already in the list
+        if (!existingPlayer.clans.includes(clan.clan_name)) {
+          existingPlayer.clans.push(clan.clan_name);
+        }
+      } else {
+        // Add new player entry
+        const playerMessage = messages?.get(tag);
+        channelInfo.players.push({
+          name: player.name,
+          tag: tag,
+          clans: [clan.clan_name],
+          message: playerMessage,
+        });
+      }
+    }
+  }
+
+  // Send one embed per channel with all players
+  const pingType = type === 'replace' ? '⚠️ Replace Me' : '⏰ Attacking Late';
+  const embedColor = type === 'replace' ? EmbedColor.FAIL : EmbedColor.WARNING;
+
+  for (const [channelId, data] of channelData) {
+    try {
+      const channel = await discordClient.channels.fetch(channelId);
+      if (!channel || !channel.isTextBased()) {
+        console.error(`[Race Pings] Channel ${channelId} not found or not text-based`);
+        continue;
+      }
+
+      // Get message (all players from one user will have the same message)
+      const userMessage = data.players[0]?.message;
+
+      // Build embed description with all players
+      const playerLines = data.players.map((player) => {
+        const clanList = player.clans.join(', ');
+        return `* [${player.name}](<https://royaleapi.com/player/${player.tag.substring(1)}>) (${clanList})`;
+      });
+
+      let description = `**${pingType}**\n`;
+      if (userMessage) {
+        description += `_"${userMessage}"_\n\n`;
+      }
+      description += playerLines.join('\n');
+
+      const embed = new EmbedBuilder().setDescription(description).setColor(embedColor).setTimestamp();
+
+      await (channel as TextChannel).send({
+        embeds: [embed],
+        content: data.rolePing,
+      });
+    } catch (error) {
+      console.error(`[Race Pings] Failed to send message to channel ${channelId}:`, error);
+    }
+  }
 }
