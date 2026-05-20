@@ -168,8 +168,8 @@ const command: Command = {
       .setAuthor({
         name: `Season ${seasonId ?? '---'} | Week ${week} | Day ${getDayForDisplay(day)}`,
       })
-      .setColor(BOTCOLOR)
-      .setURL(`https://cwstats.com/clan/${fixedClantag.substring(1)}/race`);
+      .setColor(BOTCOLOR);
+    // .setURL(`https://cwstats.com/clan/${fixedClantag.substring(1)}/race`);
 
     // Build description matching the original format
     const periodType = rawApiData?.periodType || 'warDay';
