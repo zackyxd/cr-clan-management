@@ -30,6 +30,7 @@ export class RaceTrackingInteractionRouter {
         `
         SELECT 
           u.is_replace_me,
+          u.replace_me_ping_sent_today,
           up.playertag,
           up.current_username
         FROM users u
@@ -49,30 +50,30 @@ export class RaceTrackingInteractionRouter {
       const currentStatus = selectRes.rows[0].is_replace_me;
       const newStatus = !currentStatus;
 
-      // Toggle is_replace_me
+      // Check if a message was already sent today
+      const alreadySentToday = selectRes.rows[0].replace_me_ping_sent_today || false;
+
+      // Toggle is_replace_me and update flag if sending message
       await pool.query(
         `
         UPDATE users 
-        SET is_replace_me = $3
+        SET is_replace_me = $3${newStatus && !alreadySentToday ? ', replace_me_ping_sent_today = true' : ''}
         WHERE guild_id = $1 AND discord_id = $2
         `,
         [guildId, discordId, newStatus],
       );
 
-      // Build response with player info
-      const linkedPlayers = selectRes.rows
-        .filter((row) => row.playertag)
-        .map((row) => `${row.current_username || 'Unknown'} (\`${row.playertag}\`)`)
-        .join('\n');
-
       if (newStatus) {
         await interaction.editReply({
           content: `✅ **You are now marked as "Replace Me"** and accounts have been posted to the appropriate channel for staff.\n\nYou will be excluded from nudges and will be listed as needing a replacement.\n\n**If possible**\n* Leave a message why you need replacement\n * Leave the clan to make room for a replacement.`,
         });
-        const playertags = selectRes.rows.map((row) => row.playertag).filter((tag) => tag);
-        postRacePingsToChannels(guildId, playertags, 'replace').catch((err) =>
-          console.error('Error posting race pings after toggling replace me:', err),
-        );
+        // Only send ping message if not already sent today
+        if (!alreadySentToday) {
+          const playertags = selectRes.rows.map((row) => row.playertag).filter((tag) => tag);
+          postRacePingsToChannels(guildId, playertags, 'replace').catch((err) =>
+            console.error('Error posting race pings after toggling replace me:', err),
+          );
+        }
       } else {
         await interaction.editReply({
           content: `❌ **You are no longer marked as "Replace Me"**.\n\nYou will now receive nudges as normal and will not be listed as needing a replacement.`,
@@ -100,6 +101,7 @@ export class RaceTrackingInteractionRouter {
         `
         SELECT 
           u.is_attacking_late,
+          u.attacking_late_ping_sent_today,
           up.playertag,
           up.current_username
         FROM users u
@@ -119,21 +121,18 @@ export class RaceTrackingInteractionRouter {
       const currentStatus = selectRes.rows[0].is_attacking_late;
       const newStatus = !currentStatus;
 
-      // Toggle is_attacking_late
+      // Check if a message was already sent today
+      const alreadySentToday = selectRes.rows[0].attacking_late_ping_sent_today || false;
+
+      // Toggle is_attacking_late and update flag if sending message
       await pool.query(
         `
         UPDATE users 
-        SET is_attacking_late = $3
+        SET is_attacking_late = $3${newStatus && !alreadySentToday ? ', attacking_late_ping_sent_today = true' : ''}
         WHERE guild_id = $1 AND discord_id = $2
         `,
         [guildId, discordId, newStatus],
       );
-
-      // Build response with player info
-      const linkedPlayers = selectRes.rows
-        .filter((row) => row.playertag)
-        .map((row) => `${row.current_username || 'Unknown'} (\`${row.playertag}\`)`)
-        .join('\n');
 
       // Get clan nudge settings to show when they'll be nudged
       let nextNudgeInfo = '';
@@ -247,10 +246,13 @@ export class RaceTrackingInteractionRouter {
         await interaction.editReply({
           content: `✅ **You are now marked as attacking late**.\n\nYou will be excluded from the first half of attack reminders. ${nextNudgeInfo}`,
         });
-        const playertags = selectRes.rows.map((row) => row.playertag).filter((tag) => tag);
-        postRacePingsToChannels(guildId, playertags, 'late').catch((err) =>
-          console.error('Error posting race pings after toggling attacking late:', err),
-        );
+        // Only send ping message if not already sent today
+        if (!alreadySentToday) {
+          const playertags = selectRes.rows.map((row) => row.playertag).filter((tag) => tag);
+          postRacePingsToChannels(guildId, playertags, 'late').catch((err) =>
+            console.error('Error posting race pings after toggling attacking late:', err),
+          );
+        }
       } else {
         await interaction.editReply({
           content: `❌ **You are no longer marked as attacking late**.\n\nYou will now receive all attack reminders.`,

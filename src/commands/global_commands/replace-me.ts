@@ -6,7 +6,7 @@ import { postRacePingsToChannels } from '../../features/race-tracking/index.js';
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('replace-me')
-    .setDescription('Mark yourself as needing replacement and notify clans you have attacked in')
+    .setDescription('Mark yourself as needing replacement for your war attacks')
     .addStringOption((option) =>
       option
         .setName('message')
@@ -40,16 +40,26 @@ const command: Command = {
     // Build message map if user provided a message
     const messages = message ? new Map(playertags.map((tag) => [tag, message])) : undefined;
 
+    // Check if a message was already sent today
+    const userCheck = await pool.query(
+      `SELECT replace_me_ping_sent_today FROM users WHERE guild_id = $1 AND discord_id = $2`,
+      [guild.id, interaction.user.id],
+    );
+
+    const alreadySentToday = userCheck.rows[0]?.replace_me_ping_sent_today || false;
+
     // Update users table to mark as replacement player
     await pool.query(
       `UPDATE users 
-       SET is_replace_me = true
+       SET is_replace_me = true${!alreadySentToday ? ', replace_me_ping_sent_today = true' : ''}
        WHERE guild_id = $1 AND discord_id = $2`,
       [guild.id, interaction.user.id],
     );
 
-    // Send pings to clan channels
-    await postRacePingsToChannels(guild.id, playertags, 'replace', messages);
+    // Send pings to clan channels only if not already sent today
+    if (!alreadySentToday) {
+      await postRacePingsToChannels(guild.id, playertags, 'replace', messages);
+    }
 
     await interaction.editReply({
       content:

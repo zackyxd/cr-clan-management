@@ -37,16 +37,26 @@ const command: Command = {
     // Build message map if user provided a message
     const messages = message ? new Map(playertags.map((tag) => [tag, message])) : undefined;
 
+    // Check if a message was already sent today
+    const userCheck = await pool.query(
+      `SELECT attacking_late_ping_sent_today FROM users WHERE guild_id = $1 AND discord_id = $2`,
+      [guild.id, interaction.user.id],
+    );
+
+    const alreadySentToday = userCheck.rows[0]?.attacking_late_ping_sent_today || false;
+
     // Update users table to mark as attacking late
     await pool.query(
       `UPDATE users 
-       SET is_attacking_late = true
+       SET is_attacking_late = true${!alreadySentToday ? ', attacking_late_ping_sent_today = true' : ''}
        WHERE guild_id = $1 AND discord_id = $2`,
       [guild.id, interaction.user.id],
     );
 
-    // Send pings to clan channels
-    await postRacePingsToChannels(guild.id, playertags, 'late', messages);
+    // Send pings to clan channels only if not already sent today
+    if (!alreadySentToday) {
+      await postRacePingsToChannels(guild.id, playertags, 'late', messages);
+    }
 
     await interaction.editReply({
       content:
