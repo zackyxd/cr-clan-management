@@ -92,7 +92,7 @@ export class AttacksTrackingScheduler {
           if (clan.race_state === 'training' && clan.last_check) {
             const lastCheck = new Date(clan.last_check);
             const minutesSinceLastCheck = (now.getTime() - lastCheck.getTime()) / (1000 * 60);
-            
+
             if (minutesSinceLastCheck < this.TRAINING_DAY_INTERVAL_MINUTES) {
               skippedCount++;
               continue; // Skip this clan
@@ -117,7 +117,9 @@ export class AttacksTrackingScheduler {
       }
 
       if (skippedCount > 0) {
-        logger.info(`Race update: ${updatedCount} updated, ${skippedCount} training day clans skipped (checked <${this.TRAINING_DAY_INTERVAL_MINUTES}m ago)`);
+        logger.info(
+          `Race update: ${updatedCount} updated, ${skippedCount} training day clans skipped (checked <${this.TRAINING_DAY_INTERVAL_MINUTES}m ago)`,
+        );
       }
     } catch (error) {
       logger.error('Error while checking all clans attacks', error);
