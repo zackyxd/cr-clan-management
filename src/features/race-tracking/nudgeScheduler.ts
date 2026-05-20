@@ -110,43 +110,45 @@ export class NudgeTrackingScheduler {
     const currentHour = now.getUTCHours();
     const currentMinute = now.getUTCMinutes();
 
-    // Find which nudge is NEXT (upcoming), not which one last passed
-    // This ensures attacking-late logic works correctly outside the nudge window
-    let currentNudgeNumber = 1; // Default to first nudge
+    // Find the most recent nudge time that has passed (not the next upcoming one)
+    // This ensures attacking-late logic only pings based on nudges that already happened
+    let currentNudgeNumber = 1; // Default to first nudge if none have passed yet
     const nowMinutes = currentHour * 60 + currentMinute;
 
-    for (let idx = 0; idx < nudgeTimes.length; idx++) {
+    // Iterate backwards to find the most recent nudge that has passed
+    for (let idx = nudgeTimes.length - 1; idx >= 0; idx--) {
       const nudgeTime = nudgeTimes[idx];
       const nudgeMinutes = nudgeTime.hour * 60 + nudgeTime.minute;
 
       // Handle midnight wraparound
       if (crossesMidnight) {
-        // If current time is after midnight (before stop time)
+        // Check if this nudge time has passed
+        // For schedules that cross midnight, we need to handle wrap-around
         if (nowMinutes < stopTotalMinutes) {
-          // Look for next nudge after midnight
-          if (nudgeMinutes < stopTotalMinutes && nudgeMinutes >= nowMinutes) {
+          // Current time is after midnight (e.g., 1am)
+          // A nudge has passed if it's after midnight and before now, OR if it was before midnight yesterday
+          if ((nudgeMinutes < stopTotalMinutes && nudgeMinutes <= nowMinutes) || nudgeMinutes >= startTotalMinutes) {
             currentNudgeNumber = idx + 1;
             break;
           }
         } else {
-          // Current time is before midnight
-          // Look for next nudge before midnight, or first nudge after midnight
-          if (nudgeMinutes >= nowMinutes || nudgeMinutes < stopTotalMinutes) {
+          // Current time is before midnight (e.g., 10pm)
+          // A nudge has passed if it's before midnight and before/at now
+          if (nudgeMinutes >= startTotalMinutes && nudgeMinutes <= nowMinutes) {
             currentNudgeNumber = idx + 1;
             break;
           }
         }
       } else {
         // No midnight crossing - simple comparison
-        if (nudgeMinutes >= nowMinutes) {
+        if (nudgeMinutes <= nowMinutes) {
           currentNudgeNumber = idx + 1;
           break;
         }
       }
     }
 
-    // If no upcoming nudge found, we're past all nudges - wrap to first nudge (next cycle)
-    // This ensures attacking-late players are NOT pinged when outside the nudge window
+    // If no nudge has passed yet (we're before the first nudge), currentNudgeNumber stays at 1
 
     return {
       currentNudgeNumber,
@@ -575,11 +577,12 @@ export class NudgeTrackingScheduler {
       const currentWeek = updateResult.warWeek;
       const currentDay = updateResult.warDay;
 
+      // TODO uncomment when not testing
       // Check if it's training day after getting fresh race data
       if (raceData.periodType === 'training') {
         throw {
           name: 'training_day',
-          embed: new EmbedBuilder().setDescription('Today is a training day.').setColor(EmbedColor.FAIL),
+          embed: new EmbedBuilder().setDescription('Today is a training day. No Nudges').setColor(EmbedColor.FAIL),
         };
       }
 
@@ -673,7 +676,13 @@ export class NudgeTrackingScheduler {
       );
 
       // Nudge sent successfully
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw training day errors so manual commands can handle them
+      if (error?.name === 'training_day') {
+        throw error;
+      }
+
+      // Log all other errors
       logger.error(`Error sending nudge for clan ${clan.clantag}:`, error);
     }
   }

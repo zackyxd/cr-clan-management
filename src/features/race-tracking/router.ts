@@ -140,6 +140,7 @@ export class RaceTrackingInteractionRouter {
         try {
           const clanRes = await pool.query(
             `SELECT 
+              clan_name,
               nudge_method, 
               race_nudge_start_hour, 
               race_nudge_start_minute, 
@@ -192,10 +193,10 @@ export class RaceTrackingInteractionRouter {
                   }
 
                   const unixTimestamp = Math.floor(nextDate.getTime() / 1000);
-                  nextNudgeInfo = `\n\n-# You will receive the next nudge at <t:${unixTimestamp}:t>`;
+                  nextNudgeInfo = `\n\n-# All members for ${clan.clan_name} will receive nudges at <t:${unixTimestamp}:t>`;
                 }
               } else {
-                nextNudgeInfo = '\n\n-# You will be pinged on all nudges (only 1 nudge is configured)';
+                nextNudgeInfo = `\n\n-# All members for ${clan.clan_name} will still be pinged (only 1 nudge is configured)`;
               }
             } else if (
               nudgeMethod === 'hours_before_end' &&
@@ -229,10 +230,10 @@ export class RaceTrackingInteractionRouter {
                   }
 
                   const unixTimestamp = Math.floor(nextDate.getTime() / 1000);
-                  nextNudgeInfo = `\n\n-# You will receive the next nudge at <t:${unixTimestamp}:t>`;
+                  nextNudgeInfo = `\n\n-# All members for ${clan.clan_name} will receive nudges at <t:${unixTimestamp}:t>`;
                 }
               } else {
-                nextNudgeInfo = '\n\n-# You will be pinged on all nudges (only 1 nudge is configured)';
+                nextNudgeInfo = `\n\n-# All members for ${clan.clan_name} will still be pinged (only 1 nudge is configured)`;
               }
             }
           }
