@@ -88,6 +88,7 @@ export interface SnapshotEmbedData {
     raceDay: number;
     availableAttackers: number;
     totalAttacksRemaining: number;
+    isBoatCompleted: boolean; // True if clan reached 10k+ fame (finished first)
     groups: Array<{
       attacksRemaining: number;
       count: number;
@@ -140,6 +141,7 @@ export interface RaceAttacksData {
   seasonId: number | null;
   warWeek: number;
   raceId: number;
+  isBoatCompleted: boolean; // True if clan reached 10k+ fame (finished first)
 }
 
 export interface ParticipantWithAttacks {
@@ -191,6 +193,7 @@ interface WarDayStatsData {
     projectedFame: number;
     projectedRank: string;
     average: number;
+    isBoatCompleted: boolean; // True if boatPoints >= 10000 (finished first)
   }>;
 }
 

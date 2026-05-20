@@ -33,26 +33,65 @@ export async function buildAttacksEmbed(
     mentionUsers,
   });
 
-  // Format participant lines
-  const lines = formatParticipantsList(
-    enrichedParticipants,
-    attacksData.totalAttacksRemaining,
-    attacksData.availableAttackers,
-    {
-      mentionUsers,
-    },
-  );
-
   let description: string;
-  if (lines.length === 0) {
-    description = `## ${periodTypeMap[raceData.periodType] || ''} Attacks\n✅ Everyone has completed their attacks!`;
-    if (endTime) {
-      description += `\n\n-# War ends ~${getNextDayRelativeTimestamp(endTime)}`;
+
+  // Handle boat completion differently - show who attacked instead of who's remaining
+  if (attacksData.isBoatCompleted) {
+    description = `🏁\n`;
+    description += `**${attacksData.participants.length} players attacked in clan.**\n\n`;
+
+    // Group by attacks used today
+    const attackGroups = new Map<number, typeof enrichedParticipants>();
+    for (const participant of enrichedParticipants) {
+      const attacks = participant.attacksUsedToday;
+      if (!attackGroups.has(attacks)) {
+        attackGroups.set(attacks, []);
+      }
+      attackGroups.get(attacks)!.push(participant);
     }
+
+    // Sort groups descending (4 attacks, then 3, then 2, then 1)
+    const sortedGroups = Array.from(attackGroups.entries()).sort((a, b) => b[0] - a[0]);
+
+    const groupLines: string[] = [];
+    for (const [attacks, players] of sortedGroups) {
+      groupLines.push(`__**${attacks} Attack${attacks !== 1 ? 's' : ''} (${players.length})**__`);
+      for (const player of players) {
+        const mention = mentionUsers && player.discordUserId ? `<@${player.discordUserId}>` : `* ${player.playerName}`;
+        groupLines.push(mention);
+      }
+      groupLines.push(''); // Blank line between groups
+    }
+
+    description += groupLines.join('\n');
+
+    // Calculate total attacks used by participants who attacked today
+    const totalAttacksUsed = enrichedParticipants.reduce((sum, p) => sum + p.attacksUsedToday, 0);
+    const playersWhoAttacked = enrichedParticipants.length;
+
+    // Add summary line showing who attacked (instead of who's remaining)
+    description += `\n:playersLeft: ${playersWhoAttacked}\n:attacksLeft: ${totalAttacksUsed}`;
   } else {
-    description = `## ${periodTypeMap[raceData.periodType] || ''} Attacks\n${lines.join('\n')}`;
-    if (endTime) {
-      description += `\n\n-# War ends ~${getNextDayRelativeTimestamp(endTime)}`;
+    // Normal attacks remaining display
+    const lines = formatParticipantsList(
+      enrichedParticipants,
+      attacksData.totalAttacksRemaining,
+      attacksData.availableAttackers,
+      {
+        mentionUsers,
+      },
+    );
+
+    if (lines.length === 0) {
+      description = `## ${periodTypeMap[raceData.periodType] || ''} Attacks\n✅ Everyone has completed their attacks!`;
+      if (endTime) {
+        description += `\n\n-# War ends ~${getNextDayRelativeTimestamp(endTime)}`;
+      }
+    } else {
+      description = `## ${periodTypeMap[raceData.periodType] || ''} Attacks\n${lines.join('\n')}`;
+      if (endTime) {
+        description += `\n\n-# War ends ~${getNextDayRelativeTimestamp(endTime)}`;
+      }
     }
   }
 
@@ -65,7 +104,7 @@ export async function buildAttacksEmbed(
     .setDescription(description)
     .setURL(`https://cwstats.com/clan/${attacksData.clanInfo.clantag.substring(1)}/race`);
 
-  if (lines.length > 0) {
+  if (!attacksData.isBoatCompleted && description.includes('__**')) {
     const footerText = buildFooterLegend(enrichedParticipants, { mentionUsers });
     if (footerText) {
       embed.setFooter({ text: footerText });
@@ -126,11 +165,17 @@ export function buildRaceEmbed(
       } else {
         description += `${index + 1}. **[${escapedName}](<https://www.cwstats.com/clan/${clantagForUrl}/log>)**\n`;
       }
-      // const average: string = clan.attacksUsedToday > 0 ? (clan.fame / clan.attacksUsedToday).toFixed(2) : '0.00';
-      description += `:fame: ${clan.fame.toLocaleString()}\n`;
-      description += `:projected: ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
-      description += `:attacksLeft: ${200 - clan.attacksUsedToday}\n`;
-      description += `:average: ${clan.average.toFixed(2)}\n\n`;
+
+      // Show completion flag if boat is completed (10k+ fame)
+      if (clan.isBoatCompleted) {
+        description += `🏁\n\n`;
+      } else {
+        // Normal stats
+        description += `:fame: ${clan.fame.toLocaleString()}\n`;
+        description += `:projected: ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
+        description += `:attacksLeft: ${200 - clan.attacksUsedToday}\n`;
+        description += `:average: ${clan.average.toFixed(2)}\n\n`;
+      }
     });
   } else if (stats.type === 'colosseum') {
     embed.setTitle('Colosseum');

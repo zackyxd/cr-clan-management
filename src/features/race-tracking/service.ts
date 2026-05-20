@@ -83,6 +83,9 @@ export async function getRaceAttacks(
     return null;
   }
 
+  // Check if boat is completed (10k+ fame)
+  const isBoatCompleted = raceData.clan.fame >= 10000;
+
   // Get cross-clan attack totals from DB
   const playertags = activeMembers.map((m) => m.tag);
 
@@ -144,6 +147,7 @@ export async function getRaceAttacks(
   }
 
   // Include ALL active members (those who haven't done 4 attacks OR split attacks across clans)
+  // OR if boat is completed, show who DID attack today
   const playersNeedingAttacks = activeMembers
     .map((member) => {
       const attackData = playerAttackMap.get(member.tag);
@@ -174,10 +178,27 @@ export async function getRaceAttacks(
         discordUserId: attackData?.discordId || undefined,
       };
     })
-    .filter((p) => p.attacksRemaining > 0 || p.isSplitAttacker || p.hasAttackedElsewhere); // Show if incomplete OR split attacker OR wrong clan
+    .filter((p) => {
+      // If boat is completed, show who DID attack today
+      if (isBoatCompleted) {
+        return p.attacksUsedToday > 0;
+      }
+      // Otherwise, show incomplete attacks or special cases
+      return p.attacksRemaining > 0 || p.isSplitAttacker || p.hasAttackedElsewhere;
+    });
 
   // Sort by attacks remaining (most needed first), then alphabetically by name
+  // For boat completion, sort by attacks used today (most attacks first)
   const participants = playersNeedingAttacks.sort((a, b) => {
+    if (isBoatCompleted) {
+      // Sort by attacks used today descending, then by name
+      if (b.attacksUsedToday !== a.attacksUsedToday) {
+        return b.attacksUsedToday - a.attacksUsedToday;
+      }
+      return a.playerName.localeCompare(b.playerName);
+    }
+
+    // Normal sorting
     if (b.attacksRemaining !== a.attacksRemaining) {
       return b.attacksRemaining - a.attacksRemaining;
     }
@@ -209,6 +230,7 @@ export async function getRaceAttacks(
     seasonId,
     warWeek,
     raceId: attacksQuery.rows[0].race_id,
+    isBoatCompleted,
   };
 }
 
@@ -303,6 +325,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
     const average = attacksUsedToday > 0 ? (clan.periodPoints ?? 0) / attacksUsedToday : 0;
     const projectedFameRaw = (clan.periodPoints ?? 0) + Math.round((200 - attacksUsedToday) * average);
     const projectedFame = Math.round(projectedFameRaw / 50) * 50;
+    const isBoatCompleted = clan.fame >= 10000; // Boat completed at 10k+ fame
 
     return {
       clantag: clan.tag,
@@ -313,6 +336,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
       attacksUsedToday,
       average,
       projectedFame,
+      isBoatCompleted,
     };
   });
 
@@ -320,7 +344,13 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
   const sortedByProjected = [...clansWithProjected].sort((a, b) => b.projectedFame - a.projectedFame);
 
   // Also sort by current fame for current rank
+  // Boat-completed clans (10k+) always come first
   const sortedByFame = [...clansWithProjected].sort((a, b) => {
+    // Boat completed clans always rank first
+    if (a.isBoatCompleted && !b.isBoatCompleted) return -1;
+    if (!a.isBoatCompleted && b.isBoatCompleted) return 1;
+
+    // If both completed or both not completed, sort by fame
     if (a.fame === b.fame) {
       return -1; // A comes first
     }
@@ -402,10 +432,11 @@ export async function createDaySnapshot(
         return false;
       }
 
-      // Group participants by attacks remaining (same as /attacks command)
+      // Group participants by attacks remaining (or attacks used if boat completed)
       const grouped = new Map<number, typeof attacksData.participants>();
       for (const p of attacksData.participants) {
-        const key = p.attacksRemaining;
+        // For boat completion, group by attacks used; otherwise by attacks remaining
+        const key = attacksData.isBoatCompleted ? p.attacksUsedToday : p.attacksRemaining;
         if (!grouped.has(key)) {
           grouped.set(key, []);
         }
@@ -414,9 +445,9 @@ export async function createDaySnapshot(
 
       // Build groups array for snapshot
       const groups = Array.from(grouped.entries())
-        .sort((a, b) => b[0] - a[0]) // Sort by attacks remaining descending
-        .map(([attacksRemaining, players]) => ({
-          attacksRemaining,
+        .sort((a, b) => b[0] - a[0]) // Sort descending (most attacks first)
+        .map(([value, players]) => ({
+          attacksRemaining: value, // Note: For boat completion, this is actually attacks used
           count: players.length,
           players: players
             .sort((a, b) => a.playerName.localeCompare(b.playerName))
@@ -459,6 +490,7 @@ export async function createDaySnapshot(
             raceDay: attacksData.raceDay,
             availableAttackers: attacksData.availableAttackers,
             totalAttacksRemaining: attacksData.totalAttacksRemaining,
+            isBoatCompleted: attacksData.isBoatCompleted,
             groups,
             legend,
           },

@@ -141,59 +141,97 @@ const command: Command = {
       .setAuthor({
         name: `Season ${seasonId ?? '---'} | Week ${week} | Day ${getDayForDisplay(day)}`,
       })
-      .setColor(BOTCOLOR);
-    // .setURL(`https://cwstats.com/clan/${fixedClantag.substring(1)}/race`);
+      .setColor(BOTCOLOR)
+      .setURL(`https://cwstats.com/clan/${fixedClantag.substring(1)}/race`);
 
     // Build description matching the original format
     const periodType = rawApiData?.periodType || 'warDay';
-    let description = `## ${periodTypeMap[periodType] || ''} Attacks\n`;
+    let description = '';
 
-    // Check if all attacks completed
-    if (embedData.attacks.totalAttacksRemaining === 0 || embedData.attacks.groups.length === 0) {
-      description += '✅ Everyone has completed their attacks!';
-      if (endTime) {
-        description += `\n\n-# War ends ~${getNextDayRelativeTimestamp(endTime)}`;
-      }
-      attacksEmbed.setDescription(description);
-    } else {
-      const lines: string[] = [];
+    // Handle boat completion differently - show who attacked
+    if (embedData.attacks.isBoatCompleted) {
+      description = `🏁\n`;
+      const totalPlayers = embedData.attacks.groups.reduce((sum: number, g: { count: number }) => sum + g.count, 0);
+      description += `**${totalPlayers} players attacked today**\n\n`;
 
-      // Format groups matching formatParticipantsList output
+      // Display groups (already sorted by attacks used)
       for (let i = 0; i < embedData.attacks.groups.length; i++) {
         const group = embedData.attacks.groups[i];
 
         // Add blank line between groups (if not first)
-        if (i > 0) lines.push('');
+        if (i > 0) description += '\n';
 
-        // Add group header
-        lines.push(
-          `__**${group.attacksRemaining} Attack${group.attacksRemaining !== 1 ? 's' : ''} (${group.count})**__`,
-        );
+        // For boat completion, attacksRemaining actually represents attacks used
+        description += `__**${group.attacksRemaining} Attack${group.attacksRemaining !== 1 ? 's' : ''} (${group.count})**__\n`;
 
         // Add each player
         for (const player of group.players) {
           const emojis = player.emojis.length > 0 ? ' ' + player.emojis.join(' ') : '';
-          lines.push(`* ${player.name}${emojis}`);
+          description += `${player.name}${emojis}\n`;
         }
       }
 
-      // Add summary line at the end (matching original format)
-      lines.push(
-        `\n:playersLeft: ${embedData.attacks.availableAttackers}\n:attacksLeft: ${embedData.attacks.totalAttacksRemaining}`,
+      // Calculate total attacks used (attacksRemaining field is actually attacks used for boat completion)
+      const totalAttacksUsed = embedData.attacks.groups.reduce(
+        (sum: number, g: { attacksRemaining: number; count: number }) => sum + g.attacksRemaining * g.count,
+        0,
       );
 
-      description += lines.join('\n');
+      // Add summary line showing who attacked (instead of who's remaining)
+      description += `\n:playersLeft: ${totalPlayers}\n:attacksLeft: ${totalAttacksUsed}`;
+    } else {
+      // Normal attacks remaining display
+      description = `## ${periodTypeMap[periodType] || ''} Attacks\n`;
 
-      if (endTime) {
-        description += `\n\n-# War ends ~${getNextDayRelativeTimestamp(endTime)}`;
+      // Check if all attacks completed
+      if (embedData.attacks.totalAttacksRemaining === 0 || embedData.attacks.groups.length === 0) {
+        description += '✅ Everyone has completed their attacks!';
+        if (endTime) {
+          description += `\n\n-# War ends ~${getNextDayRelativeTimestamp(endTime)}`;
+        }
+      } else {
+        const lines: string[] = [];
+
+        // Format groups matching formatParticipantsList output
+        for (let i = 0; i < embedData.attacks.groups.length; i++) {
+          const group = embedData.attacks.groups[i];
+
+          // Add blank line between groups (if not first)
+          if (i > 0) lines.push('');
+
+          // Add group header
+          lines.push(
+            `__**${group.attacksRemaining} Attack${group.attacksRemaining !== 1 ? 's' : ''} (${group.count})**__`,
+          );
+
+          // Add each player
+          for (const player of group.players) {
+            const emojis = player.emojis.length > 0 ? ' ' + player.emojis.join(' ') : '';
+            lines.push(`${player.name}${emojis}`);
+          }
+        }
+
+        // Add summary line at the end (matching original format)
+        lines.push(
+          `\n:playersLeft: ${embedData.attacks.availableAttackers}\n:attacksLeft: ${embedData.attacks.totalAttacksRemaining}`,
+        );
+
+        description += lines.join('\n');
+
+        if (endTime) {
+          description += `\n\n-# War ends ~${getNextDayRelativeTimestamp(endTime)}`;
+        }
       }
+    }
 
-      attacksEmbed.setDescription(description);
+    attacksEmbed.setDescription(description);
 
-      // Add legend footer if present
-      if (embedData.attacks.legend && embedData.attacks.legend.length > 0) {
-        attacksEmbed.setFooter({ text: embedData.attacks.legend.join('\n') + '\n (Old Snapshot, not current data.)' });
-      }
+    // Add footer
+    if (!embedData.attacks.isBoatCompleted && embedData.attacks.legend && embedData.attacks.legend.length > 0) {
+      const footer = embedData.attacks.legend.join('\n') + '\n-# (Snapshot from end of day)';
+      attacksEmbed.setFooter({ text: footer });
+    } else {
+      attacksEmbed.setFooter({ text: '-# (Snapshot from end of day)' });
     }
 
     await interaction.editReply({
