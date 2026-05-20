@@ -266,7 +266,7 @@ const command: Command = {
       const footer = embedData.attacks.legend.join('\n') + '\n-# (Snapshot from end of day)';
       attacksEmbed.setFooter({ text: footer });
     } else {
-      attacksEmbed.setFooter({ text: '-# (Snapshot from end of day)' });
+      attacksEmbed.setFooter({ text: '(Snapshot from end of day)' });
     }
 
     await interaction.editReply({
