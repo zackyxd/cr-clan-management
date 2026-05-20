@@ -109,7 +109,7 @@ const command: Command = {
       SELECT snapshot_data
       FROM race_day_snapshots rds
       JOIN river_races rr ON rds.race_id = rr.race_id
-      WHERE rds.guild_id = $1 AND rr.clantag = $2 AND rr.season_id = $3 AND rr.current_week = $4 AND rr.current_day = $5
+      WHERE rds.guild_id = $1 AND rr.clantag = $2 AND rr.season_id = $3 AND rr.current_week = $4 AND rds.race_day = $5
       ORDER BY rds.snapshot_time DESC
       LIMIT 1
       `,
@@ -129,11 +129,38 @@ const command: Command = {
     // Reconstruct RaceStatsData from snapshot
     const raceStats: RaceStatsData = embedData.race as RaceStatsData;
 
+    // Fix boat completion detection and sorting for warDay snapshots
+    if (raceStats.type === 'warDay') {
+      // Detect boat completion based on boatPoints
+      for (const clan of raceStats.clans) {
+        clan.isBoatCompleted = clan.boatPoints >= 10000;
+      }
+
+      // Re-sort: completed boats first, then by fame descending
+      raceStats.clans.sort((a, b) => {
+        // Completed boats always come first
+        if (a.isBoatCompleted && !b.isBoatCompleted) return -1;
+        if (!a.isBoatCompleted && b.isBoatCompleted) return 1;
+
+        // Among completed boats or non-completed boats, sort by fame
+        return b.fame - a.fame;
+      });
+    }
+
     // Get endTime from rawApiData if available
     const endTime = rawApiData?.endTime ? new Date(rawApiData.endTime) : null;
 
     // Build race standings embed using existing builder
     const raceEmbed = buildRaceEmbed(raceStats, fixedClantag, seasonId, week!, day, endTime);
+
+    // Detect boat completion for attacks embed (in case older snapshots don't have the flag)
+    let isBoatCompleted = embedData.attacks.isBoatCompleted;
+    if (!isBoatCompleted && raceStats.type === 'warDay') {
+      const ourClan = raceStats.clans.find((c) => c.clantag === fixedClantag);
+      if (ourClan && ourClan.boatPoints >= 10000) {
+        isBoatCompleted = true;
+      }
+    }
 
     // Build attacks embed from snapshot data - matching exact format of buildAttacksEmbed
     const attacksEmbed = new EmbedBuilder()
@@ -149,36 +176,44 @@ const command: Command = {
     let description = '';
 
     // Handle boat completion differently - show who attacked
-    if (embedData.attacks.isBoatCompleted) {
+    if (isBoatCompleted) {
       description = `🏁\n`;
-      const totalPlayers = embedData.attacks.groups.reduce((sum: number, g: { count: number }) => sum + g.count, 0);
-      description += `**${totalPlayers} players attacked today**\n\n`;
 
-      // Display groups (already sorted by attacks used)
-      for (let i = 0; i < embedData.attacks.groups.length; i++) {
-        const group = embedData.attacks.groups[i];
+      // Check if we have groups data
+      if (!embedData.attacks.groups || embedData.attacks.groups.length === 0) {
+        // Fallback if groups is empty
+        description += `**Boat completed!**\n\n`;
+        description += `_No detailed attack data available in this snapshot._`;
+      } else {
+        const totalPlayers = embedData.attacks.groups.reduce((sum: number, g: { count: number }) => sum + g.count, 0);
+        description += `**${totalPlayers} players attacked today**\n\n`;
 
-        // Add blank line between groups (if not first)
-        if (i > 0) description += '\n';
+        // Display groups (already sorted by attacks used)
+        for (let i = 0; i < embedData.attacks.groups.length; i++) {
+          const group = embedData.attacks.groups[i];
 
-        // For boat completion, attacksRemaining actually represents attacks used
-        description += `__**${group.attacksRemaining} Attack${group.attacksRemaining !== 1 ? 's' : ''} (${group.count})**__\n`;
+          // Add blank line between groups (if not first)
+          if (i > 0) description += '\n';
 
-        // Add each player
-        for (const player of group.players) {
-          const emojis = player.emojis.length > 0 ? ' ' + player.emojis.join(' ') : '';
-          description += `${player.name}${emojis}\n`;
+          // For boat completion, attacksRemaining actually represents attacks used
+          description += `__**${group.attacksRemaining} Attack${group.attacksRemaining !== 1 ? 's' : ''} (${group.count})**__\n`;
+
+          // Add each player
+          for (const player of group.players) {
+            const emojis = player.emojis.length > 0 ? ' ' + player.emojis.join(' ') : '';
+            description += `${player.name}${emojis}\n`;
+          }
         }
+
+        // Calculate total attacks used (attacksRemaining field is actually attacks used for boat completion)
+        const totalAttacksUsed = embedData.attacks.groups.reduce(
+          (sum: number, g: { attacksRemaining: number; count: number }) => sum + g.attacksRemaining * g.count,
+          0,
+        );
+
+        // Add summary line showing who attacked (instead of who's remaining)
+        description += `\n:playersLeft: ${totalPlayers}\n:attacksLeft: ${totalAttacksUsed}`;
       }
-
-      // Calculate total attacks used (attacksRemaining field is actually attacks used for boat completion)
-      const totalAttacksUsed = embedData.attacks.groups.reduce(
-        (sum: number, g: { attacksRemaining: number; count: number }) => sum + g.attacksRemaining * g.count,
-        0,
-      );
-
-      // Add summary line showing who attacked (instead of who's remaining)
-      description += `\n:playersLeft: ${totalPlayers}\n:attacksLeft: ${totalAttacksUsed}`;
     } else {
       // Normal attacks remaining display
       description = `## ${periodTypeMap[periodType] || ''} Attacks\n`;
