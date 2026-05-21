@@ -400,6 +400,7 @@ export class NudgeTrackingScheduler {
       // Send the nudge!
       await NudgeTrackingScheduler.sendNudge(this.client, clan, false, matchingNudgeIndex + 1, totalNudges);
     } catch (error) {
+      // TODO fix error here. Throw from sendNudge comes here on training day?
       logger.error(`Error processing nudge for clan ${clan.clantag}:`, error);
     }
   }
@@ -577,7 +578,6 @@ export class NudgeTrackingScheduler {
       const currentWeek = updateResult.warWeek;
       const currentDay = updateResult.warDay;
 
-      // TODO uncomment when not testing
       // Check if it's training day after getting fresh race data
       if (raceData.periodType === 'training') {
         throw {

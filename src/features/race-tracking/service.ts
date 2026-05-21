@@ -13,6 +13,8 @@ import { Client, EmbedBuilder, TextChannel } from 'discord.js';
 import { buildAttacksEmbed, buildRaceEmbed } from './embedBuilders.js';
 import { resetCustomNudgeMessageOnNewDay } from './nudgeHelper.js';
 import { BOTCOLOR, EmbedColor } from '../../types/EmbedUtil.js';
+import { getEmoji, hasEmoji } from '../../utils/emoji.js';
+import logger from '../../logger.js';
 
 // In-memory cache to prevent concurrent updates to the same race
 const ongoingRaceUpdates = new Map<string, Promise<RaceUpdateResult | null>>();
@@ -33,6 +35,33 @@ export const periodTypeMap: { [key: string]: string } = {
   warDay: 'War Day',
   colosseum: 'Colosseum',
 };
+
+/**
+ * Get badge emoji with optional suffix fallback.
+ * If suffix is provided, tries badgeId_suffix first, then falls back to badgeId.
+ *
+ * @param badgeId - Badge ID number from Clash Royale API
+ * @param suffix - Optional suffix (e.g., '4k', '5k')
+ * @returns Formatted emoji string
+ *
+ * @example
+ * ```ts
+ * getBadgeEmoji(16000001, '5k'); // Tries '16000001_5k', falls back to '16000001'
+ * getBadgeEmoji(16000001);        // Returns '16000001' emoji
+ * ```
+ */
+function getBadgeEmoji(badgeId: number, suffix?: string): string {
+  const badgeIdStr = badgeId.toString();
+
+  if (suffix) {
+    const withSuffix = `${badgeIdStr}_${suffix}`;
+    if (hasEmoji(withSuffix)) {
+      return getEmoji(withSuffix);
+    }
+  }
+
+  return getEmoji(badgeIdStr);
+}
 
 /**
  * Convert internal day number to display-friendly number.
@@ -264,13 +293,23 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
       type: 'training',
       day: getWarDay(data),
       week: getWarWeek(data),
-      clans: sorted.map((clan) => ({
-        clantag: clan.tag,
-        name: clan.name,
-        fame: clan.fame,
-        attacksUsedToday: clan.participants.reduce((sum, p) => sum + p.decksUsedToday, 0),
-        participantCount: clan.participants.filter((p) => p.decksUsedToday > 0).length,
-      })),
+      clans: sorted.map((clan) => {
+        let scoreSuffix = '';
+        if (clan.clanScore >= 5000) {
+          scoreSuffix = '5k';
+        } else if (clan.clanScore >= 4000) {
+          scoreSuffix = '4k';
+        }
+
+        return {
+          clantag: clan.tag,
+          name: clan.name,
+          fame: clan.fame,
+          attacksUsedToday: clan.participants.reduce((sum, p) => sum + p.decksUsedToday, 0),
+          participantCount: clan.participants.filter((p) => p.decksUsedToday > 0).length,
+          badgeId: getBadgeEmoji(clan.badgeId, scoreSuffix || undefined),
+        };
+      }),
     };
   }
 
@@ -298,6 +337,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
         attacksUsedToday,
         coloAverage: average,
         projectedFame,
+        badgeId: getBadgeEmoji(clan.badgeId),
       };
     });
 
@@ -337,6 +377,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
       average,
       projectedFame,
       isBoatCompleted,
+      badgeId: getBadgeEmoji(clan.badgeId),
     };
   });
 
@@ -614,7 +655,11 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
   const existingRace = await pool.query(
     `SELECT race_id, current_day, current_data, end_time 
      FROM river_races 
-     WHERE clantag = $1 AND current_week = $2 AND (season_id = $3 OR season_id IS NULL)`,
+     WHERE clantag = $1 AND current_week = $2 
+     AND (
+       (season_id = $3 AND $3 IS NOT NULL) 
+       OR (season_id IS NULL AND $3 IS NULL)
+     )`,
     [clantag, warWeek, seasonId],
   );
 
@@ -993,7 +1038,6 @@ function getWarDay(raceData: CurrentRiverRace): number {
 function isNewWarDay(previousRaceData: CurrentRiverRace, newRaceData: CurrentRiverRace): boolean {
   // Compare newRaceData vs previousRaceData to detect if day changed
   // Consider: periodIndex changes, decksUsedToday resets, etc.
-  // console.log('Checking for new war day...');
 
   let oldAttacks = 0;
   let newAttacks = 0;
@@ -1004,16 +1048,37 @@ function isNewWarDay(previousRaceData: CurrentRiverRace, newRaceData: CurrentRiv
     newAttacks += clan.participants.reduce((sum, p) => sum + p.decksUsedToday, 0);
   }
 
+  const clantag = newRaceData.clan.tag;
+  const oldPeriod = previousRaceData.periodType;
+  const newPeriod = newRaceData.periodType;
+  const oldPeriodIndex = previousRaceData.periodIndex;
+  const newPeriodIndex = newRaceData.periodIndex;
+
   if (newAttacks - oldAttacks === 0) {
     // No change in attacks, check if periodIndex changed (handles edge case of no attacks for any clan)
     if (newRaceData.periodIndex !== previousRaceData.periodIndex) {
+      logger.info(
+        `[Rollover Detected - ${clantag}] Reason: periodIndex changed | ` +
+          `Old: ${oldPeriod} (index: ${oldPeriodIndex}, attacks: ${oldAttacks}) | ` +
+          `New: ${newPeriod} (index: ${newPeriodIndex}, attacks: ${newAttacks})`,
+      );
       return true;
     } else {
       return false;
     }
   }
 
-  return newAttacks < oldAttacks;
+  if (newAttacks < oldAttacks) {
+    logger.info(
+      `[Rollover Detected - ${clantag}] Reason: attacks reset | ` +
+        `Old: ${oldPeriod} (index: ${oldPeriodIndex}, attacks: ${oldAttacks}) | ` +
+        `New: ${newPeriod} (index: ${newPeriodIndex}, attacks: ${newAttacks}) | ` +
+        `Delta: ${newAttacks - oldAttacks}`,
+    );
+    return true;
+  }
+
+  return false;
 }
 
 /**

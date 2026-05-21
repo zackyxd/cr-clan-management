@@ -1,6 +1,7 @@
 import { EmbedBuilder } from 'discord.js';
 import { Player } from './CR_API.js';
 import { BOTCOLOR } from '../types/EmbedUtil.js';
+import { getEmoji } from '../utils/emoji.js';
 type BadgeEmoji = {
   name: string;
   id: string;
@@ -49,6 +50,9 @@ const ROLE_DISPLAY: Record<string, string> = {
   elder: '(Elder)',
   member: '(Member)',
 };
+
+let MAX_HEROES = 13;
+let MAX_EVOLUTIONS = 40;
 
 // const formattedRole = ROLE_DISPLAY[rawRole] ?? '(Unknown)';
 
@@ -124,6 +128,7 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
   let level14 = 0;
   let level13 = 0;
   let evolutions = 0;
+  let heroes = 0;
 
   for (const card of data.cards) {
     const checkCardLevel = checkLevel(card.level, card.rarity);
@@ -139,48 +144,61 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
     if (card?.evolutionLevel === 1) {
       evolutions++;
     }
+    if (card?.evolutionLevel === 3) {
+      heroes++;
+      evolutions++;
+    }
   }
+  if (evolutions > MAX_EVOLUTIONS) MAX_EVOLUTIONS = evolutions;
+  if (heroes > MAX_HEROES) MAX_HEROES = heroes;
 
-  const badgeEmoji = rawBadgeData[badgeId] ? `<:${rawBadgeData[badgeId].name}:${rawBadgeData[badgeId].id}>` : '';
+  const badgeEmoji = getEmoji(badgeId) || '';
   const description = `${badgeEmoji} ${clanName} ${role}\n`;
 
-  let pathOfLegendsDescription: string = '__**Path of Legends**__\n';
+  let pathOfLegendsDescription: string = '__**Ranked**__\n';
   if (currentPOLLeague || lastPOLLeague || bestPOLLeague) {
     if (currentPOLLeague === 7) {
-      pathOfLegendsDescription += `Current: ${EMOJIS.polMedal} ${currentPOLTrophies}\n`;
+      pathOfLegendsDescription += `Current: ${getEmoji('polMedal')} ${currentPOLTrophies}\n`;
     } else {
-      pathOfLegendsDescription += `Current: ${EMOJIS.polMedal}---\n`;
+      pathOfLegendsDescription += `Current: ${getEmoji('polMedal')}---\n`;
     }
 
     if (lastPOLLeague && lastPOLLeague >= 7) {
-      pathOfLegendsDescription += `Last: ${EMOJIS.polMedal} ${lastPOLTrophies} ${
+      pathOfLegendsDescription += `Last: ${getEmoji('polMedal')} ${lastPOLTrophies} ${
         lastPOLRank ? `(#${lastPOLRank})` : ''
       }\n`;
     }
 
     if (bestPOLLeague && bestPOLLeague === 10) {
-      pathOfLegendsDescription += `Best: ${EMOJIS.polMedal} ${bestPOLTrophies} ${
+      pathOfLegendsDescription += `Best: ${getEmoji('polMedal')} ${bestPOLTrophies} ${
         bestPOLRank ? `(#${bestPOLRank})\n` : ''
       }`;
     }
   }
 
-  let cardLevelDescription = `__**Card Levels**__ ${EMOJIS.cards}\n`;
-  cardLevelDescription += `${EMOJIS.evolution}: ${evolutions}\n${EMOJIS.level15}: ${level15}\n${EMOJIS.level14}: ${level14}\n${EMOJIS.level13}: ${level13}`;
+  let trophyRoadDescription: string = '__**Trophy Road**__\n';
+  if (data.trophies) {
+    trophyRoadDescription += `${getEmoji('trophyRoad')} ${data.trophies}\n`;
+  }
 
-  const combinedDescription = [description, pathOfLegendsDescription, cardLevelDescription].join('\n');
+  let cardLevelDescription = `__**Card Levels**__ ${getEmoji('cards')}\n`;
+  cardLevelDescription += `${getEmoji('heroes')}: ${heroes}\n${getEmoji('evolutions')}: ${evolutions}\n${getEmoji('level15')}: ${level15}\n${getEmoji('level14')}: ${level14}\n${getEmoji('level13')}: ${level13}`;
+
+  const combinedDescription = [description, pathOfLegendsDescription, trophyRoadDescription, cardLevelDescription].join(
+    '\n',
+  );
   return new EmbedBuilder()
     .setTitle(`${playerName} ${expLevelIcon}`)
     .setThumbnail(LEAGUEIMAGE)
     .setURL(`https://royaleapi.com/player/${playertag.substring(1)}`)
     .setColor(BOTCOLOR)
     .addFields(
-      { name: `__CW2 Wins__ ${EMOJIS.clanWar}`, value: `${clanWarWins}`, inline: true },
-      { name: `__CC Wins__ ${EMOJIS.classic}`, value: `${classicWins}`, inline: true },
-      { name: `__GC Wins__ ${EMOJIS.grand}`, value: `${grandWins}`, inline: true },
+      { name: `__CW2 Wins__ ${getEmoji('clanWar')}`, value: `${clanWarWins}`, inline: true },
+      { name: `__CC Wins__ ${getEmoji('classicChallenge')}`, value: `${classicWins}`, inline: true },
+      { name: `__GC Wins__ ${getEmoji('grandChallenge')}`, value: `${grandWins}`, inline: true },
       {
         name: `\t`,
-        value: `\u200B${EMOJIS.outside} [Ingame profile](<https://link.clashroyale.com/en/?playerInfo?id=${playertag}>)`,
+        value: `\u200B${getEmoji('outside')} [Ingame profile](<https://link.clashroyale.com/en/?playerInfo?id=${playertag}>)`,
         inline: false,
       },
     )

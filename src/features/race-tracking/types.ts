@@ -175,6 +175,7 @@ interface TrainingStatsData {
     fame: number;
     participantCount: number;
     attacksUsedToday: number;
+    badgeId: string;
   }>;
 }
 
@@ -194,6 +195,7 @@ interface WarDayStatsData {
     projectedRank: string;
     average: number;
     isBoatCompleted: boolean; // True if boatPoints >= 10000 (finished first)
+    badgeId: string;
   }>;
 }
 
@@ -212,6 +214,7 @@ interface ColosseumStatsData {
     coloAverage: number;
     projectedFame: number;
     projectedRank: string;
+    badgeId: string;
   }>;
 }
 

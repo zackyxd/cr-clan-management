@@ -312,7 +312,7 @@ const RiverRaceClanSchema = z.object({
   fame: z.number(),
   repairPoints: z.number(),
   periodPoints: z.number().optional(), // Sometimes only present for clan
-  clanScore: z.number().optional(), // Sometimes only present for clan
+  clanScore: z.number(), // Sometimes only present for clan
   participants: z.array(RiverRaceParticipantSchema),
 });
 

@@ -11,6 +11,7 @@ import { InviteScheduler } from './features/clan-invites/scheduler.js';
 import { NudgeTrackingScheduler } from './features/race-tracking/nudgeScheduler.js';
 import { AttacksTrackingScheduler } from './features/race-tracking/attacksScheduler.js';
 import { setDiscordClient } from './features/race-tracking/service.js';
+import { EmojiManager } from './services/EmojiManager.js';
 
 // import { isDev, isProd } from './utils/env.js';
 
@@ -76,6 +77,14 @@ client.once(Events.ClientReady, async (c) => {
 
   // Set Discord client for race tracking service
   setDiscordClient(c);
+
+  // Initialize emoji manager
+  try {
+    await EmojiManager.initialize(c);
+  } catch (error) {
+    logger.error('Failed to initialize EmojiManager:', error);
+    // Don't exit - bot can run without emojis, they'll just show as :name:
+  }
 
   const dbClient = await pool.connect();
   try {
