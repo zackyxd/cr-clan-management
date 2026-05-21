@@ -2,8 +2,8 @@ module.exports = {
   apps: [
     {
       name: 'bot-dev',
-      script: 'npx',
-      args: 'tsx src/bot.ts',
+      script: 'npm',
+      args: 'run .',
       env_file: '.env.dev',
       instances: 1,
       autorestart: true,
