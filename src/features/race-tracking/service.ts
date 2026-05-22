@@ -329,6 +329,12 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
       const projectedFameRaw =
         clan.fame + Math.round(200 * (4 - warDay) * average) + Math.round((200 - attacksUsedToday) * average);
       const projectedFame = Math.round(projectedFameRaw / 50) * 50;
+      let scoreSuffix = '';
+      if (clan.clanScore >= 5000) {
+        scoreSuffix = '5k';
+      } else if (clan.clanScore >= 4000) {
+        scoreSuffix = '4k';
+      }
       return {
         clantag: clan.tag,
         name: clan.name,
@@ -337,7 +343,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
         attacksUsedToday,
         coloAverage: average,
         projectedFame,
-        badgeId: getBadgeEmoji(clan.badgeId),
+        badgeId: getBadgeEmoji(clan.badgeId, scoreSuffix || undefined),
       };
     });
 
@@ -366,7 +372,12 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
     const projectedFameRaw = (clan.periodPoints ?? 0) + Math.round((200 - attacksUsedToday) * average);
     const projectedFame = Math.round(projectedFameRaw / 50) * 50;
     const isBoatCompleted = clan.fame >= 10000; // Boat completed at 10k+ fame
-
+    let scoreSuffix = '';
+    if (clan.clanScore >= 5000) {
+      scoreSuffix = '5k';
+    } else if (clan.clanScore >= 4000) {
+      scoreSuffix = '4k';
+    }
     return {
       clantag: clan.tag,
       name: clan.name,
@@ -377,7 +388,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
       average,
       projectedFame,
       isBoatCompleted,
-      badgeId: getBadgeEmoji(clan.badgeId),
+      badgeId: getBadgeEmoji(clan.badgeId, scoreSuffix || undefined),
     };
   });
 
