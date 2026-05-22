@@ -71,7 +71,8 @@ export async function buildAttacksEmbed(
     const playersWhoAttacked = enrichedParticipants.length;
 
     // Add summary line showing who attacked (instead of who's remaining)
-    description += `\n:playersLeft: ${playersWhoAttacked}\n:attacksLeft: ${totalAttacksUsed}`;
+
+    description += `\n${getEmoji('playersRemaining')} ${playersWhoAttacked}\n${getEmoji('decksLeft')} ${totalAttacksUsed}`;
   } else {
     // Normal attacks remaining display
     const lines = formatParticipantsList(

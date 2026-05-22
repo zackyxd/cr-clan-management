@@ -57,6 +57,8 @@ const EMOJI_SERVERS: string[] = [
   '1506845711306723368', // Badge ID 3 5k
   '1506845284271915049', // Badge ID 4 5k
   '1399745982261891092', // MISC emojis,
+  '1507127446963748907', // EXP 1-99
+  '1507127699871891529', // EXP 1-99
 ];
 
 class EmojiManagerClass {

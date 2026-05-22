@@ -1,6 +1,7 @@
 import { Guild } from 'discord.js';
 import { pool } from '../../db.js';
 import type { ParticipantWithAttacks } from './types.js';
+import { getEmoji } from '../../utils/emoji.js';
 
 export interface FormattedParticipant extends ParticipantWithAttacks {
   hasChannelAccess?: boolean;
@@ -247,8 +248,7 @@ export function formatParticipantsList(
     lines.push(formatParticipantLine(participant, options));
   }
 
-  // TODO emojis
-  lines.push(`\n:playersLeft: ${playersRemaining}\n:attacksLeft: ${attacksLeft}`);
+  lines.push(`\n${getEmoji('playersRemaining')} ${playersRemaining}\n${getEmoji('decksLeft')} ${attacksLeft}`);
 
   return lines;
 }

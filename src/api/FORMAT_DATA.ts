@@ -124,22 +124,22 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
     }
   }
 
+  let level16 = 0;
   let level15 = 0;
   let level14 = 0;
-  let level13 = 0;
   let evolutions = 0;
   let heroes = 0;
 
   for (const card of data.cards) {
     const checkCardLevel = checkLevel(card.level, card.rarity);
+    if (checkCardLevel === 16) {
+      level16++;
+    }
     if (checkCardLevel === 15) {
       level15++;
     }
     if (checkCardLevel === 14) {
       level14++;
-    }
-    if (checkCardLevel === 13) {
-      level13++;
     }
     if (card?.evolutionLevel === 1) {
       evolutions++;
@@ -182,13 +182,13 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
   }
 
   let cardLevelDescription = `__**Card Levels**__ ${getEmoji('cards')}\n`;
-  cardLevelDescription += `${getEmoji('heroes')}: ${heroes}\n${getEmoji('evolutions')}: ${evolutions}\n${getEmoji('level15')}: ${level15}\n${getEmoji('level14')}: ${level14}\n${getEmoji('level13')}: ${level13}`;
+  cardLevelDescription += `${getEmoji('heroes')}: ${heroes}\n${getEmoji('evolutions')}: ${evolutions}\n${getEmoji('experience_16')}: ${level16}\n${getEmoji('experience_15')}: ${level15}\n${getEmoji('experience_14')}: ${level14}`;
 
   const combinedDescription = [description, pathOfLegendsDescription, trophyRoadDescription, cardLevelDescription].join(
     '\n',
   );
   return new EmbedBuilder()
-    .setTitle(`${playerName} ${expLevelIcon}`)
+    .setTitle(`${playerName} ${getEmoji(`experience_${expLevel}`)}`)
     .setThumbnail(LEAGUEIMAGE)
     .setURL(`https://royaleapi.com/player/${playertag.substring(1)}`)
     .setColor(BOTCOLOR)

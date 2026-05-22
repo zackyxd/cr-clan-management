@@ -40,7 +40,11 @@
     "clear-test-data": "NODE_ENV=dev npx tsx scripts/populate-test-data.ts --clear",
     "worker:dev": "NODE_ENV=dev npx tsx src/worker.ts",
     "worker:prod": "npm run clean && tsc && NODE_ENV=prod node dist/worker.js",
-    "test": "node --no-warnings --experimental-vm-modules $(npx --no-install which jest) --runInBand"
+    "test": "node --no-warnings --experimental-vm-modules $(npx --no-install which jest) --runInBand",
+    "generate-exp-emojis": "npx tsx one-off-scripts/generate-exp-emojis.ts",
+    "manage-exp-emojis": "npx tsx one-off-scripts/manage-exp-emojis.ts",
+    "delete-exp-emojis": "npx tsx one-off-scripts/manage-exp-emojis.ts --delete-only",
+    "upload-exp-emojis": "npx tsx one-off-scripts/manage-exp-emojis.ts --upload-only"
   },
   "keywords": [],
   "author": "",
@@ -67,6 +71,7 @@
     "axios": "^1.10.0",
     "axios-retry": "^4.5.0",
     "bottleneck": "^2.19.5",
+    "canvas": "^3.2.3",
     "discord.js": "^14.21.0",
     "dotenv": "^17.2.0",
     "dotenv-flow": "^4.1.0",
