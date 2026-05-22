@@ -173,7 +173,7 @@ export function buildRaceEmbed(
       } else {
         // Normal stats
         description += `${getEmoji('fame')} ${clan.fame.toLocaleString()}\n`;
-        description += `:clipboard: ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
+        description += `${getEmoji('projected')} ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
         description += `${getEmoji('decksLeft')} ${200 - clan.attacksUsedToday}\n`;
         description += `${getEmoji('average')} ${clan.average.toFixed(2)}\n\n`;
       }
@@ -190,7 +190,7 @@ export function buildRaceEmbed(
         description += `${index + 1}. ${clan.badgeId} **[${escapedName}](<https://www.cwstats.com/clan/${clantagForUrl}/log>)**\n`;
       }
       description += `${getEmoji('fame')} ${clan.fame.toLocaleString()}\n`;
-      description += `:clipboard: ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
+      description += `${getEmoji('projected')} ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
       description += `${getEmoji('decksLeft')} ${200 - clan.attacksUsedToday}\n`;
       description += `${getEmoji('coloAverage')} ${clan.coloAverage.toFixed(2)}\n\n`;
     });

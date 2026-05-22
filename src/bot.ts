@@ -10,6 +10,7 @@ import { pool } from './db.js';
 import { InviteScheduler } from './features/clan-invites/scheduler.js';
 import { NudgeTrackingScheduler } from './features/race-tracking/nudgeScheduler.js';
 import { AttacksTrackingScheduler } from './features/race-tracking/attacksScheduler.js';
+import { DailyResetScheduler } from './features/race-tracking/dailyResetScheduler.js';
 import { setDiscordClient } from './features/race-tracking/service.js';
 import { EmojiManager } from './services/EmojiManager.js';
 
@@ -110,6 +111,10 @@ client.once(Events.ClientReady, async (c) => {
   const attacksTrackingScheduler = new AttacksTrackingScheduler(c);
   nudgeTrackingScheduler.start();
   attacksTrackingScheduler.start();
+
+  // Start daily reset scheduler (resets user flags at 9:00 AM UTC daily)
+  const dailyResetScheduler = new DailyResetScheduler(c);
+  await dailyResetScheduler.start();
 });
 
 // NOTE: Old interaction handling moved to events/interactionCreate.ts with new feature-based dispatcher
