@@ -15,6 +15,7 @@ import { InvitesHandler } from './handlers/invites.js';
 import { NudgesHandler } from './handlers/nudges.js';
 import { ChannelsHandler } from './handlers/channels.js';
 import { RacePingsHandler } from './handlers/racePings.js';
+import { ClanLogsHandler } from './handlers/clanlogs.js';
 
 export class ClanSettingsInteractionRouter {
   /**
@@ -101,6 +102,10 @@ export class ClanSettingsInteractionRouter {
         await RacePingsHandler.showModal(interaction, settingsData);
         break;
 
+      case 'clan_logs':
+        await ClanLogsHandler.showModal(interaction, settingsData);
+        break;
+
       default:
         await interaction.reply({
           content: `Unknown modal type: ${action}`,
@@ -130,6 +135,10 @@ export class ClanSettingsInteractionRouter {
 
       case 'clanSettings_race_ping_settings':
         await RacePingsHandler.handleModal(interaction);
+        break;
+
+      case 'clanSettings_clan_logs_settings':
+        await ClanLogsHandler.handleModal(interaction);
         break;
 
       default:

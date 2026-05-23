@@ -45,6 +45,13 @@ export const CLAN_FEATURE_SETTINGS = [
     ],
   },
   {
+    key: 'clan_logs',
+    label: 'Clan Logs Settings',
+    buttonLabel: 'Clan Logs',
+    type: 'grouped_modal',
+    group: ['clan_logs_enabled', 'clan_logs_channel_id', 'clan_logs_manage_roles', 'clan_logs_add_role', 'clan_logs_remove_role'],
+  },
+  {
     key: 'ping_settings',
     label: 'Attack Late/Replace Pings',
     buttonLabel: 'Ping Settings',
@@ -95,7 +102,8 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
   const res = await pool.query(
     `SELECT family_clan, nudge_method, race_nudge_channel_id, race_custom_nudge_message, 
             race_nudge_start_hour, race_nudge_start_minute, race_nudge_interval_hours, race_nudge_hours_before_array,
-            eod_stats_enabled, staff_channel_id, invites_enabled, clan_role_id, abbreviation, ping_replace_me, ping_attacking_late, race_ping_channel_id, ping_replace_me_role_id
+            eod_stats_enabled, staff_channel_id, invites_enabled, clan_role_id, abbreviation, ping_replace_me, ping_attacking_late, race_ping_channel_id, ping_replace_me_role_id,
+            clan_logs_enabled, clan_logs_channel_id, clan_logs_manage_roles, clan_logs_add_role, clan_logs_remove_role
      FROM clans WHERE guild_id = $1 AND clantag = $2`,
     [guildId, clantag],
   );
@@ -124,6 +132,11 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
     ping_replace_me: dbRow.ping_replace_me || false,
     ping_replace_me_role_id: dbRow.ping_replace_me_role_id || '',
     race_ping_channel_id: dbRow.race_ping_channel_id || '',
+    clan_logs_enabled: dbRow.clan_logs_enabled || false,
+    clan_logs_channel_id: dbRow.clan_logs_channel_id || '',
+    clan_logs_manage_roles: dbRow.clan_logs_manage_roles || false,
+    clan_logs_add_role: dbRow.clan_logs_add_role || false,
+    clan_logs_remove_role: dbRow.clan_logs_remove_role || false,
   };
   const embed = new EmbedBuilder().setTitle(`Clan Settings: ${clanName}`).setColor(BOTCOLOR);
 
@@ -211,6 +224,28 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
         lines.push(` * Abbreviation: ${abbreviation ? `__${abbreviation}__` : '*Not set*'}`);
         lines.push(` * Clan Role: ${clanRoleId ? `<@&${clanRoleId}>` : '*Not set*'}`);
         lines.push(` * Staff Channel: ${staffChannelId ? `<#${staffChannelId}>` : '*Not set*'}`);
+
+        displayValue = '\n' + lines.join('\n');
+      } else if (settingConfig.key === 'clan_logs') {
+        const lines: string[] = [];
+        const clanLogsEnabled = settings['clan_logs_enabled'] ? '✅ Enabled' : '❌ Disabled';
+        const clanLogsChannelId = settings['clan_logs_channel_id']
+          ? `<#${settings['clan_logs_channel_id']}>` 
+          : '*Not set*';
+        const addRole = settings['clan_logs_add_role'];
+        const removeRole = settings['clan_logs_remove_role'];
+        const roleBehavior = 
+          addRole && removeRole 
+            ? 'Both Add & Remove' 
+            : addRole 
+              ? 'Add Only' 
+              : removeRole 
+                ? 'Remove Only' 
+                : 'Neither';
+        
+        lines.push(` * Status: ${clanLogsEnabled}`);
+        lines.push(` * Channel: ${clanLogsChannelId}`);
+        lines.push(` * Role Behavior: ${roleBehavior}`);
 
         displayValue = '\n' + lines.join('\n');
       } else if (settingConfig.key === 'ping_settings') {

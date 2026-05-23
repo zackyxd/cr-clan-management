@@ -50,7 +50,7 @@ export const periodTypeMap: { [key: string]: string } = {
  * getBadgeEmoji(16000001);        // Returns '16000001' emoji
  * ```
  */
-function getBadgeEmoji(badgeId: number, suffix?: string): string {
+export function getBadgeEmoji(badgeId: number, suffix?: string): string {
   const badgeIdStr = badgeId.toString();
 
   if (suffix) {
@@ -61,6 +61,33 @@ function getBadgeEmoji(badgeId: number, suffix?: string): string {
   }
 
   return getEmoji(badgeIdStr);
+}
+
+/**
+ * Get badge emoji with automatic suffix based on clan score.
+ * Determines suffix from score: 5000+ = '5k', 4000+ = '4k', else no suffix.
+ *
+ * @param badgeId - Badge ID number from Clash Royale API
+ * @param clanScore - Clan score/trophies
+ * @returns Formatted emoji string with appropriate suffix
+ *
+ * @example
+ * ```ts
+ * getClanBadgeEmoji(16000001, 5200); // Tries '16000001_5k', falls back to '16000001'
+ * getClanBadgeEmoji(16000001, 4500); // Tries '16000001_4k', falls back to '16000001'
+ * getClanBadgeEmoji(16000001, 3000); // Returns '16000001' emoji (no suffix)
+ * ```
+ */
+export function getClanBadgeEmoji(badgeId: number, clanScore: number): string {
+  let suffix: string | undefined;
+  
+  if (clanScore >= 5000) {
+    suffix = '5k';
+  } else if (clanScore >= 4000) {
+    suffix = '4k';
+  }
+  
+  return getBadgeEmoji(badgeId, suffix);
 }
 
 /**
@@ -293,23 +320,14 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
       type: 'training',
       day: getWarDay(data),
       week: getWarWeek(data),
-      clans: sorted.map((clan) => {
-        let scoreSuffix = '';
-        if (clan.clanScore >= 5000) {
-          scoreSuffix = '5k';
-        } else if (clan.clanScore >= 4000) {
-          scoreSuffix = '4k';
-        }
-
-        return {
-          clantag: clan.tag,
-          name: clan.name,
-          fame: clan.fame,
-          attacksUsedToday: clan.participants.reduce((sum, p) => sum + p.decksUsedToday, 0),
-          participantCount: clan.participants.filter((p) => p.decksUsedToday > 0).length,
-          badgeId: getBadgeEmoji(clan.badgeId, scoreSuffix || undefined),
-        };
-      }),
+      clans: sorted.map((clan) => ({
+        clantag: clan.tag,
+        name: clan.name,
+        fame: clan.fame,
+        attacksUsedToday: clan.participants.reduce((sum, p) => sum + p.decksUsedToday, 0),
+        participantCount: clan.participants.filter((p) => p.decksUsedToday > 0).length,
+        badgeId: getClanBadgeEmoji(clan.badgeId, clan.clanScore),
+      })),
     };
   }
 
@@ -329,12 +347,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
       const projectedFameRaw =
         clan.fame + Math.round(200 * (4 - warDay) * average) + Math.round((200 - attacksUsedToday) * average);
       const projectedFame = Math.round(projectedFameRaw / 50) * 50;
-      let scoreSuffix = '';
-      if (clan.clanScore >= 5000) {
-        scoreSuffix = '5k';
-      } else if (clan.clanScore >= 4000) {
-        scoreSuffix = '4k';
-      }
+
       return {
         clantag: clan.tag,
         name: clan.name,
@@ -343,7 +356,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
         attacksUsedToday,
         coloAverage: average,
         projectedFame,
-        badgeId: getBadgeEmoji(clan.badgeId, scoreSuffix || undefined),
+        badgeId: getClanBadgeEmoji(clan.badgeId, clan.clanScore),
       };
     });
 
@@ -372,12 +385,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
     const projectedFameRaw = (clan.periodPoints ?? 0) + Math.round((200 - attacksUsedToday) * average);
     const projectedFame = Math.round(projectedFameRaw / 50) * 50;
     const isBoatCompleted = clan.fame >= 10000; // Boat completed at 10k+ fame
-    let scoreSuffix = '';
-    if (clan.clanScore >= 5000) {
-      scoreSuffix = '5k';
-    } else if (clan.clanScore >= 4000) {
-      scoreSuffix = '4k';
-    }
+
     return {
       clantag: clan.tag,
       name: clan.name,
@@ -388,7 +396,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
       average,
       projectedFame,
       isBoatCompleted,
-      badgeId: getBadgeEmoji(clan.badgeId, scoreSuffix || undefined),
+      badgeId: getClanBadgeEmoji(clan.badgeId, clan.clanScore),
     };
   });
 

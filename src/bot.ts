@@ -13,6 +13,7 @@ import { AttacksTrackingScheduler } from './features/race-tracking/attacksSchedu
 import { DailyResetScheduler } from './features/race-tracking/dailyResetScheduler.js';
 import { setDiscordClient } from './features/race-tracking/service.js';
 import { EmojiManager } from './services/EmojiManager.js';
+import { startClanActivityScheduler } from './features/clan-logs/index.js';
 
 // import { isDev, isProd } from './utils/env.js';
 
@@ -115,6 +116,9 @@ client.once(Events.ClientReady, async (c) => {
   // Start daily reset scheduler (resets user flags at 9:00 AM UTC daily)
   const dailyResetScheduler = new DailyResetScheduler(c);
   await dailyResetScheduler.start();
+
+  // Start clan activity logs scheduler (checks for clan changes every ~3 minutes)
+  startClanActivityScheduler(c);
 });
 
 // NOTE: Old interaction handling moved to events/interactionCreate.ts with new feature-based dispatcher

@@ -212,13 +212,17 @@ const ClanSchema = z
     tag: z.string(),
     name: z.string(),
     description: z.string(),
+    badgeId: z.number(),
+    type: z.string(),
+    requiredTrophies: z.number(),
+    location: z.object({ name: z.string() }),
     members: z.number(),
     memberList: z.array(ClanMemberSchema),
     clanWarTrophies: z.number(),
   })
   .passthrough(); // Allow other clan properties
 
-type Clan = z.infer<typeof ClanSchema>;
+export type Clan = z.infer<typeof ClanSchema>;
 type ClanResult = Clan | FetchError;
 export async function getClan(clantag: string): Promise<ClanResult> {
   const normalizedTag = normalizeTag(clantag);
