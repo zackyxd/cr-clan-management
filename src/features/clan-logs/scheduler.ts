@@ -36,8 +36,6 @@ export function startClanActivityScheduler(client: Client): void {
       logger.error('[ClanActivityScheduler] Error in scheduled check:', error);
     }
   });
-
-  logger.info('[ClanActivityScheduler] Clan activity scheduler started (runs every minute)');
 }
 
 /**
@@ -53,7 +51,6 @@ async function checkClanActivityBatch(client: Client): Promise<void> {
     const result = await pool.query<ClanActivityData>(query);
 
     if (result.rows.length === 0) {
-      logger.debug('[ClanActivityScheduler] No clans to check this minute');
       return;
     }
 
@@ -63,7 +60,6 @@ async function checkClanActivityBatch(client: Client): Promise<void> {
 
       // Skip if already checking
       if (checkingClans.has(clanKey)) {
-        logger.debug(`[ClanActivityScheduler] Skipping ${clanData.clantag} (already checking)`);
         return;
       }
 
@@ -80,8 +76,6 @@ async function checkClanActivityBatch(client: Client): Promise<void> {
 
     // Wait for all checks to complete
     await Promise.all(checkPromises);
-
-    logger.debug(`[ClanActivityScheduler] Completed checking ${result.rows.length} clans`);
   } catch (error) {
     logger.error('[ClanActivityScheduler] Error checking clan batch:', error);
   }

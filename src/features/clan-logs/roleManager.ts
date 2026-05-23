@@ -20,15 +20,17 @@ import logger from '../../logger.js';
  * @param changes - Detected clan changes
  * @param addRole - Whether to add role on join
  * @param removeRole - Whether to remove role on leave
+ * @param requiredRoleId - Guild-wide required role before users can receive clan roles
  */
 export async function handleRoleChanges(
   client: Client,
   guildId: string,
-  _clantag: string,
+  clantag: string,
   clanRoleId: string | null,
   changes: ClanChange[],
   addRole: boolean,
   removeRole: boolean,
+  requiredRoleId: string | null = null,
 ): Promise<void> {
   // Skip if role management is disabled or no role is set
   if (!clanRoleId || (!addRole && !removeRole)) {
@@ -55,7 +57,7 @@ export async function handleRoleChanges(
       const joins = changes.filter((c) => c.type === 'member_join');
       for (const change of joins) {
         if (change.playertag) {
-          await addRoleToLinkedMember(guild.id, change.playertag, role.id, client);
+          await addRoleToLinkedMember(guild.id, change.playertag, role.id, client, requiredRoleId);
         }
       }
     }
@@ -79,37 +81,44 @@ export async function handleRoleChanges(
  */
 async function addRoleToLinkedMember(
   guildId: string,
-  playerTag: string,
+  playertag: string,
   roleId: string,
   client: Client,
+  requiredRoleId: string | null = null,
 ): Promise<void> {
   try {
     // Find linked Discord user
-    const result = await pool.query(`SELECT discord_id FROM user_playertags WHERE playertag = $1`, [playerTag]);
+    const result = await pool.query(`SELECT discord_id FROM user_playertags WHERE playertag = $1`, [playertag]);
 
     if (result.rows.length === 0) {
-      logger.debug(`[ClanRoleManager] Player ${playerTag} is not linked to any Discord account`);
       return;
     }
 
     const discordId = result.rows[0].discord_id;
 
-    // Get guild and member
+    // Get guild and member (use cache first for speed)
     const guild = await client.guilds.fetch(guildId);
-    const member = await guild.members.fetch(discordId).catch(() => null);
+    let member = await guild.members.fetch(discordId).catch(() => null);
 
     if (!member) {
-      logger.debug(`[ClanRoleManager] Discord user ${discordId} is not in guild ${guildId}`);
       return;
+    }
+
+    // Check if user has required role (if configured)
+    if (requiredRoleId && !member.roles.cache.has(requiredRoleId)) {
+      // Cache says they don't have it, but they joined the clan - double check with fresh fetch
+      member = await guild.members.fetch({ user: discordId, force: true }).catch(() => null);
+      if (!member || !member.roles.cache.has(requiredRoleId)) {
+        return;
+      }
     }
 
     // Add role if not already present
     if (!member.roles.cache.has(roleId)) {
       await member.roles.add(roleId);
-      logger.info(`[ClanRoleManager] Added role ${roleId} to ${member.user.tag} (${playerTag})`);
     }
   } catch (error) {
-    logger.error(`[ClanRoleManager] Error adding role for player ${playerTag}:`, error);
+    logger.error(`[ClanRoleManager] Error adding role for player ${playertag}:`, error);
   }
 }
 
@@ -118,36 +127,33 @@ async function addRoleToLinkedMember(
  */
 async function removeRoleFromLinkedMember(
   guildId: string,
-  playerTag: string,
+  playertag: string,
   roleId: string,
   client: Client,
 ): Promise<void> {
   try {
     // Find linked Discord user
-    const result = await pool.query(`SELECT discord_id FROM user_playertags WHERE playertag = $1`, [playerTag]);
+    const result = await pool.query(`SELECT discord_id FROM user_playertags WHERE playertag = $1`, [playertag]);
 
     if (result.rows.length === 0) {
-      logger.debug(`[ClanRoleManager] Player ${playerTag} is not linked to any Discord account`);
       return;
     }
 
     const discordId = result.rows[0].discord_id;
 
-    // Get guild and member
+    // Get guild and member (cache is fine for removal)
     const guild = await client.guilds.fetch(guildId);
     const member = await guild.members.fetch(discordId).catch(() => null);
 
     if (!member) {
-      logger.debug(`[ClanRoleManager] Discord user ${discordId} is not in guild ${guildId}`);
       return;
     }
 
     // Remove role if present
     if (member.roles.cache.has(roleId)) {
       await member.roles.remove(roleId);
-      logger.info(`[ClanRoleManager] Removed role ${roleId} from ${member.user.tag} (${playerTag})`);
     }
   } catch (error) {
-    logger.error(`[ClanRoleManager] Error removing role for player ${playerTag}:`, error);
+    logger.error(`[ClanRoleManager] Error removing role for player ${playertag}:`, error);
   }
 }

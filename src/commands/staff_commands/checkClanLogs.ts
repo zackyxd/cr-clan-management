@@ -35,20 +35,22 @@ const command: Command = {
     // Query clan data
     const clanRes = await pool.query<ClanActivityData>(
       `SELECT 
-        guild_id,
-        clantag, 
-        clan_name,
-        clan_role_id,
-        clan_logs_enabled,
-        clan_logs_channel_id,
-        clan_logs_manage_roles,
-        clan_logs_add_role,
-        clan_logs_remove_role,
-        last_activity_snapshot,
-        last_activity_check_at
-       FROM clans
-       WHERE guild_id = $1 
-         AND (clantag = $2 OR LOWER(abbreviation) = LOWER($3))`,
+        c.guild_id,
+        c.clantag, 
+        c.clan_name,
+        c.clan_role_id,
+        c.clan_logs_enabled,
+        c.clan_logs_channel_id,
+        c.clan_logs_manage_roles,
+        c.clan_logs_add_role,
+        c.clan_logs_remove_role,
+        c.last_activity_snapshot,
+        c.last_activity_check_at,
+        s.clan_roles_required_role_id
+       FROM clans c
+       LEFT JOIN server_settings s ON c.guild_id = s.guild_id
+       WHERE c.guild_id = $1 
+         AND (c.clantag = $2 OR LOWER(c.abbreviation) = LOWER($3))`,
       [guild.id, normalizedTag, userInput],
     );
 

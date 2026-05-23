@@ -52,11 +52,8 @@ export async function checkClanActivity(client: Client, clanData: ClanActivityDa
         changes,
         clanData.clan_logs_add_role,
         clanData.clan_logs_remove_role,
+        clanData.clan_roles_required_role_id,
       );
-
-      logger.info(`[ClanActivityService] Processed ${changes.length} changes for clan ${clan_name} (${clantag})`);
-    } else {
-      logger.debug(`[ClanActivityService] No changes detected for clan ${clantag}`);
     }
 
     // Update snapshot in database
@@ -104,7 +101,6 @@ async function sendActivityLog(
             discordUserMap.set(row.playertag, user);
           } catch {
             // User might have left the guild or Discord, skip
-            logger.debug(`[ClanActivityService] Could not fetch Discord user ${row.discord_id}`);
           }
         }
       } catch (err) {
@@ -122,8 +118,6 @@ async function sendActivityLog(
       // Small delay to avoid rate limits
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-
-    logger.debug(`[ClanActivityService] Sent ${changes.length} activity log messages to channel ${channelId}`);
   } catch (error) {
     logger.error('[ClanActivityService] Error sending activity log:', error);
   }
@@ -135,9 +129,7 @@ async function sendActivityLog(
 async function updateSnapshot(guildId: string, clantag: string, snapshot: Clan): Promise<void> {
   try {
     const query = buildUpdateActivitySnapshot(guildId, clantag, snapshot, new Date());
-    logger.debug(`[ClanActivityService] Executing UPDATE query for clan ${clantag}`);
     const result = await pool.query(query);
-    logger.debug(`[ClanActivityService] Updated snapshot for clan ${clantag} - rows affected: ${result.rowCount}`);
 
     if (result.rowCount === 0) {
       logger.warn(

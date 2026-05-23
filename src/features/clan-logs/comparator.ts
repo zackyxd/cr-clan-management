@@ -33,7 +33,6 @@ export function detectClanChanges(oldSnapshot: Clan | null, newSnapshot: Clan): 
 
   // If no old snapshot exists, this is the first check - don't log all existing members
   if (!oldSnapshot) {
-    logger.debug(`[ClanComparator] First check for clan ${newSnapshot.tag}, skipping member enumeration`);
     return changes;
   }
 
@@ -53,8 +52,6 @@ export function detectClanChanges(oldSnapshot: Clan | null, newSnapshot: Clan): 
     // Detect clan property changes
     const propertyChanges = detectPropertyChanges(oldSnapshot, newSnapshot);
     changes.push(...propertyChanges);
-
-    logger.debug(`[ClanComparator] Detected ${changes.length} changes for clan ${newSnapshot.tag}`);
   } catch (error) {
     logger.error('[ClanComparator] Error detecting changes:', error);
   }

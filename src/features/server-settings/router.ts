@@ -27,7 +27,6 @@ export class ServerSettingsInteractionRouter {
    */
   static async handleButton(interaction: ButtonInteraction, parsed: ParsedCustomId): Promise<void> {
     const { action, extra, guildId } = parsed;
-    console.log(parsed);
 
     // Check if this is a modal button - if so, we need to skip defer
     const isModalAction = action === 'serverSettingOpenModal';
@@ -42,8 +41,6 @@ export class ServerSettingsInteractionRouter {
     // Extract cache key for more readable code
     const cacheKey = extra[0];
 
-    console.log('action:', action);
-    console.log('cacheKey:', cacheKey);
     switch (action) {
       case 'serverSettings':
         if (cacheKey) {
@@ -56,8 +53,6 @@ export class ServerSettingsInteractionRouter {
             });
             return;
           }
-
-          console.log(cacheData);
 
           // Check ownership
           if (cacheData.ownerId !== interaction.user.id) {
@@ -117,7 +112,6 @@ export class ServerSettingsInteractionRouter {
       case 'serverSettingOpenModal':
         if (cacheKey) {
           const cacheData = getServerSettingsData(cacheKey);
-          console.log(cacheData);
           if (!cacheData) {
             await interaction.editReply({ content: 'Settings data expired. Please try again.' });
             return;
@@ -185,7 +179,6 @@ export class ServerSettingsInteractionRouter {
 
   static async handleModal(interaction: ModalSubmitInteraction, parsed: ParsedCustomId): Promise<void> {
     const { action, extra, guildId } = parsed;
-    console.log('server setting modal router action', action);
 
     // Check permissions
     const allowed = await checkPerms(interaction, guildId, 'modal', 'higher', { skipDefer: true });
@@ -203,7 +196,6 @@ export class ServerSettingsInteractionRouter {
 
   static async handleSelectMenu(_interaction: StringSelectMenuInteraction, parsed: ParsedCustomId): Promise<void> {
     const { action } = parsed;
-    console.log('server setting select router action', action);
   }
 
   /**
@@ -339,7 +331,6 @@ export class ServerSettingsInteractionRouter {
     cacheData: ServerSettingsData,
   ): Promise<void> {
     const { settingKey, tableName, featureName } = cacheData;
-    console.log('cachedata:', cacheData);
     try {
       // Handle logs_channel_id - channel selector modal
       if (settingKey === 'logs_channel_id') {
@@ -479,6 +470,23 @@ export class ServerSettingsInteractionRouter {
               .setRoleSelectMenuComponent(new RoleSelectMenuBuilder().setCustomId('input').setMaxValues(1)),
           );
         return interaction.showModal(modal);
+      } else if (settingKey === 'clan_roles_required_role_id') {
+        const modal = new ModalBuilder()
+          .setTitle('Set Required Role for Clan Roles')
+          .setCustomId(
+            makeCustomId('m', `serverSetting_${settingKey}`, guildId, {
+              extra: [tableName || '', featureName || ''],
+            }),
+          )
+          .addLabelComponents(
+            new LabelBuilder()
+              .setLabel('Role Select')
+              .setDescription(
+                'Select the role required before users can receive clan roles. None if no role is required.',
+              )
+              .setRoleSelectMenuComponent(new RoleSelectMenuBuilder().setCustomId('input').setMaxValues(1)),
+          );
+        return interaction.showModal(modal);
       } else if (settingKey === '') {
         return;
       }
@@ -547,7 +555,6 @@ export class ServerSettingsInteractionRouter {
     cacheData: ServerSettingsData,
   ): Promise<void> {
     const { settingKey } = cacheData;
-    console.log('Custom action:', settingKey);
 
     switch (settingKey) {
       case 'delete_all_channels': {
@@ -702,7 +709,11 @@ export class ServerSettingsInteractionRouter {
     }
 
     // Handle role selection (for replace_me_role_id and attacking_late_role_id)
-    if (settingKey === 'replace_me_role_id' || settingKey === 'attacking_late_role_id') {
+    if (
+      settingKey === 'replace_me_role_id' ||
+      settingKey === 'attacking_late_role_id' ||
+      settingKey === 'clan_roles_required_role_id'
+    ) {
       const roleField = interaction.fields.getSelectedRoles('input');
       if (!roleField || roleField.size === 0) {
         await interaction.editReply({

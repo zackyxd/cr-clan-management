@@ -23,7 +23,6 @@ export class ClanSettingsInteractionRouter {
    */
   static async handleButton(interaction: ButtonInteraction, parsed: ParsedCustomId): Promise<void> {
     const { action, extra } = parsed;
-    console.log(action, extra);
     switch (action) {
       case 'clanSettings':
         await this.handleClanSettingsToggle(interaction, extra);

@@ -84,4 +84,5 @@ export interface ClanActivityData {
   clan_logs_remove_role: boolean;
   last_activity_snapshot: Clan | null;
   last_activity_check_at: Date | null;
+  clan_roles_required_role_id: string | null;
 }

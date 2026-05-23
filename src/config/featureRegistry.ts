@@ -89,6 +89,12 @@ export const FeatureRegistry: Record<string, Feature> = {
         description: 'The role used when players are attacking late for a war day',
         type: 'role',
       },
+      {
+        key: 'clan_roles_required_role_id',
+        label: 'Required Role for Clan Roles',
+        description: 'Role users must have before receiving clan roles (applies to all clans)',
+        type: 'role',
+      },
     ],
   },
   links: {
