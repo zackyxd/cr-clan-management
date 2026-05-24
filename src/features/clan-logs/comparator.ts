@@ -77,27 +77,6 @@ function detectMemberChanges(
   const oldMemberMap = new Map(oldMembers.map((m) => [m.tag, m]));
   const newMemberMap = new Map(newMembers.map((m) => [m.tag, m]));
 
-  // Detect new members (joins)
-  for (const newMember of newMembers) {
-    if (!oldMemberMap.has(newMember.tag)) {
-      const role = newMember.role || 'member';
-      changes.push({
-        type: 'member_join',
-        clanName,
-        clantag,
-        badgeId,
-        members,
-        clanScore,
-        playertag: newMember.tag,
-        playerName: newMember.name,
-        role: role,
-        arena: newMember.arena || { rawName: 'Arena_L1' },
-        trophies: newMember.trophies || 0,
-        newRole: role,
-      });
-    }
-  }
-
   // Detect removed members (leaves)
   for (const oldMember of oldMembers) {
     if (!newMemberMap.has(oldMember.tag)) {
@@ -115,6 +94,27 @@ function detectMemberChanges(
         arena: oldMember.arena || { rawName: 'Arena_L1' },
         trophies: oldMember.trophies || 0,
         oldRole: role,
+      });
+    }
+  }
+
+  // Detect new members (joins)
+  for (const newMember of newMembers) {
+    if (!oldMemberMap.has(newMember.tag)) {
+      const role = newMember.role || 'member';
+      changes.push({
+        type: 'member_join',
+        clanName,
+        clantag,
+        badgeId,
+        members,
+        clanScore,
+        playertag: newMember.tag,
+        playerName: newMember.name,
+        role: role,
+        arena: newMember.arena || { rawName: 'Arena_L1' },
+        trophies: newMember.trophies || 0,
+        newRole: role,
       });
     }
   }
