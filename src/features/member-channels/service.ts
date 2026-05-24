@@ -21,6 +21,7 @@ import type {
 import { SESSION_CLEANUP_INTERVAL_MINUTES, SESSION_EXPIRY_MINUTES } from '../../config/constants.js';
 import logger from '../../logger.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
+import { StatsTracker } from '../../services/statsTracker.js';
 
 /**
  * Service for managing member channel creation workflow
@@ -542,6 +543,9 @@ export class MemberChannelService {
         logger.error('Failed to log channel creation:', err),
       );
 
+      // Track statistics
+      StatsTracker.increment(session.guildId, 'total_member_channels_created').catch(() => {});
+
       this.sessions.delete(sessionId);
       return { success: true, channelId: channel.id };
     } catch (error) {
@@ -846,6 +850,9 @@ export class MemberChannelService {
     this.sendLog(client, guildId, '🗑️ Member Channel Deleted', description).catch((err) =>
       logger.error('Failed to log channel deletion:', err),
     );
+
+    // Track statistics
+    StatsTracker.increment(guildId, 'total_member_channels_deleted').catch(() => {});
   }
 
   /**

@@ -2,6 +2,7 @@ import { Collection, EmbedBuilder, Events, MessageFlags } from 'discord.js';
 import type { Interaction } from 'discord.js';
 import { Command } from '../types/Command.js';
 import { InteractionDispatcher } from '../infrastructure/handlers/interaction-dispatcher.js';
+import { StatsTracker } from '../services/statsTracker.js';
 
 // import buttonHandler from "../interactions/buttonHandler";
 // import modalHandler from "../interactions/modalHandler";
@@ -49,6 +50,10 @@ export const event = {
 
       try {
         await command.execute(interaction);
+        // Track command usage statistics
+        if (interaction.guildId) {
+          StatsTracker.increment(interaction.guildId, 'total_commands_used').catch(() => {});
+        }
       } catch (err: unknown) {
         console.error(`💥 Error in command "${interaction.commandName}":`, err);
 
@@ -85,6 +90,15 @@ export const event = {
       // NEW: Route all interactions through the feature-based dispatcher
       try {
         await InteractionDispatcher.dispatch(interaction);
+        
+        // Track interaction statistics
+        if (interaction.guildId) {
+          if (interaction.isButton()) {
+            StatsTracker.increment(interaction.guildId, 'total_buttons_clicked').catch(() => {});
+          } else if (interaction.isModalSubmit()) {
+            StatsTracker.increment(interaction.guildId, 'total_modals_submitted').catch(() => {});
+          }
+        }
       } catch (err: unknown) {
         console.error('💥 Error in interaction dispatcher:', err);
 

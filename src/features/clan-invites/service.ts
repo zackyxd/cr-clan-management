@@ -4,6 +4,7 @@ import type { InviteLink, InviteSourceType } from './types.js';
 import logger from '../../logger.js';
 import { createInviteEmbed } from './utils.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
+import { StatsTracker } from '../../services/statsTracker.js';
 
 export class ClanInviteService {
   /**
@@ -233,6 +234,9 @@ export class ClanInviteService {
 
     // Track the message
     await this.trackInviteMessage(invite.id, guildId, channelId, message.id, sourceType, sentByUserId);
+
+    // Track statistics
+    StatsTracker.increment(guildId, 'total_invite_messages_sent').catch(() => {});
 
     logger.info(`Sent invite for ${clantag} to channel ${channelId} in guild ${guildId}`);
 

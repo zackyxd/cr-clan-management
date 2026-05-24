@@ -12,6 +12,7 @@ import type {
   TicketData,
 } from './types.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
+import { StatsTracker } from '../../services/statsTracker.js';
 
 /**
  * Core service class for managing ticket functionality
@@ -342,6 +343,13 @@ export class TicketService {
       await dbClient.query('COMMIT');
 
       logger.info(`Closed ticket and auto-linked ${ticketData.playertags.length} accounts in guild ${guildId}`);
+      
+      // Track statistics (only if playertags were actually linked)
+      if (tagsToLink.length > 0) {
+        StatsTracker.increment(guildId, 'total_tickets_with_playertags_linked').catch(() => {});
+        StatsTracker.increment(guildId, 'total_playertags_linked_from_tickets', tagsToLink.length).catch(() => {});
+      }
+      
       await ticketService.sendLog(
         client,
         guildId,

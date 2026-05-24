@@ -1,6 +1,7 @@
 import { pool } from '../../db.js';
 import { DEFAULT_NUDGE_MESSAGE } from '../../config/constants.js';
 import logger from '../../logger.js';
+import { StatsTracker } from '../../services/statsTracker.js';
 import {
   NewsChannel,
   TextChannel,
@@ -107,6 +108,7 @@ export async function resetCustomNudgeMessageOnNewDay(client: Client, guildId: s
 }
 
 export async function trackNudge(
+  guildId: string,
   raceId: number,
   clantag: string,
   raceWeek: number,
@@ -141,6 +143,9 @@ export async function trackNudge(
     `,
     [raceId, messageId, clantag, raceWeek, raceDay, nudgeType, message, JSON.stringify(playersSnapshot)],
   );
+
+  // Track statistics
+  StatsTracker.increment(guildId, 'total_nudges_sent').catch(() => {});
 }
 
 /**

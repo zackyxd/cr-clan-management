@@ -598,6 +598,7 @@ export class NudgeTrackingScheduler {
 
         // Track as a nudge with no participants
         await trackNudge(
+          clan.guild_id,
           raceId,
           clan.clantag,
           currentWeek,
@@ -645,6 +646,7 @@ export class NudgeTrackingScheduler {
 
         // Track as a nudge with no participants
         await trackNudge(
+          clan.guild_id,
           raceId,
           clan.clantag,
           currentWeek,
@@ -665,6 +667,7 @@ export class NudgeTrackingScheduler {
 
       // Track nudge using existing helper
       await trackNudge(
+        clan.guild_id,
         raceId,
         clan.clantag,
         currentWeek,
