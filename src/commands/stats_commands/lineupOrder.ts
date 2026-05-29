@@ -64,7 +64,8 @@ function buildClanBlock(clanName: string, clanIndex: number, sheetId: number) {
 
   // Row (2 + LINEUP_DATA_ROWS): "Clan Avg" summary row
   // — col 4 (Cur. Clan) holds the label, col 5 (Fame / Atk.) is left blank for the value
-  values.push(['', '', '', '', 'Clan Avg', '', '']);
+  const clanAvgFormula = `=ROUND(AVERAGE(IFNA(${colToLetter(startCol + 5)}3:${colToLetter(startCol + 5)}${2 + LINEUP_DATA_ROWS}, "")), 2)`; // =ROUND(AVERAGE(IFNA(F3:F54, "")), 2)
+  values.push(['', '', '', '', 'Clan Avg', clanAvgFormula, '']);
 
   // --- Requests ---
   const requests: object[] = [];
@@ -151,9 +152,9 @@ function buildClanBlock(clanName: string, clanIndex: number, sheetId: number) {
         endColumnIndex: startCol + LINEUP_COLS_PER_CLAN,
       },
       cell: {
-        userEnteredFormat: { horizontalAlignment: 'CENTER' },
+        userEnteredFormat: { horizontalAlignment: 'CENTER', numberFormat: { type: 'TEXT' } },
       },
-      fields: 'userEnteredFormat(horizontalAlignment)',
+      fields: 'userEnteredFormat(horizontalAlignment,numberFormat)',
     },
   });
 
