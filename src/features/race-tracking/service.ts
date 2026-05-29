@@ -140,7 +140,8 @@ export async function getRaceAttacks(
   }
 
   // Check if boat is completed (10k+ fame)
-  const isBoatCompleted = raceData.clan.fame >= 10000 && periodTypeMap[raceData.periodType] !== 'Colosseum';
+  const isBoatCompleted = raceData.clan.fame >= 10000 && periodTypeMap[raceData.periodType] === 'War Day';
+
   // Get cross-clan attack totals from DB
   const playertags = activeMembers.map((m) => m.tag);
 
@@ -383,7 +384,7 @@ export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStats
     const average = attacksUsedToday > 0 ? (clan.periodPoints ?? 0) / attacksUsedToday : 0;
     const projectedFameRaw = (clan.periodPoints ?? 0) + Math.round((200 - attacksUsedToday) * average);
     const projectedFame = Math.round(projectedFameRaw / 50) * 50;
-    const isBoatCompleted = clan.fame >= 10000 && periodTypeMap[data.periodType] !== 'Colosseum'; // Boat completed at 10k+ fame and not colosseum
+    const isBoatCompleted = clan.fame >= 10000 && periodTypeMap[data.periodType] === 'War Day'; // Boat completed at 10k+ fame
 
     return {
       clantag: clan.tag,
