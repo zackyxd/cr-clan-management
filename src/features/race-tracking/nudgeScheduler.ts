@@ -399,9 +399,19 @@ export class NudgeTrackingScheduler {
 
       // Send the nudge!
       await NudgeTrackingScheduler.sendNudge(this.client, clan, false, matchingNudgeIndex + 1, totalNudges);
-    } catch (error) {
-      // TODO fix error here. Throw from sendNudge comes here on training day?
-      logger.error(`Error processing nudge for clan ${clan.clantag}:`, error);
+    } catch (error: any) {
+      // Training day errors are expected - silently skip
+      if (error?.name === 'training_day') {
+        logger.debug(`Skipping nudge for ${clan.clan_name} - training day`);
+        return;
+      }
+
+      // Log unexpected errors with full details
+      logger.error(`Error processing nudge for clan ${clan.clantag}:`, {
+        message: error?.message || 'Unknown error',
+        stack: error?.stack,
+        error,
+      });
     }
   }
 
