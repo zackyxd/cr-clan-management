@@ -65,7 +65,7 @@ function buildClanBlock(clanName: string, clanIndex: number, sheetId: number) {
   // Row (2 + LINEUP_DATA_ROWS): "Clan Avg" summary row
   // — col 4 (Cur. Clan) holds the label, col 5 (Fame / Atk.) is left blank for the value
   const clanAvgFormula = `=ROUND(AVERAGE(IFNA(${colToLetter(startCol + 5)}3:${colToLetter(startCol + 5)}${2 + LINEUP_DATA_ROWS}, "")), 2)`; // =ROUND(AVERAGE(IFNA(F3:F54, "")), 2)
-  values.push(['', '', '', '', 'Clan Avg', clanAvgFormula, '']);
+  values.push(['', 'Avg Wanted:', '', '', 'Clan Avg', clanAvgFormula, '']);
 
   // --- Requests ---
   const requests: object[] = [];
@@ -158,7 +158,27 @@ function buildClanBlock(clanName: string, clanIndex: number, sheetId: number) {
     },
   });
 
-  // 6. Format "Clan Avg" row — gray bg + bold on cols 4 (Cur. Clan) and 5 (Fame / Atk.)
+  // 6. Format the "Avg Wanted:" label in the summary row to be right-aligned and italic
+  requests.push({
+    repeatCell: {
+      range: {
+        sheetId,
+        startRowIndex: 2 + LINEUP_DATA_ROWS,
+        endRowIndex: 3 + LINEUP_DATA_ROWS,
+        startColumnIndex: startCol + 1,
+        endColumnIndex: startCol + 2, // includes the label and the 4 empty cells before the avg value
+      },
+      cell: {
+        userEnteredFormat: {
+          horizontalAlignment: 'RIGHT',
+          italic: true,
+        },
+      },
+      fields: 'userEnteredFormat(horizontalAlignment,italic)',
+    },
+  });
+
+  // 7. Format "Clan Avg" row — gray bg + bold on cols 4 (Cur. Clan) and 5 (Fame / Atk.)
   requests.push({
     repeatCell: {
       range: {
@@ -172,14 +192,15 @@ function buildClanBlock(clanName: string, clanIndex: number, sheetId: number) {
         userEnteredFormat: {
           backgroundColor: LINEUP_HEADER_BG,
           textFormat: { bold: true },
-          horizontalAlignment: 'CENTER',
+          horizontalAlignment: 'RIGHT',
+          italic: true,
         },
       },
-      fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
+      fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,italic)',
     },
   });
 
-  // 7. Column widths — all 7 cols including the gap separator
+  // 8. Column widths — all 7 cols including the gap separator
   for (let col = 0; col < LINEUP_BLOCK_WIDTH; col++) {
     requests.push({
       updateDimensionProperties: {
@@ -194,6 +215,66 @@ function buildClanBlock(clanName: string, clanIndex: number, sheetId: number) {
       },
     });
   }
+
+  // 9. Conditional format: Fame/Atk is -15 or more BELOW the clan average → light red
+  //
+  //  Formula breakdown (e.g. clan 0, F column, avg in F55):
+  //    F3           — the cell being evaluated; Sheets auto-adjusts this per row (F4, F5...)
+  //    F$55         — the clan avg cell; $ locks the row so it never shifts
+  //    F3<>""       — skip empty cells (<> means "not equal to", like != in JS)
+  //    F3<=F$55-15  — cell value is 15 or more below the average
+  //    AND(...)     — both conditions must be true
+  const avgWantedCol = colToLetter(startCol + 5);
+  const avgWantedRowRef = `${avgWantedCol}$${3 + LINEUP_DATA_ROWS}`; // e.g. F$55
+
+  requests.push({
+    addConditionalFormatRule: {
+      rule: {
+        ranges: [
+          {
+            sheetId,
+            startRowIndex: 2,
+            endRowIndex: 2 + LINEUP_DATA_ROWS,
+            startColumnIndex: startCol + 5,
+            endColumnIndex: startCol + 6,
+          },
+        ],
+        booleanRule: {
+          condition: {
+            type: 'CUSTOM_FORMULA',
+            values: [{ userEnteredValue: `=AND(${avgWantedCol}3<>"",${avgWantedCol}3<=${avgWantedRowRef}-15)` }],
+          },
+          format: { backgroundColor: { red: 0.96, green: 0.8, blue: 0.8 } }, // light red
+        },
+      },
+      index: 0,
+    },
+  });
+
+  // 10. Conditional format: Fame/Atk is +25 or more ABOVE the clan average → light green
+  requests.push({
+    addConditionalFormatRule: {
+      rule: {
+        ranges: [
+          {
+            sheetId,
+            startRowIndex: 2,
+            endRowIndex: 2 + LINEUP_DATA_ROWS,
+            startColumnIndex: startCol + 5,
+            endColumnIndex: startCol + 6,
+          },
+        ],
+        booleanRule: {
+          condition: {
+            type: 'CUSTOM_FORMULA',
+            values: [{ userEnteredValue: `=AND(${avgWantedCol}3<>"",${avgWantedCol}3>=${avgWantedRowRef}+25)` }],
+          },
+          format: { backgroundColor: { red: 0.85, green: 0.93, blue: 0.83 } }, // light green
+        },
+      },
+      index: 0,
+    },
+  });
 
   return { values, requests };
 }
@@ -293,6 +374,20 @@ const command: Command = {
       }
 
       const sheetId = sheet.properties.sheetId;
+
+      // Clear any existing conditional format rules on this sheet before adding new ones.
+      // Without this, re-running the command stacks duplicate rules on top of each other.
+      const existingRules = sheet.conditionalFormats ?? [];
+      if (existingRules.length > 0) {
+        // Delete from highest index down so earlier indices don't shift mid-request
+        const deleteRequests = existingRules
+          .map((_, index) => ({ deleteConditionalFormatRule: { sheetId, index } }))
+          .reverse();
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: { requests: deleteRequests },
+        });
+      }
 
       // Map each clan in order to its display name (abbreviation uppercased; l2w preserved)
       const resolvedOrder = clanOrder.map((input) => {
