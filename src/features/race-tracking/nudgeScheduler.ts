@@ -307,8 +307,13 @@ export class NudgeTrackingScheduler {
     try {
       // Verify we're in war day or colosseum (not training day)
       if (clan.race_state !== 'warDay' && clan.race_state !== 'colosseum') {
+        logger.debug(`Skipping ${clan.clan_name} - race_state is ${clan.race_state}`);
         return;
       }
+
+      logger.debug(
+        `Processing nudge check for ${clan.clan_name} at ${currentHour}:${currentMinute} UTC (race_state: ${clan.race_state})`,
+      );
 
       let matchingNudgeIndex = -1;
       let totalNudges = 0;
@@ -330,11 +335,17 @@ export class NudgeTrackingScheduler {
 
         if (matchingNudgeIndex === -1) {
           // Not time for a nudge yet
+          logger.debug(
+            `No matching nudge time for ${clan.clan_name} at ${currentHour}:${currentMinute} (interval mode, times: ${nudgeTimes.map((t) => `${t.hour}:${t.minute}`).join(', ')})`,
+          );
           return;
         }
 
         const matchingTime = nudgeTimes[matchingNudgeIndex];
         timeString = `${String(matchingTime.hour).padStart(2, '0')}:${String(matchingTime.minute).padStart(2, '0')}:00`;
+        logger.info(
+          `⏰ Matched nudge time for ${clan.clan_name}: ${timeString} (nudge ${matchingNudgeIndex + 1}/${totalNudges})`,
+        );
       } else if (clan.nudge_method === 'hours_before_end') {
         // Hours before end method: Check if current time matches X hours before 9am UTC
         const hoursBeforeArray = clan.race_nudge_hours_before_array!;
@@ -349,11 +360,17 @@ export class NudgeTrackingScheduler {
 
         if (matchingNudgeIndex === -1) {
           // Not time for a nudge yet
+          logger.debug(
+            `No matching nudge time for ${clan.clan_name} at ${currentHour}:${currentMinute} (hours_before_end mode, times: ${nudgeTimes.map((t) => `${t.hour}:${t.minute}`).join(', ')})`,
+          );
           return;
         }
 
         const matchingTime = nudgeTimes[matchingNudgeIndex];
         timeString = `${String(matchingTime.hour).padStart(2, '0')}:${String(matchingTime.minute).padStart(2, '0')}:00 (${matchingTime.hoursBefore}h before war end)`;
+        logger.info(
+          `⏰ Matched nudge time for ${clan.clan_name}: ${timeString} (nudge ${matchingNudgeIndex + 1}/${totalNudges})`,
+        );
       } else {
         // Unknown method
         logger.info(`❌ Unknown nudge method for ${clan.clan_name}: ${clan.nudge_method}`);
@@ -387,9 +404,9 @@ export class NudgeTrackingScheduler {
         const lastNudge = existingNudge.rows[0];
         const lastSent = lastNudge.nudge_time;
 
-        // logger.info(
-        //   `⏭️  Skipping automatic nudge for ${clan.clan_name} at ${timeString} UTC - nudge already sent at ${lastSent} (within ${DEDUPE_WINDOW_MINUTES}min window)`,
-        // );
+        logger.info(
+          `⏭️  Skipping automatic nudge for ${clan.clan_name} at ${timeString} UTC - nudge already sent at ${lastSent} (within ${DEDUPE_WINDOW_MINUTES}min window)`,
+        );
 
         // Notify staff channel if we're skipping due to recent manual nudge
         await this.notifySkippedNudge(clan, lastSent, timeString, 'recent');
@@ -397,20 +414,27 @@ export class NudgeTrackingScheduler {
         return;
       }
 
+      logger.info(`📤 Sending nudge for ${clan.clan_name} (nudge ${matchingNudgeIndex + 1}/${totalNudges})`);
       // Send the nudge!
       await NudgeTrackingScheduler.sendNudge(this.client, clan, false, matchingNudgeIndex + 1, totalNudges);
+      logger.info(`✅ Nudge sent successfully for ${clan.clan_name}`);
     } catch (error: any) {
-      // Training day errors are expected - silently skip
+      // Expected errors - silently skip
       if (error?.name === 'training_day') {
         logger.debug(`Skipping nudge for ${clan.clan_name} - training day`);
+        return;
+      }
+      if (error?.name === 'past_finish_line') {
+        logger.info(`✅ Skipping nudge for ${clan.clan_name} - boat completed (10k+ fame in War Day)`);
         return;
       }
 
       // Log unexpected errors with full details
       logger.error(`Error processing nudge for clan ${clan.clantag}:`, {
         message: error?.message || 'Unknown error',
+        name: error?.name,
         stack: error?.stack,
-        error,
+        fullError: error,
       });
     }
   }
@@ -482,6 +506,7 @@ export class NudgeTrackingScheduler {
     senderId?: string,
   ): Promise<void> {
     try {
+      logger.debug(`[sendNudge] Starting for ${clan.clan_name}`);
       // Calculate nudge times based on nudge method
       let nudgeTimes: Array<{ hour: number; minute: number; hoursBefore?: number }> | undefined;
 
@@ -507,14 +532,17 @@ export class NudgeTrackingScheduler {
       }
 
       // Fetch channel
+      logger.debug(`[sendNudge] Fetching channel ${clan.race_nudge_channel_id}`);
       const channel = await client.channels.fetch(clan.race_nudge_channel_id);
       if (!channel?.isTextBased() || !(channel instanceof TextChannel)) {
         logger.warn(`Nudge channel ${clan.race_nudge_channel_id} not found or not text-based`);
         return;
       }
+      logger.debug(`[sendNudge] Channel fetched successfully`);
 
       // Delete previous automatic nudge message if this is an automatic nudge
       if (!isManual) {
+        logger.debug(`[sendNudge] Checking for previous automatic nudge to delete`);
         try {
           const previousNudge = await pool.query<{ message_id: string }>(
             `
@@ -560,7 +588,7 @@ export class NudgeTrackingScheduler {
       }
 
       // Fetch guild
-      logger.debug(`Fetching guild with ID: ${clan.guild_id} (type: ${typeof clan.guild_id})`);
+      logger.debug(`[sendNudge] Fetching guild with ID: ${clan.guild_id} (type: ${typeof clan.guild_id})`);
       const guild = await client.guilds.fetch(clan.guild_id);
       if (!guild) {
         logger.warn(`Guild ${clan.guild_id} not found`);
@@ -573,14 +601,16 @@ export class NudgeTrackingScheduler {
         return;
       }
 
-      logger.debug(`Successfully fetched guild: ${guild.id} (${guild.name})`);
+      logger.debug(`[sendNudge] Successfully fetched guild: ${guild.id} (${guild.name})`);
 
       // Update race data from API before sending nudge
+      logger.debug(`[sendNudge] Updating race data from API for ${clan.clantag}`);
       const updateResult = await initializeOrUpdateRace(clan.clantag);
       if (!updateResult) {
         logger.warn(`Failed to update race data for ${clan.clantag}`);
         return;
       }
+      logger.debug(`[sendNudge] Race data updated successfully`);
 
       const raceData = updateResult.raceData;
       const seasonId = updateResult.seasonId;
@@ -594,17 +624,25 @@ export class NudgeTrackingScheduler {
           name: 'training_day',
           embed: new EmbedBuilder().setDescription('Today is a training day. No Nudges').setColor(EmbedColor.FAIL),
         };
-      } else if (raceData.clan.fame >= 10000 && periodTypeMap[raceData.periodType] === 'Colosseum') {
+      }
+
+      // Check if boat is completed (10k+ fame in War Day only)
+      // Note: In Colosseum, fame is cumulative and will always be >10k
+      if (raceData.clan.fame >= 10000 && periodTypeMap[raceData.periodType] === 'War Day') {
         throw {
           name: 'past_finish_line',
           embed: new EmbedBuilder()
-            .setDescription('This clan has already reached the finish line. No Nudges')
+            .setDescription('This clan has already completed the boat (10k+ fame). No Nudges')
             .setColor(EmbedColor.FAIL),
         };
       }
 
       // Use existing getRaceAttacks service that handles all the logic
+      logger.debug(`[sendNudge] Fetching attack data via getRaceAttacks`);
       const attacksData = await getRaceAttacks(guild.id, raceId, raceData, seasonId, currentWeek);
+      logger.debug(
+        `[sendNudge] Attack data fetched: ${attacksData ? `${attacksData.participants.length} participants` : 'null'}`,
+      );
 
       if (!attacksData || attacksData.participants.length === 0) {
         logger.info(`No players to nudge for ${clan.clan_name}`);
@@ -642,6 +680,7 @@ export class NudgeTrackingScheduler {
       nudgeMessage += ` (Sent by <@${sender}>)`;
 
       // Build nudge components using shared helper
+      logger.debug(`[sendNudge] Building nudge components`);
       const nudgeComponents = await buildNudgeComponents(
         guild,
         attacksData,
@@ -652,6 +691,7 @@ export class NudgeTrackingScheduler {
         updateResult.endTime ?? undefined,
         nudgeTimes,
       );
+      logger.debug(`[sendNudge] Components built: ${nudgeComponents ? 'success' : 'null'}`);
 
       // TODO check what no nudge components actually does
       if (!nudgeComponents) {
@@ -677,12 +717,15 @@ export class NudgeTrackingScheduler {
       }
 
       // Send nudge with Components v2
+      logger.debug(`[sendNudge] Sending message to channel`);
       const message = await channel.send({
         flags: MessageFlags.IsComponentsV2,
         components: nudgeComponents.components,
       });
+      logger.debug(`[sendNudge] Message sent successfully, id: ${message.id}`);
 
       // Track nudge using existing helper
+      logger.debug(`[sendNudge] Tracking nudge in database`);
       await trackNudge(
         clan.guild_id,
         raceId,
@@ -694,6 +737,7 @@ export class NudgeTrackingScheduler {
         nudgeComponents.enrichedParticipants,
         message.id,
       );
+      logger.debug(`[sendNudge] Nudge tracked successfully`);
 
       // Nudge sent successfully
     } catch (error: any) {

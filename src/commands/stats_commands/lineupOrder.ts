@@ -64,7 +64,7 @@ function buildClanBlock(clanName: string, clanIndex: number, sheetId: number) {
 
   // Row (2 + LINEUP_DATA_ROWS): "Clan Avg" summary row
   // — col 4 (Cur. Clan) holds the label, col 5 (Fame / Atk.) is left blank for the value
-  const clanAvgFormula = `=ROUND(AVERAGE(IFNA(${colToLetter(startCol + 5)}3:${colToLetter(startCol + 5)}${2 + LINEUP_DATA_ROWS}, "")), 2)`; // =ROUND(AVERAGE(IFNA(F3:F54, "")), 2)
+  const clanAvgFormula = `=IFERROR(ROUND(AVERAGE(IFNA(${colToLetter(startCol + 5)}3:${colToLetter(startCol + 5)}${2 + LINEUP_DATA_ROWS}, "")), 2), "No Scores")`;
   values.push(['', 'Avg Wanted:', '', '', 'Clan Avg', clanAvgFormula, '']);
 
   // --- Requests ---
@@ -171,10 +171,10 @@ function buildClanBlock(clanName: string, clanIndex: number, sheetId: number) {
       cell: {
         userEnteredFormat: {
           horizontalAlignment: 'RIGHT',
-          italic: true,
+          textFormat: { italic: true },
         },
       },
-      fields: 'userEnteredFormat(horizontalAlignment,italic)',
+      fields: 'userEnteredFormat(horizontalAlignment,textFormat)',
     },
   });
 
@@ -191,12 +191,11 @@ function buildClanBlock(clanName: string, clanIndex: number, sheetId: number) {
       cell: {
         userEnteredFormat: {
           backgroundColor: LINEUP_HEADER_BG,
-          textFormat: { bold: true },
+          textFormat: { bold: true, italic: true },
           horizontalAlignment: 'RIGHT',
-          italic: true,
         },
       },
-      fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,italic)',
+      fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
     },
   });
 
@@ -216,16 +215,17 @@ function buildClanBlock(clanName: string, clanIndex: number, sheetId: number) {
     });
   }
 
-  // 9. Conditional format: Fame/Atk is -15 or more BELOW the clan average → light red
+  // 9. Conditional format: Fame/Atk is -15 or more BELOW the avg wanted → light red
   //
-  //  Formula breakdown (e.g. clan 0, F column, avg in F55):
-  //    F3           — the cell being evaluated; Sheets auto-adjusts this per row (F4, F5...)
-  //    F$55         — the clan avg cell; $ locks the row so it never shifts
-  //    F3<>""       — skip empty cells (<> means "not equal to", like != in JS)
-  //    F3<=F$55-15  — cell value is 15 or more below the average
-  //    AND(...)     — both conditions must be true
-  const avgWantedCol = colToLetter(startCol + 5);
-  const avgWantedRowRef = `${avgWantedCol}$${3 + LINEUP_DATA_ROWS}`; // e.g. F$55
+  //  Formula breakdown (e.g. clan 0):
+  //    fameCol   = F  — the Fame/Atk column being formatted (startCol + 5)
+  //    F3        — the cell being evaluated; Sheets auto-adjusts per row (F4, F5...)
+  //    C$56      — the fixed "Avg Wanted" reference cell (startCol+2, row 55 0-indexed = 56 1-indexed)
+  //    ISNUMBER  — skip non-numeric cells like "N/A" text
+  //    F3<=C$56-15  — fame value is 15 or more below the avg wanted
+  const fameCol = colToLetter(startCol + 5); // e.g. F for clan 0
+  const avgWantedCol = colToLetter(startCol + 2); // e.g. C for clan 0 (col 2 within block)
+  const avgWantedRef = `${avgWantedCol}$${3 + LINEUP_DATA_ROWS}`; // e.g. C$56
 
   requests.push({
     addConditionalFormatRule: {
@@ -242,7 +242,11 @@ function buildClanBlock(clanName: string, clanIndex: number, sheetId: number) {
         booleanRule: {
           condition: {
             type: 'CUSTOM_FORMULA',
-            values: [{ userEnteredValue: `=AND(${avgWantedCol}3<>"",${avgWantedCol}3<=${avgWantedRowRef}-15)` }],
+            values: [
+              {
+                userEnteredValue: `=AND(ISNUMBER(${fameCol}3),ISNUMBER(${avgWantedRef}),${fameCol}3<=${avgWantedRef}-15)`,
+              },
+            ],
           },
           format: { backgroundColor: { red: 0.96, green: 0.8, blue: 0.8 } }, // light red
         },
@@ -251,7 +255,7 @@ function buildClanBlock(clanName: string, clanIndex: number, sheetId: number) {
     },
   });
 
-  // 10. Conditional format: Fame/Atk is +25 or more ABOVE the clan average → light green
+  // 10. Conditional format: Fame/Atk is +25 or more ABOVE the avg wanted → light green
   requests.push({
     addConditionalFormatRule: {
       rule: {
@@ -267,7 +271,11 @@ function buildClanBlock(clanName: string, clanIndex: number, sheetId: number) {
         booleanRule: {
           condition: {
             type: 'CUSTOM_FORMULA',
-            values: [{ userEnteredValue: `=AND(${avgWantedCol}3<>"",${avgWantedCol}3>=${avgWantedRowRef}+25)` }],
+            values: [
+              {
+                userEnteredValue: `=AND(ISNUMBER(${fameCol}3),ISNUMBER(${avgWantedRef}),${fameCol}3>=${avgWantedRef}+25)`,
+              },
+            ],
           },
           format: { backgroundColor: { red: 0.85, green: 0.93, blue: 0.83 } }, // light green
         },
