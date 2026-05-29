@@ -128,6 +128,10 @@ const command: Command = {
         await interaction.editReply({ embeds: [error.embed] });
         return;
       }
+      if (error?.name === 'past_finish_line' && error?.embed) {
+        await interaction.editReply({ embeds: [error.embed] });
+        return;
+      }
 
       // Handle all other errors
       console.error('Error sending nudge:', error);

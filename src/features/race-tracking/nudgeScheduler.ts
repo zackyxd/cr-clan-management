@@ -1,7 +1,7 @@
 import { Client, TextChannel, MessageFlags, EmbedBuilder } from 'discord.js';
 import { pool } from '../../db.js';
 import logger from '../../logger.js';
-import { getRaceAttacks, initializeOrUpdateRace } from './service.js';
+import { getRaceAttacks, initializeOrUpdateRace, periodTypeMap } from './service.js';
 import { trackNudge, getNudgeMessage, buildNudgeComponents } from './nudgeHelper.js';
 import { isDev } from '../../utils/env.js';
 import { getNextDayRelativeTimestamp } from './timeUtils.js';
@@ -579,10 +579,17 @@ export class NudgeTrackingScheduler {
       const currentDay = updateResult.warDay;
 
       // Check if it's training day after getting fresh race data
-      if (raceData.periodType === 'training') {
+      if (periodTypeMap[raceData.periodType] === 'Training') {
         throw {
           name: 'training_day',
           embed: new EmbedBuilder().setDescription('Today is a training day. No Nudges').setColor(EmbedColor.FAIL),
+        };
+      } else if (raceData.clan.fame >= 10000 && periodTypeMap[raceData.periodType] === 'Colosseum') {
+        throw {
+          name: 'past_finish_line',
+          embed: new EmbedBuilder()
+            .setDescription('This clan has already reached the finish line. No Nudges')
+            .setColor(EmbedColor.FAIL),
         };
       }
 
@@ -682,6 +689,9 @@ export class NudgeTrackingScheduler {
     } catch (error: any) {
       // Re-throw training day errors so manual commands can handle them
       if (error?.name === 'training_day') {
+        throw error;
+      }
+      if (error?.name === 'past_finish_line') {
         throw error;
       }
 
