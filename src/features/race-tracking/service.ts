@@ -694,14 +694,32 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
 
     const oldDay = existingRace.rows[0]?.current_day || 0;
     const oldRaceData = existingRace.rows[0]?.current_data;
+    const existingEndTime = existingRace.rows[0]?.end_time;
 
     // Detect day rollover using isNewWarDay function
     let isRollover = false;
     let guildsTracking: string[] = [];
     if (oldRaceData && isNewWarDay(oldRaceData, raceData)) {
-      isRollover = true;
+      // Check if we already processed this rollover (end_time was set recently)
+      if (existingEndTime) {
+        const timeSinceEndTime = Date.now() - new Date(existingEndTime).getTime();
+        const fiveMinutesMs = 5 * 60 * 1000;
+        if (timeSinceEndTime < fiveMinutesMs) {
+          logger.warn(
+            `[Race Update - ${clantag}] Rollover detected but already processed ${Math.floor(timeSinceEndTime / 1000)}s ago. Skipping duplicate rollover.`,
+          );
+          isRollover = false;
+        } else {
+          isRollover = true;
+          logger.info(`[Race Update - ${clantag}] Rollover confirmed - end_time was set ${Math.floor(timeSinceEndTime / 1000)}s ago, proceeding with new rollover.`);
+        }
+      } else {
+        isRollover = true;
+        logger.info(`[Race Update - ${clantag}] Rollover confirmed - no previous end_time, proceeding.`);
+      }
+      
       // Only create snapshots if old race was NOT training day
-      if (oldRaceData.periodType !== 'training') {
+      if (isRollover && oldRaceData.periodType !== 'training') {
         // Create snapshots for ALL guilds tracking this clan (snapshots are guild-specific)
         const guildsTrackingQuery = await pool.query(`SELECT DISTINCT guild_id FROM clans WHERE clantag = $1`, [
           clantag,
@@ -712,7 +730,7 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
         await Promise.all(
           guildsTracking.map((guildId) => createDaySnapshot(raceId, guildId, oldRaceData, seasonId, warWeek, oldDay)),
         );
-      } else {
+      } else if (isRollover) {
         // Still get guilds for potential staff channel notifications
         const guildsTrackingQuery = await pool.query(`SELECT DISTINCT guild_id FROM clans WHERE clantag = $1`, [
           clantag,
@@ -739,6 +757,10 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
       [JSON.stringify(raceData), raceData.periodType, warDay, seasonId, JSON.stringify(oppClans), raceId],
     );
     endTime = updateResult.rows[0].end_time;
+
+    if (isRollover) {
+      logger.info(`[Race Update - ${clantag}] Rollover processed - end_time set to ${endTime}, new day: ${warDay}`);
+    }
 
     // Auto-post to staff channels AFTER updating end_time (use old data before rollover)
     // Only post if old state was warDay or colosseum, not training
