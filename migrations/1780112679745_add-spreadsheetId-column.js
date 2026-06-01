@@ -10,7 +10,7 @@ export const shorthands = undefined;
  */
 export const up = (pgm) => {
   pgm.addColumns('server_settings', {
-    stats_spreadsheetId: { type: 'varchar(75)', default: null },
+    stats_spreadsheetid: { type: 'varchar(75)', default: null },
   });
 };
 
@@ -20,5 +20,5 @@ export const up = (pgm) => {
  * @returns {Promise<void> | void}
  */
 export const down = (pgm) => {
-  pgm.dropColumns('server_settings', ['stats_spreadsheetId']);
+  pgm.dropColumns('server_settings', ['stats_spreadsheetid']);
 };
