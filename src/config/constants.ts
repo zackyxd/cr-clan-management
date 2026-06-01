@@ -22,4 +22,16 @@ export const DEFAULT_DELETE_METHOD = 'update';
 // Race nudge settings
 export const DEFAULT_NUDGE_MESSAGE = `You have attacks left in {clanName}!`;
 
-// Add more constants as needed
+// League trophy thresholds (derived from clan_trophies on the clans table)
+export const LEAGUE_5K_MIN = 5000;
+export const LEAGUE_4K_MIN = 4000;
+
+/** Returns the league key ('5k', '4k') for a given clan trophy count, or null if unrecognised. */
+export function getLeagueFromTrophies(trophies: number): '5k' | '4k' | null {
+  if (trophies >= LEAGUE_5K_MIN) return '5k';
+  if (trophies >= LEAGUE_4K_MIN) return '4k';
+  return null;
+}
+
+// How many completed war weeks to look back when building the Available sheet
+export const AVAILABLE_SHEET_WEEKS_LOOKBACK = 6;

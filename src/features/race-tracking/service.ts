@@ -15,12 +15,47 @@ import { resetCustomNudgeMessageOnNewDay } from './nudgeHelper.js';
 import { BOTCOLOR, EmbedColor } from '../../types/EmbedUtil.js';
 import { getEmoji, hasEmoji } from '../../utils/emoji.js';
 import logger from '../../logger.js';
+import { refreshAvailableSheet } from '../stats/availableSheet.js';
 
 // In-memory cache to prevent concurrent updates to the same race
 const ongoingRaceUpdates = new Map<string, Promise<RaceUpdateResult | null>>();
 
 // Discord client for sending messages (set by bot.ts on startup)
 let discordClient: Client | null = null;
+
+// Debounce timers for Available sheet auto-refresh (one 15-min timer per guild)
+const availableSheetRefreshTimers = new Map<string, NodeJS.Timeout>();
+
+/**
+ * Schedules (or resets) a 15-minute debounced refresh of both Available sheets
+ * for the given guild.  Only fires if GOOGLE_SHEETS_SPREADSHEET_ID is configured.
+ */
+function scheduleAvailableSheetRefresh(guildId: string): void {
+  // TODO automate?
+  const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+  if (!spreadsheetId) return;
+
+  const existing = availableSheetRefreshTimers.get(guildId);
+  if (existing) clearTimeout(existing);
+
+  const timer = setTimeout(
+    async () => {
+      availableSheetRefreshTimers.delete(guildId);
+      try {
+        await Promise.all([
+          refreshAvailableSheet(guildId, spreadsheetId, '5k Available', '5k'),
+          refreshAvailableSheet(guildId, spreadsheetId, '4k Available', '4k'),
+        ]);
+        logger.info(`[race-tracking] Auto-refreshed Available sheets for guild ${guildId}`);
+      } catch (err) {
+        logger.error(`[race-tracking] Failed to auto-refresh Available sheets for guild ${guildId}:`, err);
+      }
+    },
+    15 * 60 * 1000,
+  ); // 15 minutes
+
+  availableSheetRefreshTimers.set(guildId, timer);
+}
 
 /**
  * Set the Discord client for the race tracking service.
@@ -711,13 +746,15 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
           isRollover = false;
         } else {
           isRollover = true;
-          logger.info(`[Race Update - ${clantag}] Rollover confirmed - end_time was set ${Math.floor(timeSinceEndTime / 1000)}s ago, proceeding with new rollover.`);
+          logger.info(
+            `[Race Update - ${clantag}] Rollover confirmed - end_time was set ${Math.floor(timeSinceEndTime / 1000)}s ago, proceeding with new rollover.`,
+          );
         }
       } else {
         isRollover = true;
         logger.info(`[Race Update - ${clantag}] Rollover confirmed - no previous end_time, proceeding.`);
       }
-      
+
       // Only create snapshots if old race was NOT training day
       if (isRollover && oldRaceData.periodType !== 'training') {
         // Create snapshots for ALL guilds tracking this clan (snapshots are guild-specific)
@@ -773,6 +810,11 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
       // Reset custom nudge messages for new day
       for (const guildId of guildsTracking) {
         await resetCustomNudgeMessageOnNewDay(discordClient, guildId, clantag);
+      }
+      // Schedule a debounced Available sheet refresh for all tracking guilds
+      // TODO??
+      for (const guildId of guildsTracking) {
+        // scheduleAvailableSheetRefresh(guildId);
       }
     }
     // console.log('Updated race record for', clantag, raceId);

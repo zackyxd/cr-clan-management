@@ -1,4 +1,4 @@
-import { getAuthenticatedSheetsClient } from './statsUtil.js';
+import { getAuthenticatedSheetsClient } from '../statsUtil.js';
 const sourceSheets = await getAuthenticatedSheetsClient();
 const sourceData = await sourceSheets.spreadsheets.values.get({
   spreadsheetId: '1b8BgwkPZ2cUgUvy_2r5zISCSxG207qtIf7re3sVL8x0',

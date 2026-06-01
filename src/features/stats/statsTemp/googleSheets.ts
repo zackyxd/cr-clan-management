@@ -1,6 +1,6 @@
 import 'dotenv-flow/config';
-import { getAuthenticatedSheetsClient } from './statsUtil.js';
-
+import { getAuthenticatedSheetsClient } from '../statsUtil.js';
+// Only for formatting Averages page
 // Function to format header row (call this after any data update)
 async function formatHeaders(spreadsheetId: string, sheetId: number = 0) {
   const sheets = await getAuthenticatedSheetsClient();
