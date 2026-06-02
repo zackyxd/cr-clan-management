@@ -120,7 +120,6 @@ client.once(Events.ClientReady, async (c) => {
 
   // Start clan activity logs scheduler (checks for clan changes every ~3 minutes)
   startClanActivityScheduler(c);
-
   // Start kicks tag autofill scheduler (fills 4k/5k kicks tag slots from live clan members)
   const kicksTagAutofillScheduler = new KicksTagAutofillScheduler();
   kicksTagAutofillScheduler.start();
@@ -128,7 +127,7 @@ client.once(Events.ClientReady, async (c) => {
 
 // NOTE: Old interaction handling moved to events/interactionCreate.ts with new feature-based dispatcher
 // client.on('interactionCreate', async (interaction) => {
-//   if (interaction.isButton()) {
+//   if (interaction.isButton())
 //     return handleButtonInteraction(interaction);
 //   } else if (interaction.isModalSubmit()) {
 //     return handleModalInteraction(interaction);
