@@ -812,7 +812,7 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
         await resetCustomNudgeMessageOnNewDay(discordClient, guildId, clantag);
       }
       // Schedule a debounced Available sheet refresh for all tracking guilds
-      // TODO??
+      // TODO ??
       for (const guildId of guildsTracking) {
         // scheduleAvailableSheetRefresh(guildId);
       }
@@ -820,20 +820,32 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
     // console.log('Updated race record for', clantag, raceId);
   } else {
     // No existing race for this week/season - finalize previous race if needed
+    logger.info(
+      `[Race Update - ${clantag}] No race row for week=${warWeek}, season=${seasonId ?? 'null'}. Checking previous race for finalization.`,
+    );
+
     const prevRaceQuery = await pool.query(
-      `SELECT race_id, current_day, current_data, season_id, current_week
+      `SELECT race_id, current_day, current_data, season_id, current_week, end_time
        FROM river_races WHERE clantag = $1 ORDER BY created_at DESC LIMIT 1`,
       [clantag],
     );
 
     if (prevRaceQuery.rows.length > 0) {
       const prev = prevRaceQuery.rows[0];
-      const prevType = prev.current_data?.periodType;
+      const prevType = prev.current_data.periodType;
+
+      logger.info(
+        `[Race Update - ${clantag}] Previous race found: race_id=${prev.race_id}, week=${prev.current_week}, season=${prev.season_id ?? 'null'}, type=${prevType}, end_time=${prev.end_time ?? 'null'}.`,
+      );
 
       // Create final snapshot if previous was war/colosseum (not training)
       if (prevType === 'warDay' || prevType === 'colosseum') {
         const guilds = (await pool.query(`SELECT DISTINCT guild_id FROM clans WHERE clantag = $1`, [clantag])).rows.map(
           (r) => r.guild_id,
+        );
+
+        logger.info(
+          `[Race Update - ${clantag}] Finalizing previous race ${prev.race_id} for ${guilds.length} guild(s), posting day ${prev.current_day} summary.`,
         );
 
         await Promise.all(
@@ -861,8 +873,13 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
             prev.current_day,
             guilds,
           );
+        } else {
+          logger.warn(
+            `[Race Update - ${clantag}] Discord client unavailable in fallback finalization path; summary not posted.`,
+          );
         }
-      }
+    } else {
+      logger.info(`[Race Update - ${clantag}] No previous race found to finalize.`);
     }
 
     const result = await pool.query(
@@ -885,7 +902,7 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
     );
     raceId = result.rows[0].race_id;
     endTime = result.rows[0].end_time;
-    // console.log('Created new race record for', clantag, raceId);
+    console.log('Created new race record for', clantag, raceId);
   }
 
   // Update participant tracking with fresh data
