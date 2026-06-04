@@ -48,15 +48,15 @@ export class KicksTagAutofillScheduler {
     this.isRunning = true;
     try {
       const sheets = await getAuthenticatedSheetsClient();
-      const guildsRes = await pool.query<{ guild_id: string; stats_spreadsheetId: string }>(`
-        SELECT guild_id, "stats_spreadsheetId"
+      const guildsRes = await pool.query<{ guild_id: string; stats_spreadsheetid: string }>(`
+        SELECT guild_id, stats_spreadsheetid
         FROM server_settings
-        WHERE COALESCE("stats_spreadsheetId", '') <> ''
+        WHERE COALESCE(stats_spreadsheetid, '') <> ''
       `);
 
       for (const row of guildsRes.rows) {
-        await this.fillLeagueKicksSheet(sheets, row.guild_id, row.stats_spreadsheetId, '5k');
-        await this.fillLeagueKicksSheet(sheets, row.guild_id, row.stats_spreadsheetId, '4k');
+        await this.fillLeagueKicksSheet(sheets, row.guild_id, row.stats_spreadsheetid, '5k');
+        await this.fillLeagueKicksSheet(sheets, row.guild_id, row.stats_spreadsheetid, '4k');
       }
     } catch (error) {
       logger.error('Kicks tag autofill cycle failed:', error);

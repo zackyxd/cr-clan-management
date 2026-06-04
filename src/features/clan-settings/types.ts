@@ -21,6 +21,8 @@ export interface ClanSettings {
   invites_enabled: boolean;
   clan_role_id?: string;
   abbreviation?: string;
+  header_bg_hex?: string;
+  header_text_hex?: string;
   // Add other settings as needed
 }
 

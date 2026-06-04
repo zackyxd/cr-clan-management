@@ -9,9 +9,14 @@ import {
   getSheetIdByName,
   getSpreadsheetId,
 } from '../../features/stats/statsUtil.js';
+import { type ClanHeaderTheme, resolveClanHeaderThemes } from '../../features/stats/clanHeaderColors.js';
 import { refreshAvailableSheet } from '../../features/stats/availableSheet.js';
 import { processL2WSheetCheckboxes, buildL2WSheet } from '../../features/stats/l2wSheet.js';
-import { buildUpsertL2WPlayer, buildRemoveL2WPlayer, type UpsertL2WPlayerData } from '../../sql_queries/playerL2W.js';
+import {
+  buildUpsertL2WPlayer,
+  buildRemoveL2WPlayerAllLeagues,
+  type UpsertL2WPlayerData,
+} from '../../sql_queries/playerL2W.js';
 import { buildUpsertLeagueAssignment, buildRemoveLeagueAssignment } from '../../sql_queries/playerLeagueAssignments.js';
 
 // ─── Lineup Sheet Layout Config ───────────────────────────────────────────────
@@ -37,9 +42,6 @@ const LINEUP_COL_WIDTHS = [
   20, // 6: gap separator
 ];
 
-// Clan title row colors
-const LINEUP_TITLE_BG = { red: 0.27, green: 0.51, blue: 0.71 }; // blue
-const LINEUP_TITLE_COLOR = { red: 1, green: 1, blue: 1 }; // white text
 const LINEUP_TITLE_FONT_SIZE = 12;
 
 // Column header row color
@@ -66,9 +68,6 @@ const KICKS_COL_WIDTHS = [
   20, // gap separator
 ];
 
-// Clan title row colors
-const KICKS_TITLE_BG = { red: 0.27, green: 0.51, blue: 0.71 }; // blue
-const KICKS_TITLE_COLOR = { red: 1, green: 1, blue: 1 }; // white text
 const KICKS_TITLE_FONT_SIZE = 12;
 
 type SheetBlockResult = {
@@ -86,6 +85,7 @@ function buildClanBlock(
   clanName: string,
   clanIndex: number,
   sheetId: number,
+  theme: ClanHeaderTheme,
   l2wSheetsExist = false,
 ): SheetBlockResult {
   const startCol = clanIndex * LINEUP_BLOCK_WIDTH;
@@ -107,6 +107,7 @@ function buildClanBlock(
       `=IFERROR(XLOOKUP(${tagCol}${i + 2},'5k Averages'!B:B,'5k Averages'!C:C),` +
       `IFERROR(XLOOKUP(${tagCol}${i + 2},'4k Averages'!B:B,'4k Averages'!C:C),"—"))`; // looks up name by tag from averages sheet
 
+    // Cur. Clan is filled by CurClanAutofillScheduler — written as plain values, not a formula.
     const fameAtkFormula = `=XLOOKUP(${tagCol}${i + 2}, '5k Averages'!B:B, '5k Averages'!E:E, "N/A")`; // looks up fame/atk by tag from averages sheet
     values.push([String(i), '', nameFormula, '', '', fameAtkFormula, '']);
   }
@@ -145,8 +146,8 @@ function buildClanBlock(
       },
       cell: {
         userEnteredFormat: {
-          backgroundColor: LINEUP_TITLE_BG,
-          textFormat: { bold: true, foregroundColor: LINEUP_TITLE_COLOR, fontSize: LINEUP_TITLE_FONT_SIZE },
+          backgroundColor: theme.backgroundColor,
+          textFormat: { bold: true, foregroundColor: theme.textColor, fontSize: LINEUP_TITLE_FONT_SIZE },
           horizontalAlignment: 'CENTER',
           verticalAlignment: 'MIDDLE',
         },
@@ -380,7 +381,9 @@ function buildKickBlock(
   sheetId: number,
   lineupsSheetName: string,
   blockCount: number,
+  theme: ClanHeaderTheme,
 ): SheetBlockResult {
+  const isL2W = clanName === 'L2W';
   const startCol = clanIndex * KICKS_BLOCK_WIDTH;
 
   const values2: (string | boolean)[][] = [];
@@ -450,8 +453,8 @@ function buildKickBlock(
       },
       cell: {
         userEnteredFormat: {
-          backgroundColor: KICKS_TITLE_BG,
-          textFormat: { bold: true, foregroundColor: KICKS_TITLE_COLOR, fontSize: KICKS_TITLE_FONT_SIZE },
+          backgroundColor: theme.backgroundColor,
+          textFormat: { bold: true, foregroundColor: theme.textColor, fontSize: KICKS_TITLE_FONT_SIZE },
           horizontalAlignment: 'CENTER',
           verticalAlignment: 'MIDDLE',
         },
@@ -498,56 +501,67 @@ function buildKickBlock(
     },
   });
 
-  // 4b. Conditional format for roster result:
-  // green when match is inside this same clan block; red when found in another clan block.
+  // 4b. Conditional format for roster result.
+  //   Real clan:  green = found in this clan's block; red = found in a different clan's block.
+  //   L2W block:  green = found in any lineup block (player is rostered somewhere).
+  //               No red rule — L2W players are expected to be spread across clans.
   const rosterCol = colToLetter(startCol + 3);
   const titleCol = colToLetter(startCol);
-  requests2.push({
-    addConditionalFormatRule: {
-      rule: {
-        ranges: [
-          {
-            sheetId,
-            startRowIndex: 3,
-            endRowIndex: 3 + KICKS_DATA_ROWS,
-            startColumnIndex: startCol + 3,
-            endColumnIndex: startCol + 4,
+  const rosterRange = {
+    sheetId,
+    startRowIndex: 3,
+    endRowIndex: 3 + KICKS_DATA_ROWS,
+    startColumnIndex: startCol + 3,
+    endColumnIndex: startCol + 4,
+  };
+  if (isL2W) {
+    // Green: tag appears in any lineup block (formula returns a non-empty clan name)
+    requests2.push({
+      addConditionalFormatRule: {
+        rule: {
+          ranges: [rosterRange],
+          booleanRule: {
+            condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: `=$${rosterCol}4<>""` }] },
+            format: { backgroundColor: { red: 0.85, green: 0.93, blue: 0.83 } },
           },
-        ],
-        booleanRule: {
-          condition: {
-            type: 'CUSTOM_FORMULA',
-            values: [{ userEnteredValue: `=AND($${rosterCol}4<>"",$${rosterCol}4=${titleCol}$2)` }],
-          },
-          format: { backgroundColor: { red: 0.85, green: 0.93, blue: 0.83 } },
         },
+        index: 0,
       },
-      index: 0,
-    },
-  });
-  requests2.push({
-    addConditionalFormatRule: {
-      rule: {
-        ranges: [
-          {
-            sheetId,
-            startRowIndex: 3,
-            endRowIndex: 3 + KICKS_DATA_ROWS,
-            startColumnIndex: startCol + 3,
-            endColumnIndex: startCol + 4,
+    });
+  } else {
+    // Green: found in this clan's own block
+    requests2.push({
+      addConditionalFormatRule: {
+        rule: {
+          ranges: [rosterRange],
+          booleanRule: {
+            condition: {
+              type: 'CUSTOM_FORMULA',
+              values: [{ userEnteredValue: `=AND($${rosterCol}4<>"",$${rosterCol}4=${titleCol}$2)` }],
+            },
+            format: { backgroundColor: { red: 0.85, green: 0.93, blue: 0.83 } },
           },
-        ],
-        booleanRule: {
-          condition: {
-            type: 'CUSTOM_FORMULA',
-            values: [{ userEnteredValue: `=AND($${rosterCol}4<>"",$${rosterCol}4<>${titleCol}$2)` }],
-          },
-          format: { backgroundColor: { red: 0.96, green: 0.8, blue: 0.8 } },
         },
+        index: 0,
       },
-      index: 0,
-    },
-  });
+    });
+    // Red: found in a different clan's block
+    requests2.push({
+      addConditionalFormatRule: {
+        rule: {
+          ranges: [rosterRange],
+          booleanRule: {
+            condition: {
+              type: 'CUSTOM_FORMULA',
+              values: [{ userEnteredValue: `=AND($${rosterCol}4<>"",$${rosterCol}4<>${titleCol}$2)` }],
+            },
+            format: { backgroundColor: { red: 0.96, green: 0.8, blue: 0.8 } },
+          },
+        },
+        index: 0,
+      },
+    });
+  }
 
   // 5. Column widths — all 5 cols including the gap separator
   for (let col = 0; col < KICKS_BLOCK_WIDTH; col++) {
@@ -639,8 +653,13 @@ const command: Command = {
     .setDescription('Manage stats sheets')
     .addSubcommand((subcommand) =>
       subcommand
+        .setName('update-scores')
+        .setDescription('Update scores on the averages page. Use this after Day 4 has completed.'),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
         .setName('lineup-order')
-        .setDescription('Clan order for lineups. Must be linked.')
+        .setDescription('Clan order for lineups. Must be linked. CLEARS THE CURRENT SHEET.')
         .addStringOption((option) =>
           option
             .setName('league')
@@ -703,22 +722,6 @@ const command: Command = {
         .addStringOption((o) =>
           o.setName('player').setDescription('Player tag (#ABC123) or @mention').setRequired(true),
         ),
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName('promote')
-        .setDescription('Override a player to the 5k league (or undo a prior promote/demote)')
-        .addStringOption((o) =>
-          o.setName('player').setDescription('Player tag (#ABC123) or @mention').setRequired(true),
-        ),
-    )
-    .addSubcommand((sub) =>
-      sub
-        .setName('demote')
-        .setDescription('Override a player to the 4k league (or undo a prior promote/demote)')
-        .addStringOption((o) =>
-          o.setName('player').setDescription('Player tag (#ABC123) or @mention').setRequired(true),
-        ),
     ),
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -735,6 +738,10 @@ const command: Command = {
     });
     if (!allowed) return;
 
+    if (subcommand === 'update-scores') {
+      // Reserved for existing update-scores implementation.
+    }
+
     if (subcommand === 'lineup-order') {
       const league = interaction.options.getString('league', true) as '5k' | '4k';
       const clanOrderInput = interaction.options.getString('clan-order', true);
@@ -748,9 +755,14 @@ const command: Command = {
       const tags = normalizedInputs.map((c) => c.normalized);
       const abbrevs = normalizedInputs.map((c) => c.original.toLowerCase());
 
-      const clanRes = await pool.query(
+      const clanRes = await pool.query<{
+        clantag: string;
+        abbreviation: string;
+        header_bg_hex: string | null;
+        header_text_hex: string | null;
+      }>(
         `
-        SELECT clantag, LOWER(abbreviation) AS abbreviation
+        SELECT clantag, LOWER(abbreviation) AS abbreviation, header_bg_hex, header_text_hex
           FROM clans
         WHERE guild_id = $1
           AND (clantag = ANY($2) OR LOWER(abbreviation) = ANY($3))
@@ -790,6 +802,7 @@ const command: Command = {
         );
         return (match?.abbreviation ?? input).toUpperCase();
       });
+      const resolvedThemes = resolveClanHeaderThemes(resolvedOrder, clanRes.rows);
 
       const lineupsSheetName = `${league} Lineups`;
       const kicksSheetName = `${league} Kicks`;
@@ -818,7 +831,13 @@ const command: Command = {
 
       function buildMergedSheet(
         rowCount: number,
-        builder: (clanName: string, clanIndex: number, sheetId: number, l2wExists: boolean) => SheetBlockResult,
+        builder: (
+          clanName: string,
+          clanIndex: number,
+          sheetId: number,
+          theme: ClanHeaderTheme,
+          l2wExists: boolean,
+        ) => SheetBlockResult,
         sheetId: number,
         l2wExists: boolean,
       ) {
@@ -828,7 +847,7 @@ const command: Command = {
         const allRequests: object[] = [];
 
         for (let i = 0; i < resolvedOrder.length; i++) {
-          const { values, requests } = builder(resolvedOrder[i], i, sheetId, l2wExists);
+          const { values, requests } = builder(resolvedOrder[i], i, sheetId, resolvedThemes[i], l2wExists);
           for (let row = 0; row < values.length; row++) {
             mergedValues[row].push(...values[row]);
           }
@@ -838,7 +857,13 @@ const command: Command = {
         return { mergedValues, allRequests };
       }
 
-      const lineupsGrid = buildMergedSheet(3 + LINEUP_DATA_ROWS, buildClanBlock, lineupsSheetId, l2wSheetsExist);
+      const lineupsGrid = buildMergedSheet(
+        3 + LINEUP_DATA_ROWS,
+        (clanName, clanIndex, sheetId, theme, l2wExists) =>
+          buildClanBlock(clanName, clanIndex, sheetId, theme, l2wExists),
+        lineupsSheetId,
+        l2wSheetsExist,
+      );
       const kicksMergedValues: (string | boolean)[][] = Array(3 + KICKS_DATA_ROWS)
         .fill(null)
         .map(() => []);
@@ -850,6 +875,7 @@ const command: Command = {
           kicksSheetId,
           lineupsSheetName,
           resolvedOrder.length,
+          resolvedThemes[i],
         );
         for (let row = 0; row < values.length; row++) {
           kicksMergedValues[row].push(...values[row]);
@@ -861,15 +887,20 @@ const command: Command = {
       // do not accumulate stale rules across repeated lineup-order executions.
       const spreadsheetMeta = await sheets.spreadsheets.get({
         spreadsheetId,
-        fields: 'sheets(properties(sheetId),conditionalFormats)',
+        fields: 'sheets(properties(sheetId,title),conditionalFormats)',
       });
 
       const allSheets = spreadsheetMeta.data.sheets ?? [];
+      const getSheetIdFromMeta = (name: string): number | null => {
+        const sheet = allSheets.find((s) => s.properties?.title === name);
+        return sheet?.properties?.sheetId ?? null;
+      };
       const getRuleCount = (targetSheetId: number): number => {
         const sheet = allSheets.find((s) => s.properties?.sheetId === targetSheetId);
         return sheet?.conditionalFormats?.length ?? 0;
       };
 
+      // Clear all conditional format rules on lineups/kicks — they are fully rebuilt each run.
       const clearConditionalFormatRequests: object[] = [lineupsSheetId, kicksSheetId].flatMap((targetSheetId) => {
         const ruleCount = getRuleCount(targetSheetId);
         return Array.from({ length: ruleCount }, (_, i) => ({
@@ -880,6 +911,27 @@ const command: Command = {
         }));
       });
 
+      // Clear only the Last Clan (col D = index 3) color rules on the averages sheet so
+      // reruns don't accumulate stale per-clan color rules there.
+      const avgSheetId = getSheetIdFromMeta(`${league} Averages`);
+      const clearAvgColorRules: object[] =
+        avgSheetId !== null
+          ? (() => {
+              const avgSheet = allSheets.find((s) => s.properties?.sheetId === avgSheetId);
+              const rules = avgSheet?.conditionalFormats ?? [];
+              const toDelete = rules
+                .map((r, i) => ({ r, i }))
+                .filter(({ r }) =>
+                  r.ranges?.some((range) => (range.startColumnIndex ?? 0) <= 3 && (range.endColumnIndex ?? 26) > 3),
+                )
+                .map(({ i }) => i)
+                .reverse();
+              return toDelete.map((idx) => ({
+                deleteConditionalFormatRule: { sheetId: avgSheetId, index: idx },
+              }));
+            })()
+          : [];
+
       // Clear existing merged ranges first; otherwise re-runs can fail when
       // a new merge request intersects part of an old merged block.
       await sheets.spreadsheets.batchUpdate({
@@ -887,11 +939,36 @@ const command: Command = {
         requestBody: {
           requests: [
             ...clearConditionalFormatRequests,
+            ...clearAvgColorRules,
             { unmergeCells: { range: { sheetId: lineupsSheetId } } },
             { unmergeCells: { range: { sheetId: kicksSheetId } } },
+            {
+              updateCells: {
+                range: { sheetId: lineupsSheetId },
+                fields: 'userEnteredFormat,dataValidation',
+              },
+            },
+            {
+              updateCells: {
+                range: { sheetId: kicksSheetId },
+                fields: 'userEnteredFormat,dataValidation',
+              },
+            },
           ],
         },
       });
+
+      // Clear entire sheet contents so reruns with fewer clans don't leave stale blocks behind.
+      await Promise.all([
+        sheets.spreadsheets.values.clear({
+          spreadsheetId,
+          range: lineupsSheetName,
+        }),
+        sheets.spreadsheets.values.clear({
+          spreadsheetId,
+          range: kicksSheetName,
+        }),
+      ]);
 
       await sheets.spreadsheets.values.update({
         spreadsheetId,
@@ -916,6 +993,45 @@ const command: Command = {
         spreadsheetId,
         requestBody: { requests: kicksRequests },
       });
+
+      // Apply per-clan background colors to the "Last Clan" column (D) on the averages sheet.
+      if (avgSheetId !== null) {
+        const avgColorRules: object[] = resolvedOrder
+          .map((clan, idx) => ({ clan, theme: resolvedThemes[idx] }))
+          .filter(({ clan }) => clan !== 'L2W')
+          .map(({ clan, theme }) => {
+            return {
+              addConditionalFormatRule: {
+                rule: {
+                  ranges: [
+                    {
+                      sheetId: avgSheetId,
+                      startRowIndex: 1,
+                      endRowIndex: 2000,
+                      startColumnIndex: 3,
+                      endColumnIndex: 4,
+                    },
+                  ],
+                  booleanRule: {
+                    condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: clan }] },
+                    format: {
+                      backgroundColor: theme.backgroundColor,
+                      textFormat: { foregroundColor: theme.textColor },
+                    },
+                  },
+                },
+                index: 0,
+              },
+            };
+          });
+
+        if (avgColorRules.length > 0) {
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            requestBody: { requests: avgColorRules },
+          });
+        }
+      }
 
       await interaction.editReply({
         content:
@@ -1013,21 +1129,23 @@ const command: Command = {
         return;
       }
 
-      // Look up the player's league before deleting so we know which sheets to refresh
-      const leagueRes = await pool.query<{ l2w_league: string | null }>(
-        `SELECT l2w_league FROM player_availability WHERE guild_id = $1 AND playertag = $2`,
+      // Look up all leagues where this player is currently marked so we know which sheets to refresh.
+      const leagueRes = await pool.query<{ league: string }>(
+        `SELECT DISTINCT league FROM player_availability WHERE guild_id = $1 AND playertag = $2 AND l2w_status IS NOT NULL`,
         [guild.id, resolved.tag],
       );
-      const playerLeague = leagueRes.rows[0]?.l2w_league as '5k' | '4k' | null;
+      const playerLeagues = leagueRes.rows
+        .map((r) => r.league)
+        .filter((lg): lg is '5k' | '4k' => lg === '5k' || lg === '4k');
 
-      await pool.query(buildRemoveL2WPlayer(guild.id, resolved.tag));
+      await pool.query(buildRemoveL2WPlayerAllLeagues(guild.id, resolved.tag));
       await interaction.editReply({
         content: `✅ Removed **${resolved.name}** (\`${resolved.tag}\`) from the L2W / Inactive list. Refreshing sheets…`,
       });
 
       const spreadsheetId = await getSpreadsheetId(guild.id);
       if (spreadsheetId) {
-        const leaguesToRefresh: ('5k' | '4k')[] = playerLeague ? [playerLeague] : ['5k', '4k'];
+        const leaguesToRefresh: ('5k' | '4k')[] = playerLeagues.length > 0 ? playerLeagues : ['5k', '4k'];
         await Promise.all(
           leaguesToRefresh.flatMap((lg) => [
             tryRefreshL2WSheet(guild.id, spreadsheetId, lg),
@@ -1038,63 +1156,6 @@ const command: Command = {
       await interaction.editReply({
         content: `✅ Removed **${resolved.name}** (\`${resolved.tag}\`) from the L2W / Inactive list.`,
       });
-    }
-
-    // ── promote / demote ─────────────────────────────────────────────────────
-    if (subcommand === 'promote' || subcommand === 'demote') {
-      const targetLeague: '5k' | '4k' = subcommand === 'promote' ? '5k' : '4k';
-      const playerInput = interaction.options.getString('player', true);
-
-      const resolved = await resolvePlayerInput(guild.id, playerInput);
-      if ('error' in resolved) {
-        await interaction.editReply({ content: resolved.error });
-        return;
-      }
-
-      const { tag, name } = resolved;
-
-      // Check if this player already has a league override
-      const overrideRes = await pool.query<{ league_target: string | null }>(
-        `SELECT league_target FROM player_availability WHERE guild_id = $1 AND playertag = $2`,
-        [guild.id, tag],
-      );
-      const currentOverride = overrideRes.rows[0]?.league_target ?? null;
-
-      const spreadsheetId = await getSpreadsheetId(guild.id);
-
-      if (currentOverride === targetLeague) {
-        await pool.query(buildRemoveLeagueAssignment(guild.id, tag));
-        await interaction.editReply({
-          content: `✅ Removed ${targetLeague} override for **${name}** (\`${tag}\`). They'll return to their natural league. Refreshing sheets…`,
-        });
-      } else {
-        await pool.query(buildUpsertLeagueAssignment(guild.id, tag, name, targetLeague, null, interaction.user.id));
-        const verb = subcommand === 'promote' ? 'Promoted' : 'Demoted';
-        await interaction.editReply({
-          content: `✅ ${verb} **${name}** (\`${tag}\`) to **${targetLeague}**. Refreshing sheets…`,
-        });
-      }
-
-      if (spreadsheetId) {
-        // Refresh all 4 sheets — player may move between leagues on both Available and L2W sheets
-        await Promise.all([
-          refreshAvailableSheet(guild.id, spreadsheetId, '5k Available', '5k'),
-          refreshAvailableSheet(guild.id, spreadsheetId, '4k Available', '4k'),
-          tryRefreshL2WSheet(guild.id, spreadsheetId, '5k'),
-          tryRefreshL2WSheet(guild.id, spreadsheetId, '4k'),
-        ]);
-      }
-
-      if (currentOverride === targetLeague) {
-        await interaction.editReply({
-          content: `✅ Removed ${targetLeague} override for **${name}** (\`${tag}\`). They'll return to their natural league.`,
-        });
-      } else {
-        const verb = subcommand === 'promote' ? 'Promoted' : 'Demoted';
-        await interaction.editReply({
-          content: `✅ ${verb} **${name}** (\`${tag}\`) to **${targetLeague}**. They'll appear on the ${targetLeague} Available sheet.`,
-        });
-      }
     }
   },
 };

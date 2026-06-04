@@ -15,6 +15,7 @@ import { setDiscordClient } from './features/race-tracking/service.js';
 import { EmojiManager } from './services/EmojiManager.js';
 import { startClanActivityScheduler } from './features/clan-logs/index.js';
 import { KicksTagAutofillScheduler } from './features/stats/kicksTagAutofillScheduler.js';
+import { CurClanAutofillScheduler } from './features/stats/curClanAutofillScheduler.js';
 
 // import { isDev, isProd } from './utils/env.js';
 
@@ -120,15 +121,17 @@ client.once(Events.ClientReady, async (c) => {
 
   // Start clan activity logs scheduler (checks for clan changes every ~3 minutes)
   startClanActivityScheduler(c);
-
   // Start kicks tag autofill scheduler (fills 4k/5k kicks tag slots from live clan members)
   const kicksTagAutofillScheduler = new KicksTagAutofillScheduler();
   kicksTagAutofillScheduler.start();
+  // Start cur-clan autofill scheduler (fills Cur. Clan column on lineups sheets from DB snapshots)
+  const curClanAutofillScheduler = new CurClanAutofillScheduler();
+  curClanAutofillScheduler.start();
 });
 
 // NOTE: Old interaction handling moved to events/interactionCreate.ts with new feature-based dispatcher
 // client.on('interactionCreate', async (interaction) => {
-//   if (interaction.isButton()) {
+//   if (interaction.isButton())
 //     return handleButtonInteraction(interaction);
 //   } else if (interaction.isModalSubmit()) {
 //     return handleModalInteraction(interaction);

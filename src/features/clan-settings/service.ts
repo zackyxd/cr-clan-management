@@ -166,8 +166,9 @@ export class ClanSettingsService {
     const res = await pool.query(
       `SELECT family_clan, nudge_enabled, race_nudge_channel_id, race_custom_nudge_message, 
               race_nudge_start_hour, race_nudge_start_minute, race_nudge_interval_hours,
-              staff_channel_id, eod_stats_enabled, invites_enabled, clan_role_id, abbreviation 
-       FROM clans WHERE guild_id = $1 AND clantag = $2`,
+              staff_channel_id, eod_stats_enabled, invites_enabled, clan_role_id, abbreviation,
+              header_bg_hex, header_text_hex
+         FROM clans WHERE guild_id = $1 AND clantag = $2`,
       [guildId, clantag],
     );
 
@@ -183,6 +184,8 @@ export class ClanSettingsService {
         invites_enabled: false,
         clan_role_id: undefined,
         abbreviation: undefined,
+        header_bg_hex: undefined,
+        header_text_hex: undefined,
       };
     }
 
@@ -215,8 +218,6 @@ export class ClanSettingsService {
       );
 
       const currentFamilyClan = currentRes.rows[0]?.family_clan || false;
-      const clanName = currentRes.rows[0]?.clan_name;
-
       // If no change needed, return early
       if (enabled === currentFamilyClan) {
         await dbClient.query('ROLLBACK');

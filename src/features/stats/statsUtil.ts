@@ -34,13 +34,13 @@ export async function getSheetIdByName(spreadsheetId: string, sheetName: string)
 export async function getSpreadsheetId(guildId: string): Promise<string> {
   const res = await pool.query(
     `
-    SELECT "stats_spreadsheetId"
+    SELECT stats_spreadsheetid
     FROM server_settings
     WHERE guild_id = $1
     `,
     [guildId],
   );
-  return res.rows[0]?.stats_spreadsheetId ?? '';
+  return res.rows[0]?.stats_spreadsheetid ?? '';
 }
 
 /** Converts a 0-based column index to a letter (A, B, …, Z, AA, …). */

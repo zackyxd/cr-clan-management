@@ -9,9 +9,12 @@ export const shorthands = undefined;
  * @returns {Promise<void> | void}
  */
 export const up = (pgm) => {
-  pgm.addColumns('server_settings', {
-    stats_spreadsheetid: { type: 'varchar(75)', default: null },
+  pgm.addColumn('clans', {
+    header_bg_hex: { type: 'VARCHAR(7)' },
+    header_text_hex: { type: 'VARCHAR(7)' },
   });
+
+  pgm.dropColumn('clans', 'color_index', { ifExists: true });
 };
 
 /**
@@ -20,5 +23,5 @@ export const up = (pgm) => {
  * @returns {Promise<void> | void}
  */
 export const down = (pgm) => {
-  pgm.dropColumns('server_settings', ['stats_spreadsheetid']);
+  pgm.dropColumn('clans', ['header_bg_hex', 'header_text_hex']);
 };

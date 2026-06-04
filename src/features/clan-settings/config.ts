@@ -32,6 +32,12 @@ export const CLAN_FEATURE_SETTINGS = [
     group: ['family_clan', 'abbreviation', 'clan_role_id', 'staff_channel_id'],
   },
   {
+    key: 'stats_colors',
+    label: 'Stats Header Colors',
+    buttonLabel: 'Stats Colors',
+    type: 'modal',
+  },
+  {
     key: 'nudge_settings',
     label: 'Race Nudge Settings',
     buttonLabel: 'Nudge Settings',
@@ -89,6 +95,8 @@ export const DEFAULT_CLAN_SETTINGS = {
   staff_channel_id: '',
   invites_enabled: true,
   abbreviation: '',
+  header_bg_hex: '',
+  header_text_hex: '',
   clan_role_id: '',
   ping_replace_me: false,
   ping_replace_me_role_id: false,
@@ -102,7 +110,8 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
   const res = await pool.query(
     `SELECT family_clan, nudge_method, race_nudge_channel_id, race_custom_nudge_message, 
             race_nudge_start_hour, race_nudge_start_minute, race_nudge_interval_hours, race_nudge_hours_before_array,
-            eod_stats_enabled, staff_channel_id, invites_enabled, clan_role_id, abbreviation, ping_replace_me, ping_attacking_late, race_ping_channel_id, ping_replace_me_role_id,
+            eod_stats_enabled, staff_channel_id, invites_enabled, clan_role_id, abbreviation, header_bg_hex, header_text_hex,
+            ping_replace_me, ping_attacking_late, race_ping_channel_id, ping_replace_me_role_id,
             clan_logs_enabled, clan_logs_channel_id, clan_logs_manage_roles, clan_logs_add_role, clan_logs_remove_role
      FROM clans WHERE guild_id = $1 AND clantag = $2`,
     [guildId, clantag],
@@ -128,6 +137,8 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
     invites_enabled: dbRow.invites_enabled || false,
     clan_role_id: dbRow.clan_role_id || '',
     abbreviation: dbRow.abbreviation || '',
+    header_bg_hex: dbRow.header_bg_hex || '',
+    header_text_hex: dbRow.header_text_hex || '',
     ping_attacking_late: dbRow.ping_attacking_late || false,
     ping_replace_me: dbRow.ping_replace_me || false,
     ping_replace_me_role_id: dbRow.ping_replace_me_role_id || '',
@@ -224,6 +235,15 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
         lines.push(` * Abbreviation: ${abbreviation ? `__${abbreviation}__` : '*Not set*'}`);
         lines.push(` * Clan Role: ${clanRoleId ? `<@&${clanRoleId}>` : '*Not set*'}`);
         lines.push(` * Staff Channel: ${staffChannelId ? `<#${staffChannelId}>` : '*Not set*'}`);
+
+        displayValue = '\n' + lines.join('\n');
+      } else if (settingConfig.key === 'stats_colors') {
+        const headerBgHex = settings['header_bg_hex'];
+        const headerTextHex = settings['header_text_hex'];
+
+        const lines: string[] = [];
+        lines.push(` * Header BG: ${headerBgHex ? `__${headerBgHex}__` : '*Auto palette*'}`);
+        lines.push(` * Header Text: ${headerTextHex ? `__${headerTextHex}__` : '*Auto contrast*'}`);
 
         displayValue = '\n' + lines.join('\n');
       } else if (settingConfig.key === 'clan_logs') {
