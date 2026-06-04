@@ -149,13 +149,13 @@ export async function processL2WSheetCheckboxes(
 
   // Apply DB changes
   if (returnedTags.length > 0) {
-    await pool.query(buildBatchRemoveL2WPlayers(guildId, returnedTags));
+    await pool.query(buildBatchRemoveL2WPlayers(guildId, league, returnedTags));
   }
   for (const tag of switchedToInactive) {
-    await pool.query(buildUpdateL2WStatus(guildId, tag, 'inactive'));
+    await pool.query(buildUpdateL2WStatus(guildId, tag, league, 'inactive'));
   }
   for (const tag of switchedToL2W) {
-    await pool.query(buildUpdateL2WStatus(guildId, tag, 'l2w'));
+    await pool.query(buildUpdateL2WStatus(guildId, tag, league, 'l2w'));
   }
 
   logger.info(

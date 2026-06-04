@@ -2,34 +2,36 @@ import { pool } from '../../db.js';
 import logger from '../../logger.js';
 import { getRiverRaceLog, isFetchError } from '../../api/CR_API.js';
 import { getAuthenticatedSheetsClient, getSheetIdByName } from './statsUtil.js';
-import { buildGetL2WTags, buildUpsertL2WPlayer, type UpsertL2WPlayerData } from '../../sql_queries/playerL2W.js';
 import {
-  buildGetLeagueOverrides,
-  buildUpsertLeagueAssignment,
-  buildRemoveLeagueAssignment,
-} from '../../sql_queries/playerLeagueAssignments.js';
+  buildGetL2WTags,
+  buildUpsertL2WPlayer,
+  buildBatchUpdateNotes,
+  type UpsertL2WPlayerData,
+} from '../../sql_queries/playerL2W.js';
 import { getLeagueFromTrophies, AVAILABLE_SHEET_WEEKS_LOOKBACK } from '../../config/constants.js';
 
 // ─── Layout Config ────────────────────────────────────────────────────────────
 
 const COL_TAG = 0;
 const COL_PLAYER = 1;
-// COL_CLAN and COL_WEEKS removed
-const COL_FAME_AVG = 2;
-const COL_STATUS = 3;
+// COL_FAME_AVG = 2, COL_STATUS = 3 (referenced by column index in formatting; not used as named constants)
 const COL_L2W = 4; // Send to L2W sheet
 const COL_INACTIVE = 5; // Send to Inactive sheet
-const COL_ACTION = 6; // Demote ↓ (5k sheet) / Promote ↑ (4k sheet)
-const COL_REMOVE = 7; // Remove players from being shown available (if not actual warring)
+const COL_REMOVE = 6; // Remove player from available list
+const COL_NOTES = 7; // Notes — scoped per player per league
 
 const TOTAL_COLS = 8;
 const TITLE_ROW = 0;
 const HEADERS_ROW = 1;
 const DATA_START_ROW = 2; // 0-based; = row 3 in A1 notation
 
-// Title background per league
-const TITLE_BG_5K = { red: 0.27, green: 0.51, blue: 0.71 }; // blue (matches lineupOrder)
-const TITLE_BG_4K = { red: 0.27, green: 0.65, blue: 0.4 }; // green
+// Title background colors indexed by league key
+const TITLE_BG_BY_LEAGUE: Record<string, { red: number; green: number; blue: number }> = {
+  '5k': { red: 0.27, green: 0.51, blue: 0.71 }, // blue
+  '4k': { red: 0.27, green: 0.65, blue: 0.4 }, // green
+  '3k': { red: 0.8, green: 0.5, blue: 0.2 }, // orange
+};
+const TITLE_BG_DEFAULT = { red: 0.5, green: 0.5, blue: 0.5 }; // gray fallback
 const TITLE_FG = { red: 1, green: 1, blue: 1 }; // white text
 
 const HEADER_BG = { red: 0.85, green: 0.85, blue: 0.85 };
@@ -37,8 +39,8 @@ const HEADER_BG = { red: 0.85, green: 0.85, blue: 0.85 };
 // Amber highlight for rostered rows (applied via conditional format)
 const ROSTERED_BG = { red: 1.0, green: 0.87, blue: 0.4 };
 
-// Column widths in pixels
-const COL_WIDTHS = [95, 135, 80, 90, 90, 75, 75, 75];
+// Column widths in pixels (notes column wider for text)
+const COL_WIDTHS = [95, 135, 80, 90, 90, 90, 90, 200];
 
 // Matches LINEUP_BLOCK_WIDTH in lineupOrder.ts (cols per clan block including gap)
 const LINEUP_BLOCK_WIDTH = 7;
@@ -53,6 +55,11 @@ interface ParticipantEntry {
   latestClanTag: string;
   /** Comparable score (seasonId * 100 + sectionIndex) for recency comparison. */
   latestScore: number;
+  /**
+   * All league tiers this player participated in during the lookback window.
+   * A player active in both a 5k and a 4k clan will appear on both Available sheets.
+   */
+  leagues: Set<string>;
 }
 
 interface AvailablePlayer {
@@ -61,36 +68,23 @@ interface AvailablePlayer {
   weeksActive: number;
   isRostered: boolean;
   isRemoved: boolean;
-  naturalLeague: '5k' | '4k' | null;
-  effectiveLeague: '5k' | '4k' | null;
+  notes: string | null;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function nameFormula(row: number, league: '5k' | '4k'): string {
-  const primary = `${league} Averages`;
-  const secondary = league === '5k' ? '4k Averages' : '5k Averages';
+/** Always checks 5k Averages first, then 4k Averages, regardless of which sheet we're writing. */
+function nameFormula(row: number): string {
   return (
-    `=IFERROR(XLOOKUP(A${row},'${primary}'!B:B,'${primary}'!C:C),` +
-    `IFERROR(XLOOKUP(A${row},'${secondary}'!B:B,'${secondary}'!C:C),"Unknown"))`
+    `=IFERROR(XLOOKUP(A${row},'5k Averages'!B:B,'5k Averages'!C:C),` +
+    `IFERROR(XLOOKUP(A${row},'4k Averages'!B:B,'4k Averages'!C:C),"—"))`
   );
 }
 
-function clanFormula(row: number, league: '5k' | '4k'): string {
-  const primary = `${league} Averages`;
-  const secondary = league === '5k' ? '4k Averages' : '5k Averages';
+function fameFormula(row: number): string {
   return (
-    `=IFERROR(XLOOKUP(A${row},'${primary}'!B:B,'${primary}'!D:D),` +
-    `IFERROR(XLOOKUP(A${row},'${secondary}'!B:B,'${secondary}'!D:D),"—"))`
-  );
-}
-
-function fameFormula(row: number, league: '5k' | '4k'): string {
-  const primary = `${league} Averages`;
-  const secondary = league === '5k' ? '4k Averages' : '5k Averages';
-  return (
-    `=IFERROR(XLOOKUP(A${row},'${primary}'!B:B,'${primary}'!E:E),` +
-    `IFERROR(XLOOKUP(A${row},'${secondary}'!B:B,'${secondary}'!E:E),"—"))`
+    `=IFERROR(XLOOKUP(A${row},'5k Averages'!B:B,'5k Averages'!E:E),` +
+    `IFERROR(XLOOKUP(A${row},'4k Averages'!B:B,'4k Averages'!E:E),"—"))`
   );
 }
 
@@ -99,6 +93,9 @@ function fameFormula(row: number, league: '5k' | '4k'): string {
 /**
  * Fetches war race logs for all provided family clans concurrently and
  * aggregates participant history into a map keyed by playertag.
+ *
+ * Each entry's `leagues` set contains every league tier the player appeared in
+ * during the lookback window, so they can be shown on multiple Available sheets.
  */
 async function collectParticipants(
   familyClans: { clantag: string; clan_trophies: number }[],
@@ -117,6 +114,7 @@ async function collectParticipants(
       continue;
     }
 
+    const clanLeague = getLeagueFromTrophies(clan.clan_trophies);
     const recentItems = log.items.slice(0, AVAILABLE_SHEET_WEEKS_LOOKBACK);
 
     for (const item of recentItems) {
@@ -136,11 +134,13 @@ async function collectParticipants(
             weeks: new Set(),
             latestClanTag: clan.clantag,
             latestScore: score,
+            leagues: new Set(),
           });
         }
 
         const entry = playerMap.get(tag)!;
         entry.weeks.add(weekKey);
+        if (clanLeague) entry.leagues.add(clanLeague);
 
         if (score > entry.latestScore) {
           entry.latestScore = score;
@@ -199,55 +199,56 @@ async function readLineupsRosteredTags(sheets: any, spreadsheetId: string): Prom
   return rosteredTags;
 }
 
-// ─── Checkbox Processing ──────────────────────────────────────────────────────
+// ─── Checkbox & Notes Processing ─────────────────────────────────────────────
 
 /**
- * Reads the action checkbox column (col G) on an Available sheet, applies the
- * resulting league override changes to the DB, and returns how many were changed.
- *
- * Semantics:
- *  - 5k sheet: checking = "Demote" → create override to 4k (or undo if already overridden TO 5k)
- *  - 4k sheet: checking = "Promote" → create override to 5k (or undo if already overridden TO 4k)
+ * Reads all action checkboxes and the notes column from the Available sheet,
+ * applies status changes to the DB (L2W / Inactive / Removed), and batch-saves
+ * any notes that were typed into the sheet for players that already have a
+ * player_availability record for this league.
  */
 async function processAvailableCheckboxes(
   guildId: string,
   spreadsheetId: string,
   sheetName: string,
-  league: '5k' | '4k',
+  league: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sheets: any,
 ): Promise<number> {
+  let changeCount = 0;
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${sheetName}!A${DATA_START_ROW + 1}:G2500`, // 1-indexed, skip title + headers
+    range: `${sheetName}!A${DATA_START_ROW + 1}:H2500`, // includes notes column (H)
     valueRenderOption: 'UNFORMATTED_VALUE',
   });
 
   const rows = (res.data.values ?? []) as (string | boolean | number)[][];
-
-  // Batch-fetch existing overrides
-  const overrideRes = await pool.query(buildGetLeagueOverrides(guildId));
-  const overrideMap = new Map<string, string>(
-    overrideRes.rows.map((r) => [r.playertag as string, r.league_target as string]),
-  );
-
-  const oppositeLeague: '5k' | '4k' = league === '5k' ? '4k' : '5k';
-  let changeCount = 0;
+  const noteUpdates: { tag: string; playerName: string; notes: string | null }[] = [];
 
   for (const row of rows) {
     const tag = row[COL_TAG];
     if (!tag || typeof tag !== 'string') continue;
 
     const playerName = typeof row[COL_PLAYER] === 'string' ? (row[COL_PLAYER] as string) : tag;
-    const existingOverride = overrideMap.get(tag);
+    const notesRaw = row[COL_NOTES];
+    const notes = typeof notesRaw === 'string' && notesRaw.trim() !== '' ? notesRaw.trim() : null;
 
-    // ── Demote/Promote action (col I) ────────────────────────────────────────
-    if (row[COL_ACTION] === true) {
-      if (existingOverride === league) {
-        await pool.query(buildRemoveLeagueAssignment(guildId, tag));
-      } else {
-        await pool.query(buildUpsertLeagueAssignment(guildId, tag, playerName, oppositeLeague, league, 'system'));
-      }
+    // Always track notes for the batch upsert
+    noteUpdates.push({ tag, playerName, notes });
+
+    // Order matters here.
+    // ── Remove from available (col G) ────────────────────────────────────────
+    if (row[COL_REMOVE] === true) {
+      const data: UpsertL2WPlayerData = {
+        playertag: tag,
+        league,
+        playerName,
+        status: 'removed',
+        notes,
+        durationDate: null,
+        markedByDiscordId: 'sheet',
+      };
+      await pool.query(buildUpsertL2WPlayer(guildId, data));
       changeCount++;
     }
 
@@ -255,10 +256,10 @@ async function processAvailableCheckboxes(
     if (row[COL_L2W] === true) {
       const data: UpsertL2WPlayerData = {
         playertag: tag,
+        league,
         playerName,
         status: 'l2w',
-        league,
-        notes: null,
+        notes,
         durationDate: null,
         markedByDiscordId: 'sheet',
       };
@@ -270,32 +271,22 @@ async function processAvailableCheckboxes(
     if (row[COL_INACTIVE] === true) {
       const data: UpsertL2WPlayerData = {
         playertag: tag,
+        league,
         playerName,
         status: 'inactive',
-        league,
-        notes: null,
+        notes,
         durationDate: null,
         markedByDiscordId: 'sheet',
       };
       await pool.query(buildUpsertL2WPlayer(guildId, data));
       changeCount++;
     }
+  }
 
-    // ── Send to Removed (col H) ─────────────────────────────────────────────
-    if (row[COL_REMOVE] === true) {
-      console.log('remove');
-      const data: UpsertL2WPlayerData = {
-        playertag: tag,
-        playerName,
-        status: 'removed',
-        league,
-        notes: null,
-        durationDate: null,
-        markedByDiscordId: 'sheet',
-      };
-      await pool.query(buildUpsertL2WPlayer(guildId, data));
-      changeCount++;
-    }
+  // Batch-upsert notes so missing player_availability rows are created automatically.
+  const notesQuery = buildBatchUpdateNotes(guildId, league, noteUpdates);
+  if (notesQuery) {
+    await pool.query(notesQuery.text, notesQuery.values);
   }
 
   if (changeCount > 0) {
@@ -307,18 +298,16 @@ async function processAvailableCheckboxes(
 
 // ─── Sheet Formatting & Write ─────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function writeAvailableSheet(
   spreadsheetId: string,
   sheetId: number,
   sheetName: string,
-  league: '5k' | '4k',
+  league: string,
   players: AvailablePlayer[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sheets: any,
 ): Promise<void> {
-  const titleBg = league === '5k' ? TITLE_BG_5K : TITLE_BG_4K;
-  const actionHeader = league === '5k' ? 'Demote ↓' : 'Promote ↑';
+  const titleBg = TITLE_BG_BY_LEAGUE[league] ?? TITLE_BG_DEFAULT;
 
   // ── 1. Clear existing values ─────────────────────────────────────────────────
   await sheets.spreadsheets.values.clear({ spreadsheetId, range: sheetName });
@@ -374,6 +363,7 @@ async function writeAvailableSheet(
       fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)',
     },
   });
+
   requests.push({
     mergeCells: {
       range: {
@@ -408,13 +398,13 @@ async function writeAvailableSheet(
     },
   });
 
-  // Data rows: center-aligned
+  // Data rows: center-aligned (all columns)
   requests.push({
     repeatCell: {
       range: {
         sheetId,
         startRowIndex: DATA_START_ROW,
-        endRowIndex: 1000,
+        endRowIndex: 1500,
         startColumnIndex: 0,
         endColumnIndex: TOTAL_COLS,
       },
@@ -423,15 +413,34 @@ async function writeAvailableSheet(
     },
   });
 
-  // Checkbox validation on COL_L2W, COL_INACTIVE, and COL_ACTION (data rows)
+  // Notes column: left-aligned, wrap text
+  requests.push({
+    repeatCell: {
+      range: {
+        sheetId,
+        startRowIndex: DATA_START_ROW,
+        endRowIndex: 1500,
+        startColumnIndex: COL_NOTES,
+        endColumnIndex: COL_NOTES + 1,
+      },
+      cell: {
+        userEnteredFormat: {
+          horizontalAlignment: 'LEFT',
+          wrapStrategy: 'WRAP',
+        },
+      },
+      fields: 'userEnteredFormat(horizontalAlignment,wrapStrategy)',
+    },
+  });
+
   // Clear any leftover checkbox validation beyond the current data rows
-  for (const col of [COL_L2W, COL_INACTIVE, COL_ACTION, COL_REMOVE]) {
+  for (const col of [COL_L2W, COL_INACTIVE, COL_REMOVE]) {
     requests.push({
       setDataValidation: {
         range: {
           sheetId,
           startRowIndex: DATA_START_ROW,
-          endRowIndex: 1000,
+          endRowIndex: 1500,
           startColumnIndex: col,
           endColumnIndex: col + 1,
         },
@@ -442,7 +451,7 @@ async function writeAvailableSheet(
 
   // Checkbox validation only on rows that have data
   if (players.length > 0) {
-    for (const col of [COL_L2W, COL_INACTIVE, COL_ACTION, COL_REMOVE]) {
+    for (const col of [COL_L2W, COL_INACTIVE, COL_REMOVE]) {
       requests.push({
         setDataValidation: {
           range: {
@@ -531,20 +540,20 @@ async function writeAvailableSheet(
   await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
 
   // ── 3. Write values ───────────────────────────────────────────────────────────
-  const titleRow = [`${league} Available`, '', '', '', '', '', ''];
-  const headerRow = ['Tag', 'Player', 'Fame Avg', 'Status', '→ L2W ☑', '→ Inactive ☑', actionHeader, 'Remove'];
+  const titleRow = [`${league} Available`, '', '', '', '', '', '', ''];
+  const headerRow = ['Tag', 'Player', 'Fame Avg', 'Status', '→ L2W ☑', '→ Inactive ☑', '→ Remove ☑', 'Notes'];
 
-  const dataRows: (string | boolean | number)[][] = players.map((p, i) => {
+  const dataRows: (string | boolean | null)[][] = players.map((p, i) => {
     const sheetRow = DATA_START_ROW + i + 1; // 1-indexed A1 row number
     return [
       p.playertag,
-      nameFormula(sheetRow, league),
-      fameFormula(sheetRow, league),
+      nameFormula(sheetRow),
+      fameFormula(sheetRow),
       p.isRemoved ? 'Removed' : p.isRostered ? 'Rostered' : 'Available',
       false, // → L2W checkbox
       false, // → Inactive checkbox
-      false, // Demote/Promote checkbox,
-      false, // Remove from available (but not inactive/l2w)
+      p.isRemoved ? true : false, // → Remove checkbox
+      p.notes ?? '', // Notes (editable; saved back to DB on next refresh)
     ];
   });
 
@@ -559,19 +568,25 @@ async function writeAvailableSheet(
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Processes any checked action boxes on the sheet (updating DB league overrides),
+ * Processes any checked action boxes and edited notes on the sheet (saving to DB),
  * then fetches live participant data and rebuilds the Available sheet from scratch.
+ *
+ * Players appear on a league sheet if they participated in at least one clan belonging
+ * to that league during the recent lookback window.  A player active in both a 5k and
+ * a 4k clan will appear on both sheets independently.
+ *
+ * Notes are scoped per-player per-league.
  *
  * @param guildId       Discord guild ID
  * @param spreadsheetId Google Sheets spreadsheet ID
  * @param sheetName     Display name of the target sheet tab (e.g. "5k Available")
- * @param league        Which league tier to display ('5k' | '4k')
+ * @param league        Which league tier to display (e.g. '5k', '4k', '3k')
  */
 export async function refreshAvailableSheet(
   guildId: string,
   spreadsheetId: string,
   sheetName: string,
-  league: '5k' | '4k',
+  league: string,
 ): Promise<void> {
   const sheets = await getAuthenticatedSheetsClient();
 
@@ -580,7 +595,7 @@ export async function refreshAvailableSheet(
     throw new Error(`[availableSheet] Sheet "${sheetName}" not found in spreadsheet ${spreadsheetId}`);
   }
 
-  // 1. Process any action checkboxes first so overrides are up-to-date before the rebuild
+  // 1. Process action checkboxes and save notes from sheet to DB before rebuild
   await processAvailableCheckboxes(guildId, spreadsheetId, sheetName, league, sheets);
 
   // 2. Fetch family clans for this guild
@@ -594,45 +609,39 @@ export async function refreshAvailableSheet(
     logger.warn(`[availableSheet] No family clans found for guild ${guildId} — writing empty sheet`);
   }
 
-  // 3. Collect participant history from CR API
+  // 3. Collect participant history from CR API (includes per-player league sets)
   const participantMap = await collectParticipants(familyClans);
-  // 4. Load L2W/inactive/removed tags
-  const l2wRes = await pool.query(buildGetL2WTags(guildId));
+
+  // 4. Load L2W/inactive/removed tags and their notes from DB
+  // TODO ?
+  const l2wRes = await pool.query(buildGetL2WTags(guildId, league));
+  const notesRes = await pool.query<{ playertag: string; l2w_notes: string | null }>(
+    `SELECT playertag, l2w_notes
+     FROM player_availability
+     WHERE guild_id = $1 AND league = $2 AND l2w_notes IS NOT NULL`,
+    [guildId, league],
+  );
   const l2wTags = new Set<string>(
     l2wRes.rows.filter((r) => r.l2w_status !== 'removed').map((r) => r.playertag as string),
   );
   const removedTags = new Set<string>(
     l2wRes.rows.filter((r) => r.l2w_status === 'removed').map((r) => r.playertag as string),
   );
-  console.log(removedTags);
-  for (const row of l2wRes.rows) {
-    console.log(row.l2w_status);
-  }
+  // Notes are league-scoped.
+  const notesMap = new Map<string, string>(notesRes.rows.map((r) => [r.playertag as string, r.l2w_notes as string]));
 
-  // 5. Load league overrides
-  const overrideRes = await pool.query(buildGetLeagueOverrides(guildId));
-  const overrideMap = new Map<string, '5k' | '4k'>(
-    overrideRes.rows.map((r) => [r.playertag as string, r.league_target as '5k' | '4k']),
-  );
-
-  // 6. Build a clan-trophy lookup for natural league detection
-  const clanTrophyMap = new Map<string, number>(familyClans.map((c) => [c.clantag.toUpperCase(), c.clan_trophies]));
-
-  // 7. Read tags that are already rostered on any Lineups sheet
+  // 5. Read tags already rostered on any Lineups sheet
   const rosteredTags = await readLineupsRosteredTags(sheets, spreadsheetId);
 
-  // 8. Filter and classify players
+  // 6. Filter and classify players for this league sheet
   const players: AvailablePlayer[] = [];
 
   for (const [tag, entry] of participantMap) {
     const isRemoved = removedTags.has(tag);
-    if (!isRemoved && l2wTags.has(tag)) continue; // exclude L2W/inactive unless removed
+    if (!isRemoved && l2wTags.has(tag)) continue; // exclude L2W/inactive unless marked removed
 
-    const trophies = clanTrophyMap.get(entry.latestClanTag.toUpperCase()) ?? 0;
-    const naturalLeague = getLeagueFromTrophies(trophies);
-    const effectiveLeague = overrideMap.get(tag) ?? naturalLeague;
-
-    if (effectiveLeague !== league) continue;
+    // Include only players who participated in at least one clan of the target league
+    if (!entry.leagues.has(league)) continue;
 
     players.push({
       playertag: tag,
@@ -640,23 +649,24 @@ export async function refreshAvailableSheet(
       weeksActive: entry.weeks.size,
       isRostered: rosteredTags.has(tag),
       isRemoved,
-      naturalLeague,
-      effectiveLeague,
+      notes: notesMap.get(tag) ?? null,
     });
   }
 
-  // 9. Sort: available first (most active → least), rostered last (most active → least)
+  // 7. Sort: available first (most active → least), rostered next, removed last
   players.sort((a, b) => {
     if (a.isRemoved !== b.isRemoved) return a.isRemoved ? 1 : -1;
     if (a.isRostered !== b.isRostered) return a.isRostered ? 1 : -1;
     return b.weeksActive - a.weeksActive;
   });
 
-  // 10. Write to sheet
+  // 8. Write to sheet
   await writeAvailableSheet(spreadsheetId, sheetId, sheetName, league, players, sheets);
 
   logger.info(
     `[availableSheet] Refreshed "${sheetName}" for guild ${guildId}: ` +
-      `${players.filter((p) => !p.isRostered).length} available, ${players.filter((p) => p.isRostered).length} rostered`,
+      `${players.filter((p) => !p.isRostered && !p.isRemoved).length} available, ` +
+      `${players.filter((p) => p.isRostered).length} rostered, ` +
+      `${players.filter((p) => p.isRemoved).length} removed`,
   );
 }

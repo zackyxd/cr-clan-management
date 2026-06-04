@@ -15,7 +15,7 @@ export const shorthands = undefined;
 export const up = (pgm) => {
   pgm.addColumns('clans', {
     // Clan activity logs settings
-    clan_logs_enabled: { type: 'boolean', default: false },
+    clan_logs_enabled: { type: 'boolean', default: true },
     clan_logs_channel_id: { type: 'varchar(30)', default: null },
 
     // Automatic role management for linked members

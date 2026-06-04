@@ -3,9 +3,8 @@
  * Pure dispatcher - all business logic is in handlers
  */
 
-import { ButtonInteraction, ModalSubmitInteraction, StringSelectMenuInteraction, MessageFlags } from 'discord.js';
+import { ButtonInteraction, ModalSubmitInteraction, StringSelectMenuInteraction } from 'discord.js';
 import type { ParsedCustomId } from '../../types/ParsedCustomId.js';
-import { parseCustomId } from '../../utils/customId.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { buildClanSettingsView, getSelectMenuRowBuilder } from './config.js';
 import { clanSettingsService } from './service.js';
@@ -16,6 +15,7 @@ import { NudgesHandler } from './handlers/nudges.js';
 import { ChannelsHandler } from './handlers/channels.js';
 import { RacePingsHandler } from './handlers/racePings.js';
 import { ClanLogsHandler } from './handlers/clanlogs.js';
+import { StatsColorsHandler } from './handlers/statsColors.js';
 
 export class ClanSettingsInteractionRouter {
   /**
@@ -104,6 +104,10 @@ export class ClanSettingsInteractionRouter {
       case 'clan_logs':
         await ClanLogsHandler.showModal(interaction, settingsData);
         break;
+        
+        case 'stats_colors':
+          await StatsColorsHandler.showModal(interaction, settingsData);
+          break;
 
       default:
         await interaction.reply({
@@ -139,6 +143,10 @@ export class ClanSettingsInteractionRouter {
       case 'clanSettings_clan_logs_settings':
         await ClanLogsHandler.handleModal(interaction);
         break;
+
+        case 'clanSettings_stats_colors':
+          await StatsColorsHandler.handleModal(interaction);
+          break;
 
       default:
         await interaction.reply({
@@ -196,7 +204,7 @@ export class ClanSettingsInteractionRouter {
         return;
       }
 
-      const { settingKey: featureName, clantag, clanName, guildId } = settingsData;
+      const { settingKey: featureName, guildId } = settingsData;
 
       // Check permissions
       const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {
@@ -254,7 +262,7 @@ export class ClanSettingsInteractionRouter {
         return;
       }
 
-      const { settingKey: featureName, clantag, clanName, guildId } = settingsData;
+      const { settingKey: featureName, guildId } = settingsData;
 
       // Check permissions
       const allowed = await checkPerms(interaction, guildId, 'button', 'either', { hideNoPerms: true });
