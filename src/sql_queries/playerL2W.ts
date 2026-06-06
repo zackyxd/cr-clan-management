@@ -6,8 +6,8 @@ export interface L2WPlayerRow {
   league: string;
   player_name: string;
   l2w_status: 'l2w' | 'inactive' | 'removed';
-  l2w_league: '5k' | '4k' | null;
   l2w_notes: string | null;
+  l2w_duration_days: number | null;
   l2w_duration_date: string | null; // ISO date string or null = indefinite
   l2w_marked_at: string;
   l2w_marked_by_discord_id: string;
@@ -19,6 +19,7 @@ export interface UpsertL2WPlayerData {
   playerName: string;
   status: 'l2w' | 'inactive' | 'removed';
   notes?: string | null;
+  durationDays?: number | string | null;
   durationDate?: string | null; // ISO date string or null = indefinite
   markedByDiscordId: string;
 }
@@ -27,7 +28,7 @@ export function buildGetL2WPlayers(guildId: string, league: '5k' | '4k'): string
   return format(
     `
     SELECT guild_id, playertag, league, player_name,
-           l2w_status, l2w_league, l2w_notes, l2w_duration_date, l2w_marked_at
+          l2w_status, l2w_notes, l2w_duration_days, l2w_duration_date, l2w_marked_at
     FROM player_availability
     WHERE guild_id = %L AND league = %L AND l2w_status IS NOT NULL
     ORDER BY l2w_status, l2w_marked_at ASC
@@ -77,16 +78,23 @@ export function buildBatchUpdateNotes(
 }
 
 export function buildUpsertL2WPlayer(guildId: string, data: UpsertL2WPlayerData): string {
+  const parsedDurationDays =
+    data.durationDays == null || data.durationDays === ''
+      ? null
+      : Number.isFinite(Number(data.durationDays))
+        ? Math.max(0, Math.floor(Number(data.durationDays)))
+        : null;
+
   return format(
     `
     INSERT INTO player_availability
-      (guild_id, playertag, league, player_name, l2w_status, l2w_league, l2w_notes, l2w_duration_date, l2w_marked_at)
+      (guild_id, playertag, league, player_name, l2w_status, l2w_notes, l2w_duration_days, l2w_duration_date, l2w_marked_at)
     VALUES (%L, %L, %L, %L, %L, %L, %L, %L, NOW())
     ON CONFLICT (guild_id, playertag, league) DO UPDATE SET
       player_name              = EXCLUDED.player_name,
       l2w_status               = EXCLUDED.l2w_status,
-      l2w_league               = EXCLUDED.l2w_league,
       l2w_notes                = EXCLUDED.l2w_notes,
+      l2w_duration_days        = EXCLUDED.l2w_duration_days,
       l2w_duration_date        = EXCLUDED.l2w_duration_date,
       l2w_marked_at            = NOW()
     RETURNING *
@@ -96,8 +104,8 @@ export function buildUpsertL2WPlayer(guildId: string, data: UpsertL2WPlayerData)
     data.league,
     data.playerName,
     data.status,
-    data.league,
     data.notes ?? null,
+    parsedDurationDays,
     data.durationDate ?? null,
     data.markedByDiscordId,
   );
@@ -113,13 +121,15 @@ export function buildUpdateL2WStatus(
     `
     UPDATE player_availability
     SET l2w_status = %L, l2w_marked_at = NOW()
-    WHERE guild_id = %L AND playertag = %L AND league = %L
+    WHERE guild_id = %L
+      AND league = %L
+      AND UPPER(REPLACE(TRIM(playertag), '#', '')) = UPPER(REPLACE(TRIM(%L), '#', ''))
     RETURNING *
     `,
     status,
     guildId,
-    playertag,
     league,
+    playertag,
   );
 }
 
@@ -131,14 +141,17 @@ export function buildRemoveL2WPlayer(guildId: string, playertag: string, league:
   return format(
     `
     UPDATE player_availability
-    SET l2w_status = NULL, l2w_duration_date = NULL,
+    SET l2w_status = NULL, l2w_duration_days = NULL, l2w_duration_date = NULL,
         l2w_marked_at = NULL
-    WHERE guild_id = %L AND playertag = %L AND league = %L
+    WHERE guild_id = %L
+      AND league = %L
+      AND UPPER(REPLACE(TRIM(playertag), '#', '')) = UPPER(REPLACE(TRIM(%L), '#', ''))
+      AND l2w_status IS NOT NULL
     RETURNING playertag, league
     `,
     guildId,
-    playertag,
     league,
+    playertag,
   );
 }
 
@@ -146,9 +159,11 @@ export function buildRemoveL2WPlayerAllLeagues(guildId: string, playertag: strin
   return format(
     `
     UPDATE player_availability
-    SET l2w_status = NULL, l2w_duration_date = NULL,
+    SET l2w_status = NULL, l2w_duration_days = NULL, l2w_duration_date = NULL,
         l2w_marked_at = NULL
-    WHERE guild_id = %L AND playertag = %L
+    WHERE guild_id = %L
+      AND UPPER(REPLACE(TRIM(playertag), '#', '')) = UPPER(REPLACE(TRIM(%L), '#', ''))
+      AND l2w_status IS NOT NULL
     RETURNING playertag, league
     `,
     guildId,
@@ -166,9 +181,14 @@ export function buildBatchRemoveL2WPlayers(
   return {
     text: `
     UPDATE player_availability
-    SET l2w_status = NULL, l2w_duration_date = NULL,
+    SET l2w_status = NULL, l2w_duration_days = NULL, l2w_duration_date = NULL,
         l2w_marked_at = NULL
-    WHERE guild_id = $1 AND league = $2 AND playertag = ANY($3::varchar[])
+    WHERE guild_id = $1
+      AND league = $2
+      AND UPPER(REPLACE(TRIM(playertag), '#', '')) = ANY(
+        SELECT UPPER(REPLACE(TRIM(t), '#', '')) FROM unnest($3::varchar[]) AS t
+      )
+      AND l2w_status IN ('l2w', 'inactive')
     RETURNING playertag, league
     `,
     values: [guildId, league, tags],

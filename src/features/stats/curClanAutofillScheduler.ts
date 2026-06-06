@@ -121,7 +121,7 @@ export class CurClanAutofillScheduler {
 
     for (let startCol = 0; startCol < headerRow.length; startCol += LINEUP_BLOCK_WIDTH) {
       const clanName = (headerRow[startCol] ?? '').trim();
-      if (!clanName || clanName.toUpperCase() === 'L2W') continue;
+      if (!clanName) continue;
 
       // Tag column is startCol + 1 (e.g. col B for clan 0).
       const tagColLetter = colToLetter(startCol + 1);

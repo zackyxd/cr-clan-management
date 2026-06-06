@@ -878,6 +878,9 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
             `[Race Update - ${clantag}] Discord client unavailable in fallback finalization path; summary not posted.`,
           );
         }
+      } else {
+        logger.info(`[Race Update - ${clantag}] Previous race type=${prevType}; no fallback snapshot/post needed.`);
+      }
     } else {
       logger.info(`[Race Update - ${clantag}] No previous race found to finalize.`);
     }

@@ -29,7 +29,7 @@ export const CLAN_FEATURE_SETTINGS = [
     label: 'Clan Info',
     buttonLabel: 'Clan Info',
     type: 'grouped_modal',
-    group: ['family_clan', 'abbreviation', 'clan_role_id', 'staff_channel_id'],
+    group: ['family_clan', 'l2w_clan', 'abbreviation', 'clan_role_id', 'staff_channel_id'],
   },
   {
     key: 'stats_colors',
@@ -55,7 +55,13 @@ export const CLAN_FEATURE_SETTINGS = [
     label: 'Clan Logs Settings',
     buttonLabel: 'Clan Logs',
     type: 'grouped_modal',
-    group: ['clan_logs_enabled', 'clan_logs_channel_id', 'clan_logs_manage_roles', 'clan_logs_add_role', 'clan_logs_remove_role'],
+    group: [
+      'clan_logs_enabled',
+      'clan_logs_channel_id',
+      'clan_logs_manage_roles',
+      'clan_logs_add_role',
+      'clan_logs_remove_role',
+    ],
   },
   {
     key: 'ping_settings',
@@ -108,7 +114,7 @@ export const DEFAULT_CLAN_SETTINGS = {
 // Build the clan settings view when a clan is selected in /clan-settings
 export async function buildClanSettingsView(guildId: string, clanName: string, clantag: string, ownerId: string) {
   const res = await pool.query(
-    `SELECT family_clan, nudge_method, race_nudge_channel_id, race_custom_nudge_message, 
+    `SELECT family_clan, l2w_clan, nudge_method, race_nudge_channel_id, race_custom_nudge_message, 
             race_nudge_start_hour, race_nudge_start_minute, race_nudge_interval_hours, race_nudge_hours_before_array,
             eod_stats_enabled, staff_channel_id, invites_enabled, clan_role_id, abbreviation, header_bg_hex, header_text_hex,
             ping_replace_me, ping_attacking_late, race_ping_channel_id, ping_replace_me_role_id,
@@ -123,6 +129,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
 
   const settings: Record<string, boolean | string | number | NudgeSchedule | number[] | null> = {
     family_clan: dbRow.family_clan || false,
+    l2w_clan: dbRow.l2w_clan || false,
     nudge_method: dbRow.nudge_method || 'disabled',
     race_nudge_channel_id: dbRow.race_nudge_channel_id || '',
     race_custom_nudge_message: dbRow.race_custom_nudge_message || '',
@@ -232,6 +239,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
 
         const lines: string[] = [];
         lines.push(` * Family Clan: ${familyEnabled ? '✅ Enabled' : '❌ Disabled'}`);
+        lines.push(` * L2W Clan: ${settings['l2w_clan'] ? '✅ Enabled' : '❌ Disabled'}`);
         lines.push(` * Abbreviation: ${abbreviation ? `__${abbreviation}__` : '*Not set*'}`);
         lines.push(` * Clan Role: ${clanRoleId ? `<@&${clanRoleId}>` : '*Not set*'}`);
         lines.push(` * Staff Channel: ${staffChannelId ? `<#${staffChannelId}>` : '*Not set*'}`);
@@ -250,19 +258,13 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
         const lines: string[] = [];
         const clanLogsEnabled = settings['clan_logs_enabled'] ? '✅ Enabled' : '❌ Disabled';
         const clanLogsChannelId = settings['clan_logs_channel_id']
-          ? `<#${settings['clan_logs_channel_id']}>` 
+          ? `<#${settings['clan_logs_channel_id']}>`
           : '*Not set*';
         const addRole = settings['clan_logs_add_role'];
         const removeRole = settings['clan_logs_remove_role'];
-        const roleBehavior = 
-          addRole && removeRole 
-            ? 'Both Add & Remove' 
-            : addRole 
-              ? 'Add Only' 
-              : removeRole 
-                ? 'Remove Only' 
-                : 'Neither';
-        
+        const roleBehavior =
+          addRole && removeRole ? 'Both Add & Remove' : addRole ? 'Add Only' : removeRole ? 'Remove Only' : 'Neither';
+
         lines.push(` * Status: ${clanLogsEnabled}`);
         lines.push(` * Channel: ${clanLogsChannelId}`);
         lines.push(` * Role Behavior: ${roleBehavior}`);

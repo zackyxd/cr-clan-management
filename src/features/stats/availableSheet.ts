@@ -1,7 +1,7 @@
 import { pool } from '../../db.js';
 import logger from '../../logger.js';
-import { getRiverRaceLog, isFetchError } from '../../api/CR_API.js';
-import { getAuthenticatedSheetsClient, getSheetIdByName } from './statsUtil.js';
+import { getCurrentRiverRace, getRiverRaceLog, getPlayer, isFetchError, normalizeTag } from '../../api/CR_API.js';
+import { colToLetter, getAuthenticatedSheetsClient, getSheetIdByName } from './statsUtil.js';
 import {
   buildGetL2WTags,
   buildUpsertL2WPlayer,
@@ -44,6 +44,7 @@ const COL_WIDTHS = [95, 135, 80, 90, 90, 90, 90, 200];
 
 // Matches LINEUP_BLOCK_WIDTH in lineupOrder.ts (cols per clan block including gap)
 const LINEUP_BLOCK_WIDTH = 7;
+const AVERAGES_WEEK_START_COL = 5;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,127 @@ function fameFormula(row: number): string {
   );
 }
 
+function buildAveragesFameFormula(rowNumber: number, lastWeekColLetter: string): string {
+  return (
+    `=IFERROR(LET(` +
+    `r,INDIRECT("F${rowNumber}:${lastWeekColLetter}${rowNumber}"),` +
+    `f,ARRAY_CONSTRAIN(FILTER(r,MOD(COLUMN(r)-COLUMN($F$1),2)=0,r<>""),1,3),` +
+    `a,ARRAY_CONSTRAIN(FILTER(r,MOD(COLUMN(r)-COLUMN($F$1),2)=1,r<>""),1,3),` +
+    `IF(COUNTA(r)=0,0,SUM(f)/MAX(1,SUM(a)))` +
+    `),0)`
+  );
+}
+
+async function ensureSheetRowCapacity(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sheets: any,
+  spreadsheetId: string,
+  sheetId: number,
+  requiredRows: number,
+): Promise<void> {
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: 'sheets(properties(sheetId,gridProperties(rowCount)))',
+  });
+
+  const targetSheet = meta.data.sheets?.find(
+    (sheet: { properties?: { sheetId?: number } }) => sheet.properties?.sheetId === sheetId,
+  );
+  const currentRows = targetSheet?.properties?.gridProperties?.rowCount ?? 0;
+  if (requiredRows <= currentRows) return;
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          appendDimension: {
+            sheetId,
+            dimension: 'ROWS',
+            length: requiredRows - currentRows,
+          },
+        },
+      ],
+    },
+  });
+}
+
+async function backfillRosteredNamesToAverages(
+  spreadsheetId: string,
+  league: string,
+  rosteredTags: Set<string>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  sheets: any,
+): Promise<void> {
+  if (rosteredTags.size === 0) return;
+
+  const sheetName = `${league} Averages`;
+  const sheetId = await getSheetIdByName(spreadsheetId, sheetName);
+  if (sheetId === null) return;
+
+  const headerResponse = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `'${sheetName}'!F1:1`,
+  });
+  const currentHeaderRow = headerResponse.data.values?.[0] ?? [];
+  const existingWeekCount = currentHeaderRow.filter((label: string) => !!label).length;
+  const totalWeekColCount = existingWeekCount * 2;
+  const lastWeekColLetter = totalWeekColCount > 0 ? colToLetter(AVERAGES_WEEK_START_COL + totalWeekColCount - 1) : 'E';
+
+  const existingRowsResponse = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `'${sheetName}'!A2:ZZ`,
+  });
+  const existingRows = existingRowsResponse.data.values ?? [];
+  const existingTags = new Set<string>();
+  for (const row of existingRows) {
+    const rawTag = row[1];
+    if (!rawTag) continue;
+    const tag = normalizeTag(String(rawTag));
+    if (tag) existingTags.add(tag);
+  }
+
+  const missingTags = [...rosteredTags].filter((tag) => !existingTags.has(tag));
+  if (missingTags.length === 0) return;
+
+  const linkedRes = await pool.query<{ playertag: string; discord_id: string }>(
+    `SELECT playertag, discord_id FROM user_playertags WHERE playertag = ANY($1)`,
+    [missingTags],
+  );
+  const linkedDiscordIds = new Map(linkedRes.rows.map((row) => [normalizeTag(row.playertag), row.discord_id] as const));
+
+  const players = await Promise.all(missingTags.map((tag) => getPlayer(tag)));
+  const appendRows: (string | number)[][] = [];
+  let appendCount = 0;
+  for (let i = 0; i < missingTags.length; i++) {
+    const tag = missingTags[i];
+    const player = players[i];
+    if (isFetchError(player)) continue;
+    appendCount++;
+    const rowNumber = existingRows.length + appendCount + 1;
+    const linkedDiscord = linkedDiscordIds.get(tag) ?? '';
+    appendRows.push([
+      linkedDiscord,
+      tag,
+      player.name,
+      '',
+      totalWeekColCount > 0 ? buildAveragesFameFormula(rowNumber, lastWeekColLetter) : '',
+    ]);
+  }
+
+  if (appendRows.length === 0) return;
+
+  const requiredRows = existingRows.length + appendRows.length + 1;
+  await ensureSheetRowCapacity(sheets, spreadsheetId, sheetId, requiredRows);
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `'${sheetName}'!A${existingRows.length + 2}:E${existingRows.length + 1 + appendRows.length}`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: appendRows },
+  });
+}
+
 // ─── Data Collection ──────────────────────────────────────────────────────────
 
 /**
@@ -102,51 +224,86 @@ async function collectParticipants(
 ): Promise<Map<string, ParticipantEntry>> {
   const playerMap = new Map<string, ParticipantEntry>();
 
-  // Fetch all logs concurrently (rate-limited by Bottleneck inside getRiverRaceLog)
-  const logs = await Promise.all(familyClans.map((c) => getRiverRaceLog(c.clantag)));
+  // Fetch all logs/current races concurrently (rate-limited by Bottleneck inside API helpers)
+  const [logs, currentRaces] = await Promise.all([
+    Promise.all(familyClans.map((c) => getRiverRaceLog(c.clantag))),
+    Promise.all(familyClans.map((c) => getCurrentRiverRace(c.clantag))),
+  ]);
 
   for (let ci = 0; ci < familyClans.length; ci++) {
     const clan = familyClans[ci];
     const log = logs[ci];
+    const currentRace = currentRaces[ci];
+
+    const clanLeague = getLeagueFromTrophies(clan.clan_trophies);
 
     if (isFetchError(log)) {
       logger.warn(`[availableSheet] Failed to fetch race log for ${clan.clantag}: ${log.reason}`);
+    } else {
+      const recentItems = log.items.slice(0, AVAILABLE_SHEET_WEEKS_LOOKBACK);
+
+      for (const item of recentItems) {
+        const weekKey = `${item.seasonId}-${item.sectionIndex}`;
+        const score = item.seasonId * 100 + item.sectionIndex;
+
+        // Find this guild's clan in the standings
+        const standing = item.standings.find((s) => s.clan.tag.toUpperCase() === clan.clantag.toUpperCase());
+        if (!standing) continue;
+
+        for (const participant of standing.clan.participants) {
+          const tag = participant.tag.toUpperCase();
+
+          if (!playerMap.has(tag)) {
+            playerMap.set(tag, {
+              name: participant.name,
+              weeks: new Set(),
+              latestClanTag: clan.clantag,
+              latestScore: score,
+              leagues: new Set(),
+            });
+          }
+
+          const entry = playerMap.get(tag)!;
+          entry.weeks.add(weekKey);
+          if (clanLeague) entry.leagues.add(clanLeague);
+
+          if (score > entry.latestScore) {
+            entry.latestScore = score;
+            entry.latestClanTag = clan.clantag;
+            entry.name = participant.name; // keep most recent display name
+          }
+        }
+      }
+    }
+
+    if (isFetchError(currentRace)) {
+      logger.warn(`[availableSheet] Failed to fetch current race for ${clan.clantag}: ${currentRace.reason}`);
       continue;
     }
 
-    const clanLeague = getLeagueFromTrophies(clan.clan_trophies);
-    const recentItems = log.items.slice(0, AVAILABLE_SHEET_WEEKS_LOOKBACK);
+    const currentParticipants = currentRace.clan?.participants ?? [];
+    const currentScore = Number.MAX_SAFE_INTEGER;
 
-    for (const item of recentItems) {
-      const weekKey = `${item.seasonId}-${item.sectionIndex}`;
-      const score = item.seasonId * 100 + item.sectionIndex;
+    for (const participant of currentParticipants) {
+      const tag = participant.tag.toUpperCase();
 
-      // Find this guild's clan in the standings
-      const standing = item.standings.find((s) => s.clan.tag.toUpperCase() === clan.clantag.toUpperCase());
-      if (!standing) continue;
+      if (!playerMap.has(tag)) {
+        playerMap.set(tag, {
+          name: participant.name,
+          weeks: new Set(),
+          latestClanTag: clan.clantag,
+          latestScore: currentScore,
+          leagues: new Set(),
+        });
+      }
 
-      for (const participant of standing.clan.participants) {
-        const tag = participant.tag.toUpperCase();
+      const entry = playerMap.get(tag)!;
+      if (clanLeague) entry.leagues.add(clanLeague);
 
-        if (!playerMap.has(tag)) {
-          playerMap.set(tag, {
-            name: participant.name,
-            weeks: new Set(),
-            latestClanTag: clan.clantag,
-            latestScore: score,
-            leagues: new Set(),
-          });
-        }
-
-        const entry = playerMap.get(tag)!;
-        entry.weeks.add(weekKey);
-        if (clanLeague) entry.leagues.add(clanLeague);
-
-        if (score > entry.latestScore) {
-          entry.latestScore = score;
-          entry.latestClanTag = clan.clantag;
-          entry.name = participant.name; // keep most recent display name
-        }
+      if (currentScore > entry.latestScore) {
+        entry.latestScore = currentScore;
+        entry.latestClanTag = clan.clantag;
+        entry.name = participant.name;
       }
     }
   }
@@ -163,14 +320,14 @@ async function collectParticipants(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function readLineupsRosteredTags(sheets: any, spreadsheetId: string): Promise<Set<string>> {
   const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
-  const linuepsSheets = (spreadsheet.data.sheets ?? []).filter(
+  const lineupsSheets = (spreadsheet.data.sheets ?? []).filter(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (s: any) => (s.properties?.title as string | undefined)?.includes('Lineups'),
   );
 
   const rosteredTags = new Set<string>();
 
-  for (const sheet of linuepsSheets) {
+  for (const sheet of lineupsSheets) {
     const title: string = sheet.properties.title;
     try {
       const res = await sheets.spreadsheets.values.get({
@@ -186,13 +343,14 @@ async function readLineupsRosteredTags(sheets: any, spreadsheetId: string): Prom
         // Tag columns: 1, 8, 15, 22, ...
         for (let col = 1; col < row.length; col += LINEUP_BLOCK_WIDTH) {
           const tag = row[col];
-          if (tag && typeof tag === 'string' && tag.startsWith('#')) {
-            rosteredTags.add(tag.toUpperCase());
+          if (tag && typeof tag === 'string') {
+            const normalizedTag = normalizeTag(tag);
+            rosteredTags.add(normalizedTag);
           }
         }
       }
-    } catch {
-      logger.warn(`[availableSheet] Failed to read lineups sheet "${title}"`);
+    } catch (error) {
+      logger.warn(`[availableSheet] Failed to read lineups sheet "${title}": ${error}`);
     }
   }
 
@@ -214,7 +372,7 @@ async function processAvailableCheckboxes(
   league: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sheets: any,
-): Promise<number> {
+): Promise<void> {
   let changeCount = 0;
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
@@ -245,6 +403,7 @@ async function processAvailableCheckboxes(
         playerName,
         status: 'removed',
         notes,
+        durationDays: null,
         durationDate: null,
         markedByDiscordId: 'sheet',
       };
@@ -260,6 +419,7 @@ async function processAvailableCheckboxes(
         playerName,
         status: 'l2w',
         notes,
+        durationDays: null,
         durationDate: null,
         markedByDiscordId: 'sheet',
       };
@@ -275,6 +435,7 @@ async function processAvailableCheckboxes(
         playerName,
         status: 'inactive',
         notes,
+        durationDays: null,
         durationDate: null,
         markedByDiscordId: 'sheet',
       };
@@ -287,10 +448,6 @@ async function processAvailableCheckboxes(
   const notesQuery = buildBatchUpdateNotes(guildId, league, noteUpdates);
   if (notesQuery) {
     await pool.query(notesQuery.text, notesQuery.values);
-  }
-
-  if (changeCount > 0) {
-    logger.info(`[availableSheet] Processed ${changeCount} checkbox action(s) on "${sheetName}" for guild ${guildId}`);
   }
 
   return changeCount;
@@ -537,6 +694,25 @@ async function writeAvailableSheet(
     },
   });
 
+  requests.push({
+    // Format column C, average column
+    repeatCell: {
+      range: {
+        sheetId: sheetId,
+        startRowIndex: 1,
+        endRowIndex: 2000,
+        startColumnIndex: 2, // Column C
+        endColumnIndex: 3,
+      },
+      cell: {
+        userEnteredFormat: {
+          numberFormat: { type: 'NUMBER', pattern: '##0.00' },
+        },
+      },
+      fields: 'userEnteredFormat(numberFormat)',
+    },
+  });
+
   await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
 
   // ── 3. Write values ───────────────────────────────────────────────────────────
@@ -633,6 +809,9 @@ export async function refreshAvailableSheet(
   // 5. Read tags already rostered on any Lineups sheet
   const rosteredTags = await readLineupsRosteredTags(sheets, spreadsheetId);
 
+  // 5b. Backfill missing rostered names into averages so lineups show names
+  await backfillRosteredNamesToAverages(spreadsheetId, league, rosteredTags, sheets);
+
   // 6. Filter and classify players for this league sheet
   const players: AvailablePlayer[] = [];
 
@@ -662,11 +841,4 @@ export async function refreshAvailableSheet(
 
   // 8. Write to sheet
   await writeAvailableSheet(spreadsheetId, sheetId, sheetName, league, players, sheets);
-
-  logger.info(
-    `[availableSheet] Refreshed "${sheetName}" for guild ${guildId}: ` +
-      `${players.filter((p) => !p.isRostered && !p.isRemoved).length} available, ` +
-      `${players.filter((p) => p.isRostered).length} rostered, ` +
-      `${players.filter((p) => p.isRemoved).length} removed`,
-  );
 }

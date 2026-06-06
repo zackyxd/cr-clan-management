@@ -83,7 +83,7 @@ async function formatHeaders(spreadsheetId: string, sheetId: number = 0) {
         },
         cell: {
           userEnteredFormat: {
-            numberFormat: { type: 'NUMBER', pattern: '#,##0.00' },
+            numberFormat: { type: 'NUMBER', pattern: '##0.00' },
           },
         },
         fields: 'userEnteredFormat(numberFormat)',

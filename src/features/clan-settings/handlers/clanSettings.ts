@@ -15,12 +15,12 @@ import {
   TextInputBuilder,
   TextInputStyle,
   LabelBuilder,
-  CheckboxBuilder,
   RoleSelectMenuBuilder,
   ChannelSelectMenuBuilder,
   ChannelType,
   MessageFlags,
   EmbedBuilder,
+  CheckboxGroupBuilder,
 } from 'discord.js';
 import { makeCustomId, parseCustomId } from '../../../utils/customId.js';
 import { checkPerms } from '../../../utils/checkPermissions.js';
@@ -41,7 +41,7 @@ export class ClanSettingsHandler {
     try {
       // Fetch current values
       const result = await pool.query(
-        `SELECT family_clan, abbreviation, clan_role_id, staff_channel_id 
+        `SELECT family_clan, l2w_clan, abbreviation, clan_role_id, staff_channel_id 
          FROM clans 
          WHERE guild_id = $1 AND clantag = $2`,
         [guildId, clantag],
@@ -57,6 +57,7 @@ export class ClanSettingsHandler {
 
       const currentSettings = result.rows[0];
       const familyClan = currentSettings.family_clan || false;
+      const l2wClan = currentSettings.l2w_clan || false;
       const abbreviation = currentSettings.abbreviation || '';
       const clanRoleId = currentSettings.clan_role_id || '';
       const staffChannelId = currentSettings.staff_channel_id || '';
@@ -68,8 +69,24 @@ export class ClanSettingsHandler {
           // Family clan checkbox
           new LabelBuilder()
             .setLabel('Family Clan')
-            .setDescription('Mark as family clan (subject to server limit)')
-            .setCheckboxComponent(new CheckboxBuilder().setCustomId('family_clan').setDefault(familyClan)),
+            .setDescription('Mark as family clan or L2W clan.')
+            .setCheckboxGroupComponent(
+              new CheckboxGroupBuilder()
+                .setCustomId('checkbox_group')
+
+                .addOptions(
+                  {
+                    label: 'Family Clan',
+                    value: 'family_clan',
+                    default: familyClan,
+                  },
+                  {
+                    label: 'L2W Clan',
+                    value: 'l2w_clan',
+                    default: l2wClan,
+                  },
+                ),
+            ),
 
           // Abbreviation text input
           new LabelBuilder()
@@ -93,7 +110,8 @@ export class ClanSettingsHandler {
               new RoleSelectMenuBuilder()
                 .setCustomId('clan_role_id')
                 .setMaxValues(1)
-                .setDefaultRoles(clanRoleId ? [clanRoleId] : []),
+                .setDefaultRoles(clanRoleId ? [clanRoleId] : [])
+                .setRequired(false),
             ),
 
           // Staff channel selector
@@ -105,7 +123,8 @@ export class ClanSettingsHandler {
                 .setCustomId('staff_channel_id')
                 .setMaxValues(1)
                 .setChannelTypes([ChannelType.GuildText, ChannelType.GuildAnnouncement])
-                .setDefaultChannels(staffChannelId ? [staffChannelId] : []),
+                .setDefaultChannels(staffChannelId ? [staffChannelId] : [])
+                .setRequired(false),
             ),
         );
 
@@ -141,7 +160,9 @@ export class ClanSettingsHandler {
 
     try {
       // Extract all field values
-      const familyClan = interaction.fields.getCheckbox('family_clan');
+      const selectedCheckboxes = interaction.fields.getCheckboxGroup('checkbox_group');
+      const familyClan = selectedCheckboxes.includes('family_clan');
+      const l2wClan = selectedCheckboxes.includes('l2w_clan');
       const abbreviation = interaction.fields.getTextInputValue('abbreviation')?.trim() || '';
       const roleIds = interaction.fields.getSelectedRoles('clan_role_id');
       const roleId = roleIds?.first()?.id || '';
@@ -150,7 +171,7 @@ export class ClanSettingsHandler {
 
       // Fetch old values for comparison
       const oldValues = await pool.query(
-        `SELECT family_clan, abbreviation, clan_role_id, staff_channel_id, clan_name 
+        `SELECT family_clan, l2w_clan, abbreviation, clan_role_id, staff_channel_id, clan_name 
          FROM clans 
          WHERE guild_id = $1 AND clantag = $2`,
         [guildId, clantag],
@@ -190,6 +211,27 @@ export class ClanSettingsHandler {
         changes.push(`**Family Clan:** ${old.family_clan ? 'Enabled → Disabled' : 'Disabled → Enabled'}`);
       }
 
+      // Update L2W clan if changed
+      if (l2wClan !== (old.l2w_clan || false)) {
+        const result = await clanSettingsService.updateClanSetting(
+          interaction.client,
+          guildId,
+          clantag,
+          'l2w_clan',
+          l2wClan,
+        );
+
+        if (!result.success) {
+          await interaction.followUp({
+            content: result.error || '❌ Failed to update L2W clan setting.',
+            flags: MessageFlags.Ephemeral,
+          });
+          return;
+        }
+
+        changes.push(`**L2W Clan:** ${old.l2w_clan ? 'Enabled → Disabled' : 'Disabled → Enabled'}`);
+      }
+
       // Update abbreviation if changed
       if (abbreviation && abbreviation !== (old.abbreviation || '')) {
         const result = await clanSettingsService.updateAbbreviation(
@@ -197,7 +239,6 @@ export class ClanSettingsHandler {
           guildId,
           clantag,
           abbreviation,
-          interaction.user.id,
         );
 
         if (!result.success) {
@@ -225,7 +266,6 @@ export class ClanSettingsHandler {
           guildId,
           clantag,
           roleId,
-          interaction.user.id,
         );
 
         if (!result.success) {
@@ -249,7 +289,6 @@ export class ClanSettingsHandler {
           clantag,
           'staff_channel_id',
           channelId,
-          interaction.user.id,
         );
 
         if (!result.success) {

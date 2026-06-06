@@ -55,7 +55,7 @@ export function buildGetClansForActivityCheck(limit: number = 20): string {
     FROM clans c
     LEFT JOIN server_settings s ON c.guild_id = s.guild_id
     WHERE c.clan_logs_enabled = TRUE 
-      AND c.clan_logs_channel_id IS NOT NULL
+      -- AND c.clan_logs_channel_id IS NOT NULL
     ORDER BY 
       COALESCE(c.last_activity_check_at, '1970-01-01'::timestamptz) ASC
     LIMIT %L
@@ -85,5 +85,17 @@ export function buildUpdateActivitySnapshot(
     timestamp.toISOString(),
     guildId,
     clantag,
+  );
+}
+
+export function buildGetFamilyClans(guildId: string): string {
+  return format(
+    `
+    SELECT clantag, clan_name, abbreviation, header_bg_hex, header_text_hex
+    FROM clans
+    WHERE guild_id = %L
+      AND family_clan = true
+    `,
+    guildId,
   );
 }

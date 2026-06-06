@@ -54,7 +54,7 @@ const COL_WIDTHS = [
   135,
   100,
   200,
-  90,
+  125, // duration
   100,
   100,
   90, // L2W section (0–7)
@@ -63,7 +63,7 @@ const COL_WIDTHS = [
   135,
   100,
   200,
-  90,
+  125, // duration
   100,
   100,
   90, // Inactive section (9–16)
@@ -85,12 +85,111 @@ function clanFormula(tagColLetter: string, row: number): string {
   );
 }
 
-function formatDuration(durationDate: string | null): string {
-  return durationDate ?? 'Indefinite';
+function formatDurationDays(
+  durationDays: number | null | undefined,
+  durationDate: string | null,
+  markedAt: string | Date | null,
+): number | '' {
+  if (typeof durationDays === 'number' && Number.isFinite(durationDays)) {
+    return Math.max(0, Math.floor(durationDays));
+  }
+
+  if (!durationDate || !markedAt) return '';
+
+  const expiryDate = new Date(durationDate);
+  const markedDate = new Date(markedAt);
+  if (Number.isNaN(expiryDate.getTime()) || Number.isNaN(markedDate.getTime())) return '';
+
+  // Compare DATE granularity so the sheet shows an integer day duration.
+  const expiryDateOnly = new Date(toIsoDate(expiryDate));
+  const markedDateOnly = new Date(toIsoDate(markedDate));
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const dayDiff = Math.round((expiryDateOnly.getTime() - markedDateOnly.getTime()) / msPerDay);
+
+  return Math.max(0, dayDiff);
 }
 
 function formatDate(dateValue: string | Date): string {
   return new Date(dateValue).toISOString().split('T')[0];
+}
+
+function toIsoDate(value: Date): string {
+  return value.toISOString().split('T')[0];
+}
+
+function parseSheetDateValue(value: unknown): Date | null {
+  if (value == null) return null;
+
+  // Google Sheets serial date (days since 1899-12-30).
+  const fromSerial = (serial: number): Date | null => {
+    if (!Number.isFinite(serial)) return null;
+    const epochMs = Date.UTC(1899, 11, 30);
+    return new Date(epochMs + Math.round(serial * 24 * 60 * 60 * 1000));
+  };
+
+  if (typeof value === 'number') {
+    return fromSerial(value);
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  if (/^-?\d+(\.\d+)?$/.test(raw)) {
+    const serial = Number(raw);
+    if (Number.isFinite(serial)) {
+      const epochMs = Date.UTC(1899, 11, 30);
+      return new Date(epochMs + Math.round(serial * 24 * 60 * 60 * 1000));
+    }
+  }
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed;
+  }
+
+  return null;
+}
+
+function normalizeSheetDurationDate(durationCellValue: unknown, markedDateCellValue: unknown): string | null {
+  if (durationCellValue == null) return null;
+
+  const raw = String(durationCellValue).trim();
+  if (!raw || raw.toLowerCase() === 'indefinite') return null;
+
+  const markedDate = parseSheetDateValue(markedDateCellValue);
+  const hasValidMarkedDate = markedDate !== null;
+
+  // If duration is numeric (days), convert to absolute expiry DATE for DB storage.
+  const asNumber = Number(raw);
+  if (!Number.isNaN(asNumber) && hasValidMarkedDate) {
+    const expiry = new Date(markedDate);
+    expiry.setDate(expiry.getDate() + asNumber);
+    return toIsoDate(expiry);
+  }
+
+  // Numeric duration without a valid marked date cannot be converted safely.
+  if (!Number.isNaN(asNumber)) {
+    return null;
+  }
+
+  // If it's already a date-like value, normalize to ISO date.
+  const asDate = new Date(raw);
+  if (!Number.isNaN(asDate.getTime())) {
+    return toIsoDate(asDate);
+  }
+
+  return null;
+}
+
+function normalizeSheetDurationDays(durationCellValue: unknown): number | null {
+  if (durationCellValue == null) return null;
+
+  const raw = String(durationCellValue).trim();
+  if (!raw || raw.toLowerCase() === 'indefinite') return null;
+
+  const asNumber = Number(raw);
+  if (!Number.isFinite(asNumber)) return null;
+  return Math.max(0, Math.floor(asNumber));
 }
 
 // ─── Checkbox processing ──────────────────────────────────────────────────────
@@ -158,10 +257,13 @@ export async function processL2WSheetCheckboxes(
     await pool.query(buildUpdateL2WStatus(guildId, tag, league, 'l2w'));
   }
 
-  logger.info(
-    `[l2wSheet] Processed checkboxes for guild ${guildId}: ` +
-      `${returnedTags.length} returned, ${switchedToInactive.length} → inactive, ${switchedToL2W.length} → l2w`,
-  );
+  const totalChanges = returnedTags.length + switchedToInactive.length + switchedToL2W.length;
+  if (totalChanges > 0) {
+    logger.info(
+      `[l2wSheet] Processed checkboxes for guild ${guildId}: ` +
+        `${returnedTags.length} returned, ${switchedToInactive.length} → inactive, ${switchedToL2W.length} → l2w`,
+    );
+  }
 
   return { returnedTags, switchedToInactive, switchedToL2W };
 }
@@ -178,25 +280,48 @@ export async function buildL2WSheet(
   sheetId: number,
   sheetName: string,
   league: '5k' | '4k',
+  processCheckboxes = true,
 ): Promise<void> {
   const sheets = await getAuthenticatedSheetsClient();
 
-  const result = await pool.query(buildGetL2WPlayers(guildId, league));
-  const allPlayers: L2WPlayerRow[] = result.rows;
+  // Apply checkbox actions first so all reads below use latest DB state in same rebuild.
+  if (processCheckboxes) {
+    await processL2WSheetCheckboxes(guildId, spreadsheetId, sheetName, league);
+  }
 
-  const l2wPlayers = allPlayers.filter((p) => p.l2w_status === 'l2w');
-  const inactivePlayers = allPlayers.filter((p) => p.l2w_status === 'inactive');
-  const maxRows = Math.max(l2wPlayers.length, inactivePlayers.length, 0);
+  // Read grid size so unmerge can safely target the whole sheet, including any legacy merged ranges.
+  const spreadsheetMeta = await sheets.spreadsheets.get({ spreadsheetId });
+  const targetSheet = spreadsheetMeta.data.sheets?.find((s) => s.properties?.sheetId === sheetId);
+  const targetSheetProps = targetSheet?.properties;
+  const gridRowCount = targetSheetProps?.gridProperties?.rowCount ?? 1000;
+  const gridColumnCount = targetSheetProps?.gridProperties?.columnCount ?? TOTAL_COLS;
+  const existingConditionalRuleCount = targetSheet?.conditionalFormats?.length ?? 0;
 
-  const { returnedTags } = await processL2WSheetCheckboxes(guildId, spreadsheetId, sheetName, league);
+  const effectiveColumnCount = Math.max(gridColumnCount, TOTAL_COLS);
 
-  // If any players returned, we need to re-fetch the updated data for those tags to get their names for the sheet
-  const removedSet = new Set(returnedTags);
+  // Read sheet values first so we can persist notes/duration to DB before querying for render.
+  // This ensures the DB query below sees the values the user just typed in, not the previous ones.
+  const initialResult = await pool.query(buildGetL2WPlayers(guildId, league));
+  const initialPlayers: L2WPlayerRow[] = initialResult.rows;
+  const initialMaxRows = Math.max(
+    initialPlayers.filter((p) => p.l2w_status === 'l2w').length,
+    initialPlayers.filter((p) => p.l2w_status === 'inactive').length,
+    0,
+  );
 
-  // Keep notes
+  // Map of normalized tag → player row for players currently active in the DB.
+  // Used to guard note-saving upserts: only save for active players, and use their
+  // current DB status (not the section they appear in on the old sheet). This prevents:
+  //   - Removed players being re-added (they're absent from the map)
+  //   - Switched players (L2W ↔ Inactive) having their new status overwritten
+  const activePlayerMap = new Map(
+    initialPlayers.map((p) => [p.playertag.toUpperCase().replace('#', ''), p]),
+  );
+
+  // Keep notes — read from sheet before any DB queries so user edits are captured.
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `${sheetName}!A${DATA_START_ROW + 1}:Q${DATA_START_ROW + maxRows}`, // 1-indexed
+    range: `${sheetName}!A${DATA_START_ROW + 1}:Q${DATA_START_ROW + Math.max(initialMaxRows, 1)}`, // 1-indexed
     valueRenderOption: 'UNFORMATTED_VALUE',
   });
   const rows = response.data.values ?? [];
@@ -205,15 +330,21 @@ export async function buildL2WSheet(
     const l2wTag = row[L2W_TAG_COL];
     const l2wNotes = row[L2W_NOTES_COL];
     const l2wName = row[L2W_PLAYER_COL];
-    if (l2wTag && !removedSet.has(l2wTag) && l2wNotes && typeof l2wNotes === 'string' && l2wNotes.trim()) {
+    const l2wDurationDays = normalizeSheetDurationDays(row[L2W_DURATION_COL]);
+    const l2wDurationDate = normalizeSheetDurationDate(row[L2W_DURATION_COL], row[L2W_DATE_COL]);
+    const hasL2WNotes = typeof l2wNotes === 'string' && l2wNotes.trim().length > 0;
+    const l2wTagNorm = l2wTag ? String(l2wTag).trim().toUpperCase().replace('#', '') : '';
+    const l2wActivePlayer = activePlayerMap.get(l2wTagNorm);
+    if (l2wActivePlayer && (hasL2WNotes || l2wDurationDays !== null || l2wDurationDate !== null)) {
       await pool.query(
         buildUpsertL2WPlayer(guildId, {
           playertag: l2wTag,
           playerName: l2wName || '',
-          status: 'l2w',
+          status: l2wActivePlayer.l2w_status,
           league,
-          notes: l2wNotes.trim(),
-          durationDate: null,
+          notes: hasL2WNotes ? l2wNotes.trim() : null,
+          durationDays: l2wDurationDays,
+          durationDate: l2wDurationDate,
           markedByDiscordId: 'sheet',
         }),
       );
@@ -221,26 +352,39 @@ export async function buildL2WSheet(
     const inactiveTag = row[INACTIVE_TAG_COL];
     const inactiveNotes = row[INACTIVE_NOTES_COL];
     const inactiveName = row[INACTIVE_PLAYER_COL];
+    const inactiveDurationDays = normalizeSheetDurationDays(row[INACTIVE_DURATION_COL]);
+    const inactiveDurationDate = normalizeSheetDurationDate(row[INACTIVE_DURATION_COL], row[INACTIVE_DATE_COL]);
+    const hasInactiveNotes = typeof inactiveNotes === 'string' && inactiveNotes.trim().length > 0;
+    const inactiveTagNorm = inactiveTag ? String(inactiveTag).trim().toUpperCase().replace('#', '') : '';
+    const inactiveActivePlayer = activePlayerMap.get(inactiveTagNorm);
     if (
-      inactiveTag &&
-      !removedSet.has(inactiveTag) &&
-      inactiveNotes &&
-      typeof inactiveNotes === 'string' &&
-      inactiveNotes.trim()
+      inactiveActivePlayer &&
+      (hasInactiveNotes || inactiveDurationDays !== null || inactiveDurationDate !== null)
     ) {
       await pool.query(
         buildUpsertL2WPlayer(guildId, {
           playertag: inactiveTag,
           playerName: inactiveName || '',
-          status: 'inactive',
+          status: inactiveActivePlayer.l2w_status,
           league,
-          notes: inactiveNotes.trim(),
-          durationDate: null,
+          notes: hasInactiveNotes ? inactiveNotes.trim() : null,
+          durationDays: inactiveDurationDays,
+          durationDate: inactiveDurationDate,
           markedByDiscordId: 'sheet',
         }),
       );
     }
   }
+
+  // Re-query DB after sheet→DB upserts so render uses values the user just typed, not the previous snapshot.
+  const result = await pool.query(buildGetL2WPlayers(guildId, league));
+  const allPlayers: L2WPlayerRow[] = result.rows;
+
+  const l2wPlayers = allPlayers.filter((p) => p.l2w_status === 'l2w');
+  const inactivePlayers = allPlayers.filter((p) => p.l2w_status === 'inactive');
+  const maxRows = Math.max(l2wPlayers.length, inactivePlayers.length, 0);
+  const firstDataRowOneBased = DATA_START_ROW + 1;
+  const effectiveRowCount = Math.max(gridRowCount, DATA_START_ROW + Math.max(maxRows, 1), 1000);
 
   // ── 1. Clear all existing values ────────────────────────────────────────────
   await sheets.spreadsheets.values.clear({ spreadsheetId, range: sheetName });
@@ -248,18 +392,48 @@ export async function buildL2WSheet(
   // ── 2. Apply formatting + checkbox validation ────────────────────────────────
   const requests: object[] = [];
 
-  // Unmerge the title row first (handles re-runs without "already merged" error)
+  // Unmerge entire sheet first so any legacy/partial merged ranges do not break rebuild.
   requests.push({
     unmergeCells: {
       range: {
         sheetId,
-        startRowIndex: TITLE_ROW,
-        endRowIndex: TITLE_ROW + 1,
+        startRowIndex: 0,
+        endRowIndex: gridRowCount,
         startColumnIndex: 0,
-        endColumnIndex: TOTAL_COLS,
+        endColumnIndex: gridColumnCount,
       },
     },
   });
+
+  // Ensure grid is large enough for formatting/data-validation ranges (especially on brand-new or shrunk sheets).
+  if (gridRowCount < effectiveRowCount) {
+    requests.push({
+      appendDimension: {
+        sheetId,
+        dimension: 'ROWS',
+        length: effectiveRowCount - gridRowCount,
+      },
+    });
+  }
+  if (gridColumnCount < effectiveColumnCount) {
+    requests.push({
+      appendDimension: {
+        sheetId,
+        dimension: 'COLUMNS',
+        length: effectiveColumnCount - gridColumnCount,
+      },
+    });
+  }
+
+  // Remove existing conditional formatting rules so they do not duplicate on rebuild.
+  for (let i = existingConditionalRuleCount - 1; i >= 0; i--) {
+    requests.push({
+      deleteConditionalFormatRule: {
+        sheetId,
+        index: i,
+      },
+    });
+  }
 
   // L2W title cell: yellow
   requests.push({
@@ -350,6 +524,122 @@ export async function buildL2WSheet(
     },
   });
 
+  // Conditional formatting for duration: light red background if duration date is in the future (still on L2W/Inactive)
+  requests.push({
+    addConditionalFormatRule: {
+      index: 0,
+      rule: {
+        ranges: [
+          {
+            sheetId,
+            startRowIndex: DATA_START_ROW,
+            endRowIndex: effectiveRowCount,
+            startColumnIndex: 0,
+            endColumnIndex: L2W_SWITCH_COL + 1,
+          },
+        ],
+        booleanRule: {
+          condition: {
+            type: 'CUSTOM_FORMULA',
+            values: [
+              {
+                userEnteredValue: `=AND($${colToLetter(L2W_DURATION_COL)}${firstDataRowOneBased}<>"",$${colToLetter(L2W_DATE_COL)}${firstDataRowOneBased}<>"",NOW()<$${colToLetter(L2W_DURATION_COL)}${firstDataRowOneBased}+$${colToLetter(L2W_DATE_COL)}${firstDataRowOneBased})`,
+              },
+            ],
+          },
+          format: { backgroundColor: { red: 0.957, green: 0.78, blue: 0.765 } }, // Light red
+        },
+      },
+    },
+  });
+
+  // Same conditional formatting for l2w section but for finished
+  requests.push({
+    addConditionalFormatRule: {
+      index: 0,
+      rule: {
+        ranges: [
+          {
+            sheetId,
+            startRowIndex: DATA_START_ROW,
+            endRowIndex: effectiveRowCount,
+            startColumnIndex: 0,
+            endColumnIndex: L2W_SWITCH_COL + 1,
+          },
+        ],
+        booleanRule: {
+          condition: {
+            type: 'CUSTOM_FORMULA',
+            values: [
+              {
+                userEnteredValue: `=AND($${colToLetter(L2W_DURATION_COL)}${firstDataRowOneBased}<>"",$${colToLetter(L2W_DATE_COL)}${firstDataRowOneBased}<>"",NOW()>=$${colToLetter(L2W_DURATION_COL)}${firstDataRowOneBased}+$${colToLetter(L2W_DATE_COL)}${firstDataRowOneBased})`,
+              },
+            ],
+          },
+          format: { backgroundColor: { red: 0.718, green: 0.882, blue: 0.804 } }, // Light green
+        },
+      },
+    },
+  });
+
+  // Conditional formatting for inactive: light red background if inactive date is in the future (still on L2W/Inactive)
+  requests.push({
+    addConditionalFormatRule: {
+      index: 0,
+      rule: {
+        ranges: [
+          {
+            sheetId,
+            startRowIndex: DATA_START_ROW,
+            endRowIndex: effectiveRowCount,
+            startColumnIndex: INACTIVE_TAG_COL,
+            endColumnIndex: INACTIVE_SWITCH_COL + 1,
+          },
+        ],
+        booleanRule: {
+          condition: {
+            type: 'CUSTOM_FORMULA',
+            values: [
+              {
+                userEnteredValue: `=AND($${colToLetter(INACTIVE_DURATION_COL)}${firstDataRowOneBased}<>"",$${colToLetter(INACTIVE_DATE_COL)}${firstDataRowOneBased}<>"",NOW()<$${colToLetter(INACTIVE_DURATION_COL)}${firstDataRowOneBased}+$${colToLetter(INACTIVE_DATE_COL)}${firstDataRowOneBased})`,
+              },
+            ],
+          },
+          format: { backgroundColor: { red: 0.957, green: 0.78, blue: 0.765 } }, // Light red
+        },
+      },
+    },
+  });
+
+  // Same conditional formatting for inactive section but for finished
+  requests.push({
+    addConditionalFormatRule: {
+      index: 0,
+      rule: {
+        ranges: [
+          {
+            sheetId,
+            startRowIndex: DATA_START_ROW,
+            endRowIndex: effectiveRowCount,
+            startColumnIndex: INACTIVE_TAG_COL,
+            endColumnIndex: INACTIVE_SWITCH_COL + 1,
+          },
+        ],
+        booleanRule: {
+          condition: {
+            type: 'CUSTOM_FORMULA',
+            values: [
+              {
+                userEnteredValue: `=AND($${colToLetter(INACTIVE_DURATION_COL)}${firstDataRowOneBased}<>"",$${colToLetter(INACTIVE_DATE_COL)}${firstDataRowOneBased}<>"",NOW()>=$${colToLetter(INACTIVE_DURATION_COL)}${firstDataRowOneBased}+$${colToLetter(INACTIVE_DATE_COL)}${firstDataRowOneBased})`,
+              },
+            ],
+          },
+          format: { backgroundColor: { red: 0.718, green: 0.882, blue: 0.804 } }, // Light green
+        },
+      },
+    },
+  });
+
   // Checkbox data validation on all action columns (data rows only)
   for (const col of [L2W_RETURN_COL, L2W_SWITCH_COL, INACTIVE_RETURN_COL, INACTIVE_SWITCH_COL]) {
     requests.push({
@@ -357,7 +647,7 @@ export async function buildL2WSheet(
         range: {
           sheetId,
           startRowIndex: DATA_START_ROW,
-          endRowIndex: 1000,
+          endRowIndex: effectiveRowCount,
           startColumnIndex: col,
           endColumnIndex: col + 1,
         },
@@ -452,14 +742,14 @@ export async function buildL2WSheet(
   titleRow[L2W_TAG_COL] = 'L2W';
   titleRow[INACTIVE_TAG_COL] = 'Inactive';
 
-  const l2wHeaders = ['Tag', 'Player', 'Notes', '', 'Duration', 'Date Marked', '↩ Available', '→ Inactive'];
-  const inactiveHeaders = ['Tag', 'Player', 'Notes', '', 'Duration', 'Date Marked', '↩ Available', '→ L2W'];
+  const l2wHeaders = ['Tag', 'Player', 'Notes', '', 'Duration (days)', 'Date Marked', '↩ Available', '→ Inactive'];
+  const inactiveHeaders = ['Tag', 'Player', 'Notes', '', 'Duration (days)', 'Date Marked', '↩ Available', '→ L2W'];
   const headerRow: string[] = [...l2wHeaders, '', ...inactiveHeaders];
 
-  const dataRows: (string | boolean)[][] = [];
+  const dataRows: (string | number | boolean)[][] = [];
   for (let i = 0; i < maxRows; i++) {
     const sheetRow = DATA_START_ROW + i + 1; // 1-indexed sheet row number
-    const row: (string | boolean)[] = Array(TOTAL_COLS).fill('') as string[];
+    const row: (string | number | boolean)[] = Array(TOTAL_COLS).fill('') as string[];
 
     const l2w = l2wPlayers[i];
     if (l2w) {
@@ -467,7 +757,7 @@ export async function buildL2WSheet(
       row[L2W_PLAYER_COL] = nameFormula(l2wTagLetter, sheetRow);
       // row[L2W_CLAN_COL] = clanFormula(l2wTagLetter, sheetRow);
       row[L2W_NOTES_COL] = l2w.l2w_notes ?? '';
-      row[L2W_DURATION_COL] = formatDuration(l2w.l2w_duration_date);
+      row[L2W_DURATION_COL] = formatDurationDays(l2w.l2w_duration_days, l2w.l2w_duration_date, l2w.l2w_marked_at);
       row[L2W_DATE_COL] = formatDate(l2w.l2w_marked_at);
       row[L2W_RETURN_COL] = false;
       row[L2W_SWITCH_COL] = false;
@@ -479,7 +769,11 @@ export async function buildL2WSheet(
       row[INACTIVE_PLAYER_COL] = nameFormula(inactiveTagLetter, sheetRow);
       // row[INACTIVE_CLAN_COL] = clanFormula(inactiveTagLetter, sheetRow);
       row[INACTIVE_NOTES_COL] = inactive.l2w_notes ?? '';
-      row[INACTIVE_DURATION_COL] = formatDuration(inactive.l2w_duration_date);
+      row[INACTIVE_DURATION_COL] = formatDurationDays(
+        inactive.l2w_duration_days,
+        inactive.l2w_duration_date,
+        inactive.l2w_marked_at,
+      );
       row[INACTIVE_DATE_COL] = formatDate(inactive.l2w_marked_at);
       row[INACTIVE_RETURN_COL] = false;
       row[INACTIVE_SWITCH_COL] = false;

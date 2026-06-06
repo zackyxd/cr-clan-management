@@ -1,7 +1,7 @@
 import { ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
-import { normalizeTag, getPlayer, isFetchError } from '../../api/CR_API.js';
+import { normalizeTag, getPlayer, isFetchError, CR_API } from '../../api/CR_API.js';
 import { pool } from '../../db.js';
 import {
   getAuthenticatedSheetsClient,
@@ -11,13 +11,13 @@ import {
 } from '../../features/stats/statsUtil.js';
 import { type ClanHeaderTheme, resolveClanHeaderThemes } from '../../features/stats/clanHeaderColors.js';
 import { refreshAvailableSheet } from '../../features/stats/availableSheet.js';
-import { processL2WSheetCheckboxes, buildL2WSheet } from '../../features/stats/l2wSheet.js';
+import { buildL2WSheet } from '../../features/stats/l2wSheet.js';
 import {
   buildUpsertL2WPlayer,
   buildRemoveL2WPlayerAllLeagues,
   type UpsertL2WPlayerData,
 } from '../../sql_queries/playerL2W.js';
-import { buildUpsertLeagueAssignment, buildRemoveLeagueAssignment } from '../../sql_queries/playerLeagueAssignments.js';
+import { buildGetFamilyClans } from '../../sql_queries/clans.js';
 
 // ─── Lineup Sheet Layout Config ───────────────────────────────────────────────
 
@@ -46,6 +46,20 @@ const LINEUP_TITLE_FONT_SIZE = 12;
 
 // Column header row color
 const LINEUP_HEADER_BG = { red: 0.85, green: 0.85, blue: 0.85 }; // light gray
+const L2W_ACCENT_BG = { red: 0.78, green: 0.78, blue: 0.78 }; // darker gray for L2W accents
+const L2W_ACCENT_TEXT = { red: 0.12, green: 0.12, blue: 0.12 };
+
+function lightenColor(
+  color: { red?: number; green?: number; blue?: number } | null | undefined,
+  amount: number,
+): { red: number; green: number; blue: number } {
+  const clamp = (v: number) => Math.max(0, Math.min(1, v));
+  const mix = (v: number) => clamp(v + (1 - v) * amount);
+  const red = color?.red ?? 1;
+  const green = color?.green ?? 1;
+  const blue = color?.blue ?? 1;
+  return { red: mix(red), green: mix(green), blue: mix(blue) };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -75,7 +89,472 @@ type SheetBlockResult = {
   requests: object[];
 };
 
+type AveragesRow = {
+  rowNumber: number;
+  discordId: string;
+  tag: string;
+  name: string;
+  clanAbbr: string;
+  weekValues: (number | string)[];
+};
+
+type FamilyClanRow = {
+  clantag: string;
+  clan_name: string;
+  abbreviation: string;
+  header_bg_hex: string | null;
+  header_text_hex: string | null;
+};
+
+type ClanThemeRow = {
+  abbreviation: string;
+  header_bg_hex: string | null;
+  header_text_hex: string | null;
+  l2w_clan?: boolean | null;
+};
+
+const AVERAGES_FIXED_HEADERS = ['Discord', 'Tag', 'Player', 'Last Clan', 'Fame Avg.'];
+const AVERAGES_WEEK_START_COL = 5;
+
+function buildAveragesFameFormula(rowNumber: number, lastWeekColLetter: string): string {
+  // Score = sum(latest 3 fame values) / sum(latest 3 attack values).
+  // Week pairs are dynamic (F/G, H/I, ...), so we compute from F through current last week col.
+  return (
+    `=IFERROR(LET(` +
+    `r,INDIRECT("F${rowNumber}:${lastWeekColLetter}${rowNumber}"),` +
+    `f,ARRAY_CONSTRAIN(FILTER(r,MOD(COLUMN(r)-COLUMN($F$1),2)=0,r<>""),1,3),` +
+    `a,ARRAY_CONSTRAIN(FILTER(r,MOD(COLUMN(r)-COLUMN($F$1),2)=1,r<>""),1,3),` +
+    `IF(COUNTA(r)=0,0,SUM(f)/MAX(1,SUM(a)))` +
+    `),0)`
+  );
+}
+
+function isColosseumWeekFromStandings(standings: Array<{ trophyChange: number }>): boolean {
+  // Colosseum detection rule requested by user.
+  const clansWithHighestTrophies = standings.filter((standing) => standing.trophyChange >= 20);
+  return clansWithHighestTrophies.length >= 2;
+}
+
+async function ensureSheetGridCapacity(
+  sheets: Awaited<ReturnType<typeof getAuthenticatedSheetsClient>>,
+  spreadsheetId: string,
+  sheetId: number,
+  requiredRows: number,
+  requiredColumns: number,
+): Promise<void> {
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: 'sheets(properties(sheetId,gridProperties(rowCount,columnCount)))',
+  });
+
+  const targetSheet = meta.data.sheets?.find((sheet) => sheet.properties?.sheetId === sheetId);
+  const currentRows = targetSheet?.properties?.gridProperties?.rowCount ?? 0;
+  const currentColumns = targetSheet?.properties?.gridProperties?.columnCount ?? 0;
+
+  const requests: object[] = [];
+  if (requiredRows > currentRows) {
+    requests.push({
+      appendDimension: {
+        sheetId,
+        dimension: 'ROWS',
+        length: requiredRows - currentRows,
+      },
+    });
+  }
+
+  if (requiredColumns > currentColumns) {
+    requests.push({
+      appendDimension: {
+        sheetId,
+        dimension: 'COLUMNS',
+        length: requiredColumns - currentColumns,
+      },
+    });
+  }
+
+  if (requests.length === 0) return;
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: { requests },
+  });
+}
+
+// Formatting requests for averages tabs.
+// Quick tweak guide:
+// - header colors/fonts: first repeatCell block
+// - alignment/number format: next repeatCell blocks
+// - widths: updateDimensionProperties blocks
+// - merged week headers + week col colors/widths: loop below
+function buildAveragesFormattingRequests(
+  sheetId: number,
+  weekHeaders: string[],
+  colosseumWeekHeaders: Set<string>,
+): object[] {
+  const requests: object[] = [
+    {
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: 0,
+          endColumnIndex: AVERAGES_WEEK_START_COL,
+        },
+        cell: {
+          userEnteredFormat: {
+            backgroundColor: { red: 0.471, green: 0.471, blue: 0.471 },
+            textFormat: {
+              foregroundColor: { red: 1, green: 1, blue: 1 },
+              fontSize: 11,
+              bold: true,
+            },
+            horizontalAlignment: 'CENTER',
+            verticalAlignment: 'MIDDLE',
+          },
+        },
+        fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)',
+      },
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 1,
+          endRowIndex: 2000,
+          startColumnIndex: 0,
+          endColumnIndex: 3,
+        },
+        cell: { userEnteredFormat: { horizontalAlignment: 'LEFT' } },
+        fields: 'userEnteredFormat(horizontalAlignment)',
+      },
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 1,
+          endRowIndex: 2000,
+          startColumnIndex: 3,
+          endColumnIndex: AVERAGES_WEEK_START_COL,
+        },
+        cell: { userEnteredFormat: { horizontalAlignment: 'CENTER' } },
+        fields: 'userEnteredFormat(horizontalAlignment)',
+      },
+    },
+    {
+      repeatCell: {
+        range: {
+          sheetId,
+          startRowIndex: 1,
+          endRowIndex: 2000,
+          startColumnIndex: 4,
+          endColumnIndex: 5,
+        },
+        cell: {
+          userEnteredFormat: {
+            numberFormat: { type: 'NUMBER', pattern: '##0.00' },
+          },
+        },
+        fields: 'userEnteredFormat(numberFormat)',
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 1 },
+        properties: { pixelSize: 155 },
+        fields: 'pixelSize',
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: { sheetId, dimension: 'COLUMNS', startIndex: 1, endIndex: 2 },
+        properties: { pixelSize: 95 },
+        fields: 'pixelSize',
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: { sheetId, dimension: 'COLUMNS', startIndex: 2, endIndex: 3 },
+        properties: { pixelSize: 135 },
+        fields: 'pixelSize',
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: { sheetId, dimension: 'COLUMNS', startIndex: 3, endIndex: 4 },
+        properties: { pixelSize: 85 },
+        fields: 'pixelSize',
+      },
+    },
+    {
+      updateDimensionProperties: {
+        range: { sheetId, dimension: 'COLUMNS', startIndex: 4, endIndex: 5 },
+        properties: { pixelSize: 120 },
+        fields: 'pixelSize',
+      },
+    },
+    {
+      updateSheetProperties: {
+        properties: {
+          sheetId,
+          gridProperties: { frozenRowCount: 1, frozenColumnCount: 5 },
+        },
+        fields: 'gridProperties.frozenRowCount,gridProperties.frozenColumnCount',
+      },
+    },
+  ];
+
+  if (weekHeaders.length > 0) {
+    requests.unshift({
+      unmergeCells: {
+        range: {
+          sheetId,
+          startRowIndex: 0,
+          endRowIndex: 1,
+          startColumnIndex: AVERAGES_WEEK_START_COL,
+          endColumnIndex: AVERAGES_WEEK_START_COL + weekHeaders.length * 2,
+        },
+      },
+    });
+  }
+
+  for (let i = 0; i < weekHeaders.length; i++) {
+    const weekHeader = weekHeaders[i];
+    const startCol = AVERAGES_WEEK_START_COL + i * 2;
+    const endCol = startCol + 2;
+    // const headerBg =
+    //   i % 2 === 0
+    //     ? { red: 0.98, green: 0.976, blue: 0.659 }
+    //     : { red: 0.659, green: 0.663, blue: 0.98 };
+    // const dataBg =
+    //   i % 2 === 0
+    //     ? { red: 0.973, green: 0.988, blue: 0.812 }
+    //     : { red: 0.765, green: 0.769, blue: 0.988 };
+
+    requests.push(
+      {
+        mergeCells: {
+          range: {
+            sheetId,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: startCol,
+            endColumnIndex: endCol,
+          },
+          mergeType: 'MERGE_ALL',
+        },
+      },
+      {
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: 0,
+            endRowIndex: 1,
+            startColumnIndex: startCol,
+            endColumnIndex: endCol,
+          },
+          cell: {
+            userEnteredFormat: {
+              // backgroundColor: headerBg,
+              // Colosseum marker: italic header text so future code can detect this week type.
+              textFormat: {
+                foregroundColor: { red: 0, green: 0, blue: 0 },
+                fontSize: 11,
+                bold: true,
+                italic: colosseumWeekHeaders.has(weekHeader),
+              },
+              horizontalAlignment: 'CENTER',
+              verticalAlignment: 'MIDDLE',
+            },
+          },
+          fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)',
+        },
+      },
+      {
+        repeatCell: {
+          range: {
+            sheetId,
+            startRowIndex: 1,
+            endRowIndex: 2000,
+            startColumnIndex: startCol,
+            endColumnIndex: endCol,
+          },
+          cell: {
+            userEnteredFormat: {
+              // backgroundColor: dataBg,
+              horizontalAlignment: 'CENTER',
+              numberFormat: { type: 'NUMBER', pattern: '#,##0' },
+            },
+          },
+          fields: 'userEnteredFormat(backgroundColor,horizontalAlignment,numberFormat)',
+        },
+      },
+      {
+        updateDimensionProperties: {
+          range: { sheetId, dimension: 'COLUMNS', startIndex: startCol, endIndex: startCol + 1 },
+          properties: { pixelSize: 75 },
+          fields: 'pixelSize',
+        },
+      },
+      {
+        updateDimensionProperties: {
+          range: { sheetId, dimension: 'COLUMNS', startIndex: startCol + 1, endIndex: startCol + 2 },
+          properties: { pixelSize: 50 },
+          fields: 'pixelSize',
+        },
+      },
+    );
+  }
+
+  return requests;
+}
+
+// Backfills only missing Discord IDs (col A) for rows that already have linked tags (col B).
+async function fillMissingDiscordIdsInSheet(
+  sheets: Awaited<ReturnType<typeof getAuthenticatedSheetsClient>>,
+  spreadsheetId: string,
+  sheetName: string,
+  linkedDiscordIds: Map<string, string>,
+): Promise<number> {
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `'${sheetName}'!A2:B`,
+  });
+
+  const rows = response.data.values ?? [];
+  const updates: { range: string; values: string[][] }[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const rowNumber = i + 2;
+    const currentDiscord = String(rows[i]?.[0] ?? '').trim();
+    const tag = normalizeTag(String(rows[i]?.[1] ?? ''));
+    if (!tag || currentDiscord) continue;
+
+    const linkedDiscordId = linkedDiscordIds.get(tag);
+    if (!linkedDiscordId) continue;
+    updates.push({ range: `'${sheetName}'!A${rowNumber}`, values: [[linkedDiscordId]] });
+  }
+
+  if (updates.length === 0) return 0;
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      valueInputOption: 'USER_ENTERED',
+      data: updates,
+    },
+  });
+
+  return updates.length;
+}
+
+async function applyAveragesLastClanColorRules(
+  sheets: Awaited<ReturnType<typeof getAuthenticatedSheetsClient>>,
+  spreadsheetId: string,
+  avgSheetIds: number[],
+  clanRows: ClanThemeRow[],
+): Promise<void> {
+  if (avgSheetIds.length === 0) return;
+
+  const resolvedOrder = Array.from(new Set(clanRows.map((row) => row.abbreviation.toUpperCase())));
+  if (resolvedOrder.length === 0) return;
+
+  const resolvedThemes = resolveClanHeaderThemes(resolvedOrder, clanRows);
+
+  // Clear old color rules on Last Clan column (D) for both 4k/5k averages, then add fresh ones.
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: 'sheets(properties(sheetId),conditionalFormats)',
+  });
+
+  const allSheets = meta.data.sheets ?? [];
+  const deleteRequests: object[] = [];
+  for (const sheetId of avgSheetIds) {
+    const sheet = allSheets.find((s) => s.properties?.sheetId === sheetId);
+    const rules = sheet?.conditionalFormats ?? [];
+    const toDelete = rules
+      .map((rule, index) => ({ rule, index }))
+      .filter(({ rule }) =>
+        rule.ranges?.some((range) => (range.startColumnIndex ?? 0) <= 3 && (range.endColumnIndex ?? 26) > 3),
+      )
+      .map(({ index }) => index)
+      .reverse();
+
+    for (const index of toDelete) {
+      deleteRequests.push({ deleteConditionalFormatRule: { sheetId, index } });
+    }
+  }
+
+  const addRequests: object[] = [];
+  for (const sheetId of avgSheetIds) {
+    addRequests.push(
+      ...resolvedOrder.map((clan, idx) => {
+        const row = clanRows.find((r) => r.abbreviation.toUpperCase() === clan);
+        const isL2W = Boolean(row?.l2w_clan);
+        return {
+          addConditionalFormatRule: {
+            rule: {
+              ranges: [
+                {
+                  sheetId,
+                  startRowIndex: 1,
+                  endRowIndex: 2000,
+                  startColumnIndex: 3,
+                  endColumnIndex: 4,
+                },
+              ],
+              booleanRule: {
+                condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: clan }] },
+                format: {
+                  backgroundColor: isL2W ? L2W_ACCENT_BG : resolvedThemes[idx].backgroundColor,
+                  textFormat: {
+                    foregroundColor: isL2W ? L2W_ACCENT_TEXT : resolvedThemes[idx].textColor,
+                  },
+                },
+              },
+            },
+            index: 0,
+          },
+        };
+      }),
+    );
+  }
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: { requests: [...deleteRequests, ...addRequests] },
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
+
+function averagesNameFormula(colLetter: string, row: number): string {
+  const tagRef = `${colLetter}${row}`;
+
+  return (
+    `=IFERROR(` +
+    `XLOOKUP(IF(LEFT(${tagRef},1)="#",${tagRef},"#"&${tagRef}),'5k Averages'!B:B,'5k Averages'!C:C),` +
+    `IFERROR(` +
+    `XLOOKUP(IF(LEFT(${tagRef},1)="#",${tagRef},"#"&${tagRef}),'4k Averages'!B:B,'4k Averages'!C:C),` +
+    `"—"` +
+    `)` +
+    `)`
+  );
+}
+
+function averagesFameFormula(colLetter: string, row: number): string {
+  const tagRef = `${colLetter}${row}`;
+
+  return (
+    `=XLOOKUP(` +
+    `IF(LEFT(${tagRef},1)="#",${tagRef},"#"&${tagRef}),` +
+    `'5k Averages'!B:B,` +
+    `'5k Averages'!E:E,` +
+    `"N/A"` +
+    `)`
+  );
+}
 
 /**
  * Builds the values grid and formatting requests for a single clan block.
@@ -86,9 +565,12 @@ function buildClanBlock(
   clanIndex: number,
   sheetId: number,
   theme: ClanHeaderTheme,
+  isL2WClan: boolean,
   l2wSheetsExist = false,
 ): SheetBlockResult {
   const startCol = clanIndex * LINEUP_BLOCK_WIDTH;
+  const blockHeaderBg = isL2WClan ? L2W_ACCENT_BG : lightenColor(theme.backgroundColor, 0.3);
+  const blockHeaderText = isL2WClan ? L2W_ACCENT_TEXT : theme.textColor;
 
   // --- Values: (2 + LINEUP_DATA_ROWS) rows × LINEUP_BLOCK_WIDTH cols ---
   const values: (string | boolean)[][] = [];
@@ -103,12 +585,11 @@ function buildClanBlock(
   for (let i = 1; i <= LINEUP_DATA_ROWS; i++) {
     const tagCol = colToLetter(startCol + 1); // e.g. clan 0 → B, clan 1 → I
     // const nameFormula = `=XLOOKUP(${tagCol}${i + 2}, '5k Averages'!B:B, '5k Averages'!C:C, "N/A")`; // looks up name by tag from averages sheet
-    const nameFormula =
-      `=IFERROR(XLOOKUP(${tagCol}${i + 2},'5k Averages'!B:B,'5k Averages'!C:C),` +
-      `IFERROR(XLOOKUP(${tagCol}${i + 2},'4k Averages'!B:B,'4k Averages'!C:C),"—"))`; // looks up name by tag from averages sheet
+
+    const nameFormula = averagesNameFormula(tagCol, i + 2);
 
     // Cur. Clan is filled by CurClanAutofillScheduler — written as plain values, not a formula.
-    const fameAtkFormula = `=XLOOKUP(${tagCol}${i + 2}, '5k Averages'!B:B, '5k Averages'!E:E, "N/A")`; // looks up fame/atk by tag from averages sheet
+    const fameAtkFormula = averagesFameFormula(tagCol, i + 2);
     values.push([String(i), '', nameFormula, '', '', fameAtkFormula, '']);
   }
 
@@ -156,7 +637,7 @@ function buildClanBlock(
     },
   });
 
-  // 3. Format column headers row (gray bg, bold, centered)
+  // 3. Format column headers row (lighter clan tint, bold, centered)
   requests.push({
     repeatCell: {
       range: {
@@ -168,8 +649,8 @@ function buildClanBlock(
       },
       cell: {
         userEnteredFormat: {
-          backgroundColor: LINEUP_HEADER_BG,
-          textFormat: { bold: true },
+          backgroundColor: blockHeaderBg,
+          textFormat: { bold: true, foregroundColor: blockHeaderText },
           horizontalAlignment: 'CENTER',
         },
       },
@@ -205,6 +686,23 @@ function buildClanBlock(
         userEnteredFormat: { horizontalAlignment: 'CENTER', numberFormat: { type: 'TEXT' } },
       },
       fields: 'userEnteredFormat(horizontalAlignment,numberFormat)',
+    },
+  });
+
+  // Fame / atk to be number formatted:
+  requests.push({
+    repeatCell: {
+      range: {
+        sheetId,
+        startRowIndex: 2,
+        endRowIndex: 2 + LINEUP_DATA_ROWS,
+        startColumnIndex: startCol + 5,
+        endColumnIndex: startCol + 6,
+      },
+      cell: {
+        userEnteredFormat: { numberFormat: { type: 'NUMBER', pattern: '##0.00' } },
+      },
+      fields: 'userEnteredFormat(numberFormat)',
     },
   });
 
@@ -334,11 +832,11 @@ function buildClanBlock(
     },
   });
 
-  // 11. Conditional format: Player Name is orange if the player is on the L2W | Inactive sheet.
-  //   Only added when both L2W sheets already exist — the Sheets API rejects cross-sheet
-  //   CUSTOM_FORMULA references to sheets that don't exist yet.
   const tagCol = colToLetter(startCol + 1); // Tag column for this clan block
   const playerNameCol = colToLetter(startCol + 2); // Player Name column for this clan block
+  // 12. Conditional format: Player Name is orange if the player is on the L2W | Inactive sheet.
+  //   Only added when both L2W sheets already exist — the Sheets API rejects cross-sheet
+  //   CUSTOM_FORMULA references to sheets that don't exist yet.
   if (l2wSheetsExist)
     requests.push({
       addConditionalFormatRule: {
@@ -368,6 +866,39 @@ function buildClanBlock(
       },
     });
 
+  // 11. Conditional format: flag duplicate tags in this block.
+
+  requests.push({
+    addConditionalFormatRule: {
+      rule: {
+        ranges: [
+          {
+            sheetId,
+            startRowIndex: 2,
+            endRowIndex: 2 + LINEUP_DATA_ROWS,
+            startColumnIndex: startCol + 2,
+            endColumnIndex: startCol + 3,
+          },
+        ],
+        booleanRule: {
+          condition: {
+            type: 'CUSTOM_FORMULA',
+            values: [
+              {
+                userEnteredValue:
+                  `=AND($${tagCol}3<>"",` +
+                  `COUNTIF(ARRAYFORMULA(SUBSTITUTE($A$3:$ZZ$100,"#","")),` +
+                  `SUBSTITUTE($${tagCol}3,"#",""))>1)`,
+              },
+            ],
+          },
+          format: { backgroundColor: { red: 0.96, green: 0.8, blue: 0.8 } },
+        },
+      },
+      index: 0,
+    },
+  });
+
   // Suppress unused variable warning — playerNameCol is intentionally unused (range covers it)
   void playerNameCol;
   void l2wSheetsExist;
@@ -382,8 +913,8 @@ function buildKickBlock(
   lineupsSheetName: string,
   blockCount: number,
   theme: ClanHeaderTheme,
+  isL2W: boolean,
 ): SheetBlockResult {
-  const isL2W = clanName === 'L2W';
   const startCol = clanIndex * KICKS_BLOCK_WIDTH;
 
   const values2: (string | boolean)[][] = [];
@@ -587,7 +1118,6 @@ function buildKickBlock(
 /** Rebuild one L2W | Inactive sheet if it already exists. No-ops silently if the tab is missing. */
 async function tryRefreshL2WSheet(guildId: string, spreadsheetId: string, league: '5k' | '4k') {
   const sheetName = `${league} L2W | Inactive`;
-  await processL2WSheetCheckboxes(guildId, spreadsheetId, sheetName, league);
   const sheetId = await getSheetIdByName(spreadsheetId, sheetName);
   if (sheetId !== null) {
     await buildL2WSheet(guildId, spreadsheetId, sheetId, sheetName, league);
@@ -659,7 +1189,7 @@ const command: Command = {
     .addSubcommand((subcommand) =>
       subcommand
         .setName('lineup-order')
-        .setDescription('Clan order for lineups. Must be linked. CLEARS THE CURRENT SHEET.')
+        .setDescription('Clan order for lineups. Must be linked.')
         .addStringOption((option) =>
           option
             .setName('league')
@@ -672,6 +1202,12 @@ const command: Command = {
             .setName('clan-order')
             .setDescription('Comma-separated clan order (e.g. "ClanA,ClanB,ClanC")')
             .setRequired(true),
+        )
+        .addBooleanOption((option) =>
+          option
+            .setName('preserve-data')
+            .setDescription('Reapply formatting/rules without clearing existing lineup and kicks rows')
+            .setRequired(false),
         ),
     )
     .addSubcommand((sub) =>
@@ -710,14 +1246,15 @@ const command: Command = {
         .addStringOption((o) => o.setName('notes').setDescription('Optional notes').setRequired(false))
         .addStringOption((o) =>
           o
-            .setName('duration')
-            .setDescription('Expiry date (YYYY-MM-DD) or leave blank for indefinite')
+            .setName('duration-days')
+            // .setDescription('Expiry date (YYYY-MM-DD) or leave blank for indefinite')
+            .setDescription('Number of days to L2W (leave blank for indefinite)')
             .setRequired(false),
         ),
     )
     .addSubcommand((sub) =>
       sub
-        .setName('unmark-l2w')
+        .setName('unmark')
         .setDescription('Remove a player from the L2W / Inactive list')
         .addStringOption((o) =>
           o.setName('player').setDescription('Player tag (#ABC123) or @mention').setRequired(true),
@@ -739,12 +1276,387 @@ const command: Command = {
     if (!allowed) return;
 
     if (subcommand === 'update-scores') {
-      // Reserved for existing update-scores implementation.
+      const sheets = await getAuthenticatedSheetsClient();
+      const spreadsheetId = await getSpreadsheetId(guild.id);
+      if (!spreadsheetId) {
+        await interaction.editReply({
+          content: '❌ Spreadsheet ID not configured. Please ask an admin to set it up.',
+        });
+        return;
+      }
+
+      // Build theme map for ALL clan abbreviations in DB so conditional rules can
+      // color Cur. Clan/Last Clan even when abbreviation is not part of lineup-order input.
+      const allClanThemeRows = (
+        await pool.query<ClanThemeRow>(
+          `SELECT LOWER(abbreviation) AS abbreviation, header_bg_hex, header_text_hex, l2w_clan
+           FROM clans
+           WHERE guild_id = $1
+             AND abbreviation IS NOT NULL`,
+          [guild.id],
+        )
+      ).rows;
+
+      // Check whether both L2W sheets exist so we can include the orange L2W warning rule
+      const [averages4kId, averages5kId] = await Promise.all([
+        getSheetIdByName(spreadsheetId, '4k Averages'),
+        getSheetIdByName(spreadsheetId, '5k Averages'),
+      ]);
+      if (averages4kId === null || averages5kId === null) {
+        await interaction.editReply({
+          content: `❌ Sheet with name "4k Averages" not found in the spreadsheet.`,
+        });
+        return;
+      }
+      if (averages5kId === null) {
+        await interaction.editReply({
+          content: `❌ Sheet with name "5k Averages" not found in the spreadsheet.`,
+        });
+        return;
+      }
+
+      const query = buildGetFamilyClans(guild.id);
+      const clansResult = await pool.query<FamilyClanRow>(query);
+      const familyClans = clansResult.rows;
+
+      const noDataClans: string[] = [];
+      const clanLogs: {
+        clantag: string;
+        abbreviation: string;
+        items: Awaited<ReturnType<typeof CR_API.getRiverRaceLog>>['items'];
+      }[] = [];
+
+      for (const familyClan of familyClans) {
+        const rrLogAPI = await CR_API.getRiverRaceLog(familyClan.clantag);
+        if (isFetchError(rrLogAPI)) {
+          noDataClans.push(familyClan.abbreviation || familyClan.clan_name || familyClan.clantag);
+          continue;
+        }
+        clanLogs.push({
+          clantag: familyClan.clantag,
+          abbreviation: familyClan.abbreviation.toUpperCase(),
+          items: rrLogAPI.items,
+        });
+      }
+
+      const linkedTagsRes = await pool.query<{ playertag: string; discord_id: string }>(
+        `SELECT playertag, discord_id FROM user_playertags WHERE guild_id = $1`,
+        [guild.id],
+      );
+
+      const linkedDiscordIds = new Map(
+        linkedTagsRes.rows.map((row) => [normalizeTag(row.playertag), row.discord_id] as const),
+      );
+
+      const syncAveragesSheet = async (
+        sheetName: '5k Averages' | '4k Averages',
+        sheetId: number,
+        league: '5k' | '4k',
+      ) => {
+        // 1) Read existing header + existing player rows. We only mutate needed cells.
+        const headerResponse = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: `'${sheetName}'!F1:1`,
+        });
+        const currentHeaderRow = headerResponse.data.values?.[0] ?? [];
+        const existingWeeks: string[] = [];
+        for (let i = 0; i < currentHeaderRow.length; i += 2) {
+          const label = currentHeaderRow[i];
+          if (label) existingWeeks.push(String(label));
+        }
+
+        const existingRowsResponse = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: `'${sheetName}'!A2:ZZ`,
+        });
+        const existingRows = existingRowsResponse.data.values ?? [];
+
+        const rowsByTag = new Map<string, AveragesRow>();
+        const rowOrder: string[] = [];
+        const existingWeekColCount = existingWeeks.length * 2;
+        for (let i = 0; i < existingRows.length; i++) {
+          const row = existingRows[i];
+          const rawTag = row[1];
+          if (!rawTag) continue;
+          const tag = normalizeTag(String(rawTag));
+          rowOrder.push(tag);
+          rowsByTag.set(tag, {
+            rowNumber: i + 2,
+            discordId: String(row[0] ?? ''),
+            tag,
+            name: String(row[2] ?? ''),
+            clanAbbr: String(row[3] ?? ''),
+            weekValues: Array.from(
+              { length: existingWeekColCount },
+              (_, index) => row[AVERAGES_WEEK_START_COL + index] ?? '',
+            ),
+          });
+        }
+
+        // 2) Build week+player deltas from clan logs. Only weeks not already in sheet.
+        const newWeeks: string[] = [];
+        const colosseumWeekHeaders = new Set<string>();
+        const aggregatedLogs = new Map<
+          string,
+          { tag: string; name: string; fame: number; attacks: number; season: string; clanAbbr: string }
+        >();
+
+        for (const clanLog of clanLogs) {
+          let reachedExistingWeekForClan = false;
+          for (const period of clanLog.items) {
+            const seasonKey = `${period.seasonId}-${period.sectionIndex + 1}`;
+
+            if (isColosseumWeekFromStandings(period.standings)) {
+              colosseumWeekHeaders.add(seasonKey);
+            }
+
+            if (existingWeeks.includes(seasonKey)) {
+              reachedExistingWeekForClan = true;
+            }
+            if (reachedExistingWeekForClan) continue;
+
+            const foundStanding = period.standings.find((standing) => standing.clan.tag === clanLog.clantag);
+            if (!foundStanding) continue;
+
+            const currentClan = foundStanding.clan;
+            if (league === '4k') {
+              if (currentClan.clanScore < 4000 || currentClan.clanScore >= 5000) continue;
+            } else if (currentClan.clanScore < 5000) {
+              continue;
+            }
+
+            if (!newWeeks.includes(seasonKey)) newWeeks.push(seasonKey);
+
+            for (const participant of currentClan.participants) {
+              if (participant.fame <= 0 || participant.decksUsed <= 0) continue;
+              const tag = normalizeTag(participant.tag);
+              const key = `${seasonKey}|${tag}`;
+              const previous = aggregatedLogs.get(key);
+              aggregatedLogs.set(key, {
+                tag,
+                name: participant.name,
+                fame: (previous?.fame ?? 0) + participant.fame,
+                attacks: (previous?.attacks ?? 0) + Math.min(participant.decksUsed, 16),
+                season: seasonKey,
+                clanAbbr: clanLog.abbreviation,
+              });
+            }
+          }
+        }
+
+        const newWeekColCount = newWeeks.length * 2;
+        const allWeekHeaders = [...newWeeks, ...existingWeeks];
+        const totalWeekColCount = allWeekHeaders.length * 2;
+        const lastWeekColLetter =
+          totalWeekColCount > 0 ? colToLetter(AVERAGES_WEEK_START_COL + totalWeekColCount - 1) : 'E';
+        const firstNewWeekColLetter = colToLetter(AVERAGES_WEEK_START_COL);
+        const lastNewWeekColLetter =
+          newWeekColCount > 0 ? colToLetter(AVERAGES_WEEK_START_COL + newWeekColCount - 1) : firstNewWeekColLetter;
+
+        // 3) Insert only new week columns at F+, then update header row + formatting.
+        // Existing week data shifts right automatically; we do not rewrite whole sheet.
+        if (newWeekColCount > 0) {
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            requestBody: {
+              requests: [
+                {
+                  insertDimension: {
+                    range: {
+                      sheetId,
+                      dimension: 'COLUMNS',
+                      startIndex: AVERAGES_WEEK_START_COL,
+                      endIndex: AVERAGES_WEEK_START_COL + newWeekColCount,
+                    },
+                  },
+                },
+              ],
+            },
+          });
+
+          await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `'${sheetName}'!A1:${lastWeekColLetter}1`,
+            valueInputOption: 'USER_ENTERED',
+            requestBody: {
+              values: [[...AVERAGES_FIXED_HEADERS, ...allWeekHeaders.flatMap((week) => [week, ''])]],
+            },
+          });
+
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            requestBody: { requests: buildAveragesFormattingRequests(sheetId, allWeekHeaders, colosseumWeekHeaders) },
+          });
+        }
+
+        for (const row of rowsByTag.values()) {
+          row.weekValues = [...Array(newWeekColCount).fill(''), ...row.weekValues];
+        }
+
+        for (const log of aggregatedLogs.values()) {
+          let row = rowsByTag.get(log.tag);
+          if (!row) {
+            row = {
+              rowNumber: 0,
+              discordId: '',
+              tag: log.tag,
+              name: log.name,
+              clanAbbr: log.clanAbbr,
+              weekValues: Array(totalWeekColCount).fill(''),
+            };
+            rowsByTag.set(log.tag, row);
+          }
+
+          const weekIndex = newWeeks.indexOf(log.season);
+          if (weekIndex === -1) continue;
+
+          const fameIndex = weekIndex * 2;
+          const attacksIndex = fameIndex + 1;
+          row.name = log.name;
+          row.clanAbbr = log.clanAbbr;
+          row.weekValues[fameIndex] = Number(row.weekValues[fameIndex] || 0) + log.fame;
+          row.weekValues[attacksIndex] = Number(row.weekValues[attacksIndex] || 0) + log.attacks;
+        }
+
+        // 4) Update existing rows in place (A:E metadata + new week cells only).
+        const metadataUpdates: { range: string; values: (string | number)[][] }[] = [];
+        const weekUpdates: { range: string; values: (string | number)[][] }[] = [];
+
+        for (const tag of rowOrder) {
+          const row = rowsByTag.get(tag);
+          if (!row) continue;
+
+          const linkedDiscord = linkedDiscordIds.get(row.tag);
+          if (linkedDiscord) row.discordId = linkedDiscord;
+
+          metadataUpdates.push({
+            range: `'${sheetName}'!A${row.rowNumber}:E${row.rowNumber}`,
+            values: [
+              [
+                row.discordId,
+                row.tag,
+                row.name,
+                row.clanAbbr,
+                totalWeekColCount > 0 ? buildAveragesFameFormula(row.rowNumber, lastWeekColLetter) : '',
+              ],
+            ],
+          });
+
+          if (newWeekColCount > 0) {
+            weekUpdates.push({
+              range: `'${sheetName}'!${firstNewWeekColLetter}${row.rowNumber}:${lastNewWeekColLetter}${row.rowNumber}`,
+              values: [row.weekValues.slice(0, newWeekColCount)],
+            });
+          }
+        }
+
+        // 5) Add only new tags as appended rows; old week cells stay blank for them.
+        let newPlayerCount = 0;
+        const appendRows: (string | number)[][] = [];
+        for (const [tag, row] of rowsByTag) {
+          if (rowOrder.includes(tag)) continue;
+          newPlayerCount++;
+          const rowNumber = existingRows.length + newPlayerCount + 1;
+          const linkedDiscord = linkedDiscordIds.get(row.tag) ?? row.discordId;
+          const oldWeekBlanks = Array(existingWeekColCount).fill('');
+          appendRows.push([
+            linkedDiscord,
+            row.tag,
+            row.name,
+            row.clanAbbr,
+            totalWeekColCount > 0 ? buildAveragesFameFormula(rowNumber, lastWeekColLetter) : '',
+            ...row.weekValues.slice(0, newWeekColCount),
+            ...oldWeekBlanks,
+          ]);
+        }
+
+        // Ensure sheet has enough grid before any writes.
+        // Prevents "range exceeds grid limits" when adding new players/weeks.
+        const requiredRows = existingRows.length + appendRows.length + 1;
+        const requiredColumns = AVERAGES_WEEK_START_COL + totalWeekColCount;
+        await ensureSheetGridCapacity(sheets, spreadsheetId, sheetId, requiredRows, requiredColumns);
+
+        if (metadataUpdates.length > 0) {
+          await sheets.spreadsheets.values.batchUpdate({
+            spreadsheetId,
+            requestBody: { valueInputOption: 'USER_ENTERED', data: metadataUpdates },
+          });
+        }
+
+        if (weekUpdates.length > 0) {
+          await sheets.spreadsheets.values.batchUpdate({
+            spreadsheetId,
+            requestBody: { valueInputOption: 'USER_ENTERED', data: weekUpdates },
+          });
+        }
+
+        if (appendRows.length > 0) {
+          await sheets.spreadsheets.values.update({
+            spreadsheetId,
+            range: `'${sheetName}'!A${existingRows.length + 2}:${lastWeekColLetter}${existingRows.length + 1 + appendRows.length}`,
+            valueInputOption: 'USER_ENTERED',
+            requestBody: { values: appendRows },
+          });
+        }
+
+        // Sort by latest week fame (column F) high -> low after updates/appends.
+        const totalRows = existingRows.length + appendRows.length;
+        if (totalRows > 0) {
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId,
+            requestBody: {
+              requests: [
+                {
+                  sortRange: {
+                    range: {
+                      sheetId,
+                      startRowIndex: 1,
+                      endRowIndex: totalRows + 1,
+                      startColumnIndex: 0,
+                      endColumnIndex: AVERAGES_WEEK_START_COL + totalWeekColCount,
+                    },
+                    sortSpecs: [{ dimensionIndex: 5, sortOrder: 'DESCENDING' }],
+                  },
+                },
+              ],
+            },
+          });
+        }
+
+        // 6) Optional pass: fill any blank Discord IDs on existing rows after sync.
+        const discordBackfilled = await fillMissingDiscordIdsInSheet(
+          sheets,
+          spreadsheetId,
+          sheetName,
+          linkedDiscordIds,
+        );
+
+        return {
+          weeksAdded: newWeeks.length,
+          playersSynced: rowOrder.length + appendRows.length,
+          playersAdded: appendRows.length,
+          discordBackfilled,
+        };
+      };
+
+      const [fiveKResult, fourKResult] = await Promise.all([
+        syncAveragesSheet('5k Averages', averages5kId, '5k'),
+        syncAveragesSheet('4k Averages', averages4kId, '4k'),
+      ]);
+
+      await applyAveragesLastClanColorRules(sheets, spreadsheetId, [averages5kId, averages4kId], allClanThemeRows);
+
+      const skippedSuffix = noDataClans.length > 0 ? ` Skipped no-data clans: ${noDataClans.join(', ')}.` : '';
+
+      await interaction.editReply({
+        content: `✅ Updated both average sheets`,
+      });
     }
 
     if (subcommand === 'lineup-order') {
       const league = interaction.options.getString('league', true) as '5k' | '4k';
       const clanOrderInput = interaction.options.getString('clan-order', true);
+      const preserveData = interaction.options.getBoolean('preserve-data') ?? false;
       const clanOrder = clanOrderInput.split(',').map((clan) => clan.trim());
 
       // Filter out l2w
@@ -760,9 +1672,10 @@ const command: Command = {
         abbreviation: string;
         header_bg_hex: string | null;
         header_text_hex: string | null;
+        l2w_clan: boolean;
       }>(
         `
-        SELECT clantag, LOWER(abbreviation) AS abbreviation, header_bg_hex, header_text_hex
+        SELECT clantag, LOWER(abbreviation) AS abbreviation, header_bg_hex, header_text_hex, l2w_clan
           FROM clans
         WHERE guild_id = $1
           AND (clantag = ANY($2) OR LOWER(abbreviation) = ANY($3))
@@ -794,13 +1707,42 @@ const command: Command = {
         return;
       }
 
-      // Map each clan in order to its display name (abbreviation uppercased; l2w preserved)
+      const allClanThemeRows = (
+        await pool.query<ClanThemeRow>(
+          `SELECT LOWER(abbreviation) AS abbreviation, header_bg_hex, header_text_hex, l2w_clan
+           FROM clans
+           WHERE guild_id = $1
+             AND abbreviation IS NOT NULL`,
+          [guild.id],
+        )
+      ).rows;
+      const allClanOrder = Array.from(new Set(allClanThemeRows.map((row) => row.abbreviation.toUpperCase())));
+      const allClanThemes = resolveClanHeaderThemes(allClanOrder, allClanThemeRows);
+      const allClanThemeMap = new Map(
+        allClanOrder.map(
+          (abbr, idx) =>
+            [
+              abbr,
+              {
+                theme: allClanThemes[idx],
+                isL2W: Boolean(allClanThemeRows.find((r) => r.abbreviation.toUpperCase() === abbr)?.l2w_clan),
+              },
+            ] as const,
+        ),
+      );
+
+      // Map each clan in order to display name + l2w flag from DB.
       const resolvedOrder = clanOrder.map((input) => {
-        if (input.toLowerCase() === 'l2w') return 'L2W';
         const match = clanRes.rows.find(
           (r) => r.clantag === normalizeTag(input) || r.abbreviation === input.toLowerCase(),
         );
         return (match?.abbreviation ?? input).toUpperCase();
+      });
+      const resolvedIsL2W = clanOrder.map((input) => {
+        const match = clanRes.rows.find(
+          (r) => r.clantag === normalizeTag(input) || r.abbreviation === input.toLowerCase(),
+        );
+        return Boolean(match?.l2w_clan);
       });
       const resolvedThemes = resolveClanHeaderThemes(resolvedOrder, clanRes.rows);
 
@@ -836,6 +1778,7 @@ const command: Command = {
           clanIndex: number,
           sheetId: number,
           theme: ClanHeaderTheme,
+          isL2WClan: boolean,
           l2wExists: boolean,
         ) => SheetBlockResult,
         sheetId: number,
@@ -847,7 +1790,14 @@ const command: Command = {
         const allRequests: object[] = [];
 
         for (let i = 0; i < resolvedOrder.length; i++) {
-          const { values, requests } = builder(resolvedOrder[i], i, sheetId, resolvedThemes[i], l2wExists);
+          const { values, requests } = builder(
+            resolvedOrder[i],
+            i,
+            sheetId,
+            resolvedThemes[i],
+            resolvedIsL2W[i],
+            l2wExists,
+          );
           for (let row = 0; row < values.length; row++) {
             mergedValues[row].push(...values[row]);
           }
@@ -859,8 +1809,8 @@ const command: Command = {
 
       const lineupsGrid = buildMergedSheet(
         3 + LINEUP_DATA_ROWS,
-        (clanName, clanIndex, sheetId, theme, l2wExists) =>
-          buildClanBlock(clanName, clanIndex, sheetId, theme, l2wExists),
+        (clanName, clanIndex, sheetId, theme, isL2WClan, l2wExists) =>
+          buildClanBlock(clanName, clanIndex, sheetId, theme, isL2WClan, l2wExists),
         lineupsSheetId,
         l2wSheetsExist,
       );
@@ -876,12 +1826,52 @@ const command: Command = {
           lineupsSheetName,
           resolvedOrder.length,
           resolvedThemes[i],
+          resolvedIsL2W[i],
         );
         for (let row = 0; row < values.length; row++) {
           kicksMergedValues[row].push(...values[row]);
         }
         kicksRequests.push(...requests);
       }
+
+      // Cur. Clan column color rules on Lineups:
+      // use ALL clan abbreviations from DB (not only lineup-order blocks),
+      // so any current clan label can be colored correctly.
+      const curClanColorRules: object[] = [];
+      for (let block = 0; block < resolvedOrder.length; block++) {
+        const startCol = block * LINEUP_BLOCK_WIDTH;
+        const curClanCol = startCol + 4; // Cur. Clan column within each lineup block
+
+        for (const [clan, meta] of allClanThemeMap.entries()) {
+          const bg = meta.isL2W ? L2W_ACCENT_BG : meta.theme.backgroundColor;
+          const fg = meta.isL2W ? L2W_ACCENT_TEXT : meta.theme.textColor;
+
+          curClanColorRules.push({
+            addConditionalFormatRule: {
+              rule: {
+                ranges: [
+                  {
+                    sheetId: lineupsSheetId,
+                    startRowIndex: 2,
+                    endRowIndex: 2 + LINEUP_DATA_ROWS,
+                    startColumnIndex: curClanCol,
+                    endColumnIndex: curClanCol + 1,
+                  },
+                ],
+                booleanRule: {
+                  condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: clan }] },
+                  format: {
+                    backgroundColor: bg,
+                    textFormat: { foregroundColor: fg },
+                  },
+                },
+              },
+              index: 0,
+            },
+          });
+        }
+      }
+      lineupsGrid.allRequests.push(...curClanColorRules);
 
       // Clear existing conditional format rules in reverse index order so reruns
       // do not accumulate stale rules across repeated lineup-order executions.
@@ -958,35 +1948,52 @@ const command: Command = {
         },
       });
 
-      // Clear entire sheet contents so reruns with fewer clans don't leave stale blocks behind.
-      await Promise.all([
-        sheets.spreadsheets.values.clear({
-          spreadsheetId,
-          range: lineupsSheetName,
-        }),
-        sheets.spreadsheets.values.clear({
-          spreadsheetId,
-          range: kicksSheetName,
-        }),
-      ]);
+      if (!preserveData) {
+        // Full rebuild: clear values first so stale blocks are removed.
+        await Promise.all([
+          sheets.spreadsheets.values.clear({
+            spreadsheetId,
+            range: lineupsSheetName,
+          }),
+          sheets.spreadsheets.values.clear({
+            spreadsheetId,
+            range: kicksSheetName,
+          }),
+        ]);
 
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${lineupsSheetName}!A1`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: lineupsGrid.mergedValues },
-      });
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `${lineupsSheetName}!A1`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: lineupsGrid.mergedValues },
+        });
+
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `${kicksSheetName}!A1`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: kicksMergedValues },
+        });
+      } else {
+        // Format-only mode: keep existing rows/tags, only refresh header rows.
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `${lineupsSheetName}!A1`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: lineupsGrid.mergedValues.slice(0, 2) },
+        });
+
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `${kicksSheetName}!A1`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: kicksMergedValues.slice(0, 2) },
+        });
+      }
 
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId,
         requestBody: { requests: lineupsGrid.allRequests },
-      });
-
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${kicksSheetName}!A1`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: kicksMergedValues },
       });
 
       await sheets.spreadsheets.batchUpdate({
@@ -995,35 +2002,38 @@ const command: Command = {
       });
 
       // Apply per-clan background colors to the "Last Clan" column (D) on the averages sheet.
+      // TODO move to place where it runs elsewhere too.
       if (avgSheetId !== null) {
-        const avgColorRules: object[] = resolvedOrder
-          .map((clan, idx) => ({ clan, theme: resolvedThemes[idx] }))
-          .filter(({ clan }) => clan !== 'L2W')
-          .map(({ clan, theme }) => {
-            return {
-              addConditionalFormatRule: {
-                rule: {
-                  ranges: [
-                    {
-                      sheetId: avgSheetId,
-                      startRowIndex: 1,
-                      endRowIndex: 2000,
-                      startColumnIndex: 3,
-                      endColumnIndex: 4,
-                    },
-                  ],
-                  booleanRule: {
-                    condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: clan }] },
-                    format: {
-                      backgroundColor: theme.backgroundColor,
-                      textFormat: { foregroundColor: theme.textColor },
+        const avgColorRules: object[] = allClanOrder.map((clan) => {
+          const meta = allClanThemeMap.get(clan);
+          const isL2W = Boolean(meta?.isL2W);
+          const theme = meta?.theme;
+          return {
+            addConditionalFormatRule: {
+              rule: {
+                ranges: [
+                  {
+                    sheetId: avgSheetId,
+                    startRowIndex: 1,
+                    endRowIndex: 2000,
+                    startColumnIndex: 3,
+                    endColumnIndex: 4,
+                  },
+                ],
+                booleanRule: {
+                  condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: clan }] },
+                  format: {
+                    backgroundColor: isL2W ? L2W_ACCENT_BG : (theme?.backgroundColor ?? LINEUP_HEADER_BG),
+                    textFormat: {
+                      foregroundColor: isL2W ? L2W_ACCENT_TEXT : (theme?.textColor ?? { red: 0, green: 0, blue: 0 }),
                     },
                   },
                 },
-                index: 0,
               },
-            };
-          });
+              index: 0,
+            },
+          };
+        });
 
         if (avgColorRules.length > 0) {
           await sheets.spreadsheets.batchUpdate({
@@ -1034,9 +2044,9 @@ const command: Command = {
       }
 
       await interaction.editReply({
-        content:
-          `✅ **${lineupsSheetName}** and **${kicksSheetName}** updated with ${resolvedOrder.length} clan(s): ` +
-          `**${resolvedOrder.join(' → ')}**`,
+        content: preserveData
+          ? `✅ Formatting refreshed on **${lineupsSheetName}** and **${kicksSheetName}** (existing rows preserved). Clan order: **${resolvedOrder.join(' → ')}**`
+          : `✅ **${lineupsSheetName}** and **${kicksSheetName}** updated with ${resolvedOrder.length} clan(s): **${resolvedOrder.join(' → ')}**`,
       });
     }
 
@@ -1051,10 +2061,10 @@ const command: Command = {
 
       await interaction.editReply({ content: `⏳ Refreshing ${league} sheets…` });
 
-      // Sequential — three-step to handle both directions:
-      // 1. Available checkboxes may mark players as L2W/Inactive → must commit to DB first.
-      // 2. L2W sheet checkboxes may remove players from L2W → must rebuild L2W sheet after step 1.
-      // 3. Players removed from L2W in step 2 need to reappear on Available → rebuild again.
+      // Sequential single cycle:
+      // 1) Available checkboxes may mark players as L2W/Inactive.
+      // 2) L2W rebuild processes its own checkboxes, then rebuilds from fresh DB state.
+      // 3) Available rebuild again so returned players reappear immediately.
       await refreshAvailableSheet(guild.id, spreadsheetId, `${league} Available`, league);
       await tryRefreshL2WSheet(guild.id, spreadsheetId, league);
       await refreshAvailableSheet(guild.id, spreadsheetId, `${league} Available`, league);
@@ -1070,12 +2080,12 @@ const command: Command = {
       const status = interaction.options.getString('status', true) as 'l2w' | 'inactive';
       const league = interaction.options.getString('league', true) as '5k' | '4k';
       const notes = interaction.options.getString('notes') ?? null;
-      const durationInput = interaction.options.getString('duration') ?? null;
+      const durationInput = interaction.options.getString('duration-days') ?? null;
 
       // Validate duration format if provided
-      if (durationInput && !/^\d{4}-\d{2}-\d{2}$/.test(durationInput)) {
+      if (durationInput && !/^\d+$/.test(durationInput)) {
         await interaction.editReply({
-          content: `❌ Invalid duration format. Use \`YYYY-MM-DD\` (e.g. \`2026-06-15\`).`,
+          content: `❌ Invalid duration format. Use a number of days (e.g. \`30\`).`,
         });
         return;
       }
@@ -1092,13 +2102,13 @@ const command: Command = {
         status,
         league,
         notes,
-        durationDate: durationInput,
+        durationDays: durationInput,
         markedByDiscordId: interaction.user.id,
       };
       await pool.query(buildUpsertL2WPlayer(guild.id, data));
 
       const statusLabel = status === 'l2w' ? 'L2W' : 'Inactive';
-      const durationLabel = durationInput ? ` (until ${durationInput})` : '';
+      const durationLabel = durationInput ? ` (until ${durationInput} days)` : '';
       await interaction.editReply({
         content: `✅ Marked **${resolved.name}** (\`${resolved.tag}\`) as **${statusLabel}**${durationLabel} on the ${league} sheet. Refreshing sheet…`,
       });
@@ -1120,7 +2130,7 @@ const command: Command = {
     }
 
     // ── unmark-l2w ───────────────────────────────────────────────────────────
-    if (subcommand === 'unmark-l2w') {
+    if (subcommand === 'unmark') {
       const playerInput = interaction.options.getString('player', true);
 
       const resolved = await resolvePlayerInput(guild.id, playerInput);

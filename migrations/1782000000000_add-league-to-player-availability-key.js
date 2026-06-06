@@ -21,6 +21,7 @@ export const up = (pgm) => {
   pgm.dropColumn('player_availability', 'league_target');
   pgm.dropColumn('player_availability', 'league_assigned_by_discord_id');
   pgm.dropColumn('player_availability', 'l2w_marked_by_discord_id');
+  pgm.dropColumn('player_availability', 'l2w_league');
 
   pgm.alterColumn('player_availability', 'league', { notNull: true });
 
