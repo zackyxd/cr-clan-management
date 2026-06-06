@@ -314,9 +314,7 @@ export async function buildL2WSheet(
   // current DB status (not the section they appear in on the old sheet). This prevents:
   //   - Removed players being re-added (they're absent from the map)
   //   - Switched players (L2W ↔ Inactive) having their new status overwritten
-  const activePlayerMap = new Map(
-    initialPlayers.map((p) => [p.playertag.toUpperCase().replace('#', ''), p]),
-  );
+  const activePlayerMap = new Map(initialPlayers.map((p) => [p.playertag.toUpperCase().replace('#', ''), p]));
 
   // Keep notes — read from sheet before any DB queries so user edits are captured.
   const response = await sheets.spreadsheets.values.get({
@@ -357,10 +355,7 @@ export async function buildL2WSheet(
     const hasInactiveNotes = typeof inactiveNotes === 'string' && inactiveNotes.trim().length > 0;
     const inactiveTagNorm = inactiveTag ? String(inactiveTag).trim().toUpperCase().replace('#', '') : '';
     const inactiveActivePlayer = activePlayerMap.get(inactiveTagNorm);
-    if (
-      inactiveActivePlayer &&
-      (hasInactiveNotes || inactiveDurationDays !== null || inactiveDurationDate !== null)
-    ) {
+    if (inactiveActivePlayer && (hasInactiveNotes || inactiveDurationDays !== null || inactiveDurationDate !== null)) {
       await pool.query(
         buildUpsertL2WPlayer(guildId, {
           playertag: inactiveTag,
@@ -790,10 +785,6 @@ export async function buildL2WSheet(
     valueInputOption: 'USER_ENTERED',
     requestBody: { values },
   });
-
-  logger.info(
-    `[l2wSheet] Rebuilt sheet "${sheetName}" for guild ${guildId}: ${l2wPlayers.length} L2W, ${inactivePlayers.length} inactive`,
-  );
 }
 
 // ─── Exported helpers used by commands ────────────────────────────────────────

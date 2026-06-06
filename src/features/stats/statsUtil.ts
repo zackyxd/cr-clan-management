@@ -30,7 +30,6 @@ export async function getSheetIdByName(spreadsheetId: string, sheetName: string)
   return sheet?.properties?.sheetId ?? null;
 }
 
-// TODO fix column name
 export async function getSpreadsheetId(guildId: string): Promise<string> {
   const res = await pool.query(
     `

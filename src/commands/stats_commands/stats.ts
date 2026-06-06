@@ -529,7 +529,7 @@ async function applyAveragesLastClanColorRules(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-function averagesNameFormula(colLetter: string, row: number): string {
+export function averagesNameFormula(colLetter: string, row: number): string {
   const tagRef = `${colLetter}${row}`;
 
   return (
@@ -543,7 +543,7 @@ function averagesNameFormula(colLetter: string, row: number): string {
   );
 }
 
-function averagesFameFormula(colLetter: string, row: number): string {
+export function averagesFameFormula(colLetter: string, row: number): string {
   const tagRef = `${colLetter}${row}`;
 
   return (
@@ -931,9 +931,8 @@ function buildKickBlock(
   for (let i = 1; i <= KICKS_DATA_ROWS; i++) {
     const sheetRow = i + 3; // row 4 is first data row (row 1 reserved for disclaimer)
     const tagCol = colToLetter(startCol + 2); // Player Tag column in Kicks block
-    const nameFormula =
-      `=IFERROR(XLOOKUP(${tagCol}${sheetRow},'5k Averages'!B:B,'5k Averages'!C:C),` +
-      `IFERROR(XLOOKUP(${tagCol}${sheetRow},'4k Averages'!B:B,'4k Averages'!C:C),"—"))`;
+    const nameFormula = averagesNameFormula(tagCol, sheetRow);
+
     const lineupTagCols: string[] = [];
     const lineupTitleCols: string[] = [];
     for (let block = 0; block < blockCount; block++) {
@@ -1177,6 +1176,8 @@ async function resolvePlayerInput(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+const runningGuilds = new Set<string>();
+
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('stats')
@@ -1224,7 +1225,7 @@ const command: Command = {
     )
     .addSubcommand((sub) =>
       sub
-        .setName('mark-l2w')
+        .setName('mark')
         .setDescription('Mark a player as L2W or Inactive')
         .addStringOption((o) =>
           o.setName('player').setDescription('Player tag (#ABC123) or @mention').setRequired(true),
@@ -1268,12 +1269,23 @@ const command: Command = {
       return;
     }
 
+    if (runningGuilds.has(guild.id)) {
+      await interaction.reply({
+        content: '⏳ A stats command is already running. Please wait for it to finish.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
     const subcommand = interaction.options.getSubcommand();
     const allowed = await checkPerms(interaction, guild.id, 'command', 'either', {
       hideNoPerms: true,
       deferEphemeral: true,
     });
     if (!allowed) return;
+
+    runningGuilds.add(guild.id);
+    try {
 
     if (subcommand === 'update-scores') {
       const sheets = await getAuthenticatedSheetsClient();
@@ -1289,10 +1301,10 @@ const command: Command = {
       // color Cur. Clan/Last Clan even when abbreviation is not part of lineup-order input.
       const allClanThemeRows = (
         await pool.query<ClanThemeRow>(
-          `SELECT LOWER(abbreviation) AS abbreviation, header_bg_hex, header_text_hex, l2w_clan
+          `SELECT LOWER(abbreviation) AS abbreviation, header_bg_hex, header_text_hex, family_clan, l2w_clan
            FROM clans
            WHERE guild_id = $1
-             AND abbreviation IS NOT NULL`,
+             AND abbreviation IS NOT NULL AND (l2w_clan = TRUE OR family_clan = TRUE)`,
           [guild.id],
         )
       ).rows;
@@ -1675,10 +1687,10 @@ const command: Command = {
         l2w_clan: boolean;
       }>(
         `
-        SELECT clantag, LOWER(abbreviation) AS abbreviation, header_bg_hex, header_text_hex, l2w_clan
+        SELECT clantag, LOWER(abbreviation) AS abbreviation, header_bg_hex, header_text_hex, family_clan, l2w_clan
           FROM clans
         WHERE guild_id = $1
-          AND (clantag = ANY($2) OR LOWER(abbreviation) = ANY($3))
+          AND (clantag = ANY($2) OR LOWER(abbreviation) = ANY($3)) AND family_clan = TRUE
         `,
         [guild.id, tags, abbrevs],
       );
@@ -1709,10 +1721,10 @@ const command: Command = {
 
       const allClanThemeRows = (
         await pool.query<ClanThemeRow>(
-          `SELECT LOWER(abbreviation) AS abbreviation, header_bg_hex, header_text_hex, l2w_clan
+          `SELECT LOWER(abbreviation) AS abbreviation, header_bg_hex, header_text_hex, family_clan, l2w_clan
            FROM clans
            WHERE guild_id = $1
-             AND abbreviation IS NOT NULL`,
+             AND abbreviation IS NOT NULL AND family_clan = TRUE`,
           [guild.id],
         )
       ).rows;
@@ -2074,8 +2086,8 @@ const command: Command = {
       });
     }
 
-    // ── mark-l2w ─────────────────────────────────────────────────────────────
-    if (subcommand === 'mark-l2w') {
+    // ── mark ─────────────────────────────────────────────────────────────
+    if (subcommand === 'mark') {
       const playerInput = interaction.options.getString('player', true);
       const status = interaction.options.getString('status', true) as 'l2w' | 'inactive';
       const league = interaction.options.getString('league', true) as '5k' | '4k';
@@ -2129,7 +2141,7 @@ const command: Command = {
       });
     }
 
-    // ── unmark-l2w ───────────────────────────────────────────────────────────
+    // ── unmark ───────────────────────────────────────────────────────────
     if (subcommand === 'unmark') {
       const playerInput = interaction.options.getString('player', true);
 
@@ -2166,6 +2178,9 @@ const command: Command = {
       await interaction.editReply({
         content: `✅ Removed **${resolved.name}** (\`${resolved.tag}\`) from the L2W / Inactive list.`,
       });
+    }
+    } finally {
+      runningGuilds.delete(guild.id);
     }
   },
 };

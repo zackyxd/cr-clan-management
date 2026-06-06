@@ -9,12 +9,14 @@ import {
   type UpsertL2WPlayerData,
 } from '../../sql_queries/playerL2W.js';
 import { getLeagueFromTrophies, AVAILABLE_SHEET_WEEKS_LOOKBACK } from '../../config/constants.js';
+import { averagesFameFormula, averagesNameFormula } from '../../commands/stats_commands/stats.js';
 
 // ─── Layout Config ────────────────────────────────────────────────────────────
 
 const COL_TAG = 0;
 const COL_PLAYER = 1;
-// COL_FAME_AVG = 2, COL_STATUS = 3 (referenced by column index in formatting; not used as named constants)
+const COL_FAME_AVG = 2;
+// COL_STATUS = 3 (referenced by column index in formatting; not used as named constants)
 const COL_L2W = 4; // Send to L2W sheet
 const COL_INACTIVE = 5; // Send to Inactive sheet
 const COL_REMOVE = 6; // Remove player from available list
@@ -723,8 +725,8 @@ async function writeAvailableSheet(
     const sheetRow = DATA_START_ROW + i + 1; // 1-indexed A1 row number
     return [
       p.playertag,
-      nameFormula(sheetRow),
-      fameFormula(sheetRow),
+      averagesNameFormula(colToLetter(COL_TAG), sheetRow),
+      averagesFameFormula(colToLetter(COL_TAG), sheetRow),
       p.isRemoved ? 'Removed' : p.isRostered ? 'Rostered' : 'Available',
       false, // → L2W checkbox
       false, // → Inactive checkbox
