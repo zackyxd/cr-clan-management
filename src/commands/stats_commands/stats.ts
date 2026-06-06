@@ -543,14 +543,15 @@ export function averagesNameFormula(colLetter: string, row: number): string {
   );
 }
 
-export function averagesFameFormula(colLetter: string, row: number): string {
+export function averagesFameFormula(colLetter: string, row: number, league: '5k' | '4k'): string {
   const tagRef = `${colLetter}${row}`;
+  const sheet = `'${league} Averages'`;
 
   return (
     `=XLOOKUP(` +
     `IF(LEFT(${tagRef},1)="#",${tagRef},"#"&${tagRef}),` +
-    `'5k Averages'!B:B,` +
-    `'5k Averages'!E:E,` +
+    `${sheet}!B:B,` +
+    `${sheet}!E:E,` +
     `"N/A"` +
     `)`
   );
@@ -567,6 +568,7 @@ function buildClanBlock(
   theme: ClanHeaderTheme,
   isL2WClan: boolean,
   l2wSheetsExist = false,
+  league: '5k' | '4k' = '5k',
 ): SheetBlockResult {
   const startCol = clanIndex * LINEUP_BLOCK_WIDTH;
   const blockHeaderBg = isL2WClan ? L2W_ACCENT_BG : lightenColor(theme.backgroundColor, 0.3);
@@ -589,7 +591,7 @@ function buildClanBlock(
     const nameFormula = averagesNameFormula(tagCol, i + 2);
 
     // Cur. Clan is filled by CurClanAutofillScheduler — written as plain values, not a formula.
-    const fameAtkFormula = averagesFameFormula(tagCol, i + 2);
+    const fameAtkFormula = averagesFameFormula(tagCol, i + 2, league);
     values.push([String(i), '', nameFormula, '', '', fameAtkFormula, '']);
   }
 
@@ -1822,7 +1824,7 @@ const command: Command = {
       const lineupsGrid = buildMergedSheet(
         3 + LINEUP_DATA_ROWS,
         (clanName, clanIndex, sheetId, theme, isL2WClan, l2wExists) =>
-          buildClanBlock(clanName, clanIndex, sheetId, theme, isL2WClan, l2wExists),
+          buildClanBlock(clanName, clanIndex, sheetId, theme, isL2WClan, l2wExists, league),
         lineupsSheetId,
         l2wSheetsExist,
       );

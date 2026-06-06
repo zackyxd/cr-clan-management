@@ -726,7 +726,7 @@ async function writeAvailableSheet(
     return [
       p.playertag,
       averagesNameFormula(colToLetter(COL_TAG), sheetRow),
-      averagesFameFormula(colToLetter(COL_TAG), sheetRow),
+      averagesFameFormula(colToLetter(COL_TAG), sheetRow, league as '5k' | '4k'),
       p.isRemoved ? 'Removed' : p.isRostered ? 'Rostered' : 'Available',
       false, // → L2W checkbox
       false, // → Inactive checkbox
