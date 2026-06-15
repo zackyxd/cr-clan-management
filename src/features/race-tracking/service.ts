@@ -202,6 +202,7 @@ export async function getRaceAttacks(
        WHERE rpt2.playertag = rpt.playertag
          AND rr2.current_week = $2
          AND rpt2.current_day = $3
+         AND ((rr2.season_id = $6 AND $6 IS NOT NULL) OR (rr2.season_id IS NULL AND $6 IS NULL))
       ) as total_attacks
     FROM race_participant_tracking rpt
     LEFT JOIN user_playertags up ON rpt.playertag = up.playertag AND up.guild_id = $1
@@ -209,7 +210,7 @@ export async function getRaceAttacks(
     WHERE rpt.race_id = $4
       AND rpt.playertag = ANY($5)
   `,
-    [guildId, warWeek, currentDay, raceId, playertags],
+    [guildId, warWeek, currentDay, raceId, playertags, seasonId],
   );
 
   // Build map of player attack data
@@ -699,7 +700,7 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
     console.error(`[Race Init] Failed to fetch river race log for ${clantag}:`, rrLog.reason);
     return null;
   }
-  const seasonId: number | null = detectSeasonId(rrLog);
+  const seasonId: number | null = detectSeasonId(rrLog, raceData);
   const warDay: number = getWarDay(raceData);
   const warWeek: number = getWarWeek(raceData);
   const periodType = raceData.periodType;
@@ -970,8 +971,10 @@ export async function updateParticipantTracking(
         array_agg(DISTINCT rpt.clan_name) as clan_names
       FROM race_participant_tracking rpt
       JOIN river_races rr ON rpt.race_id = rr.race_id
-      WHERE rr.current_week = (SELECT current_week FROM river_races WHERE race_id = $1)
-        AND rpt.current_day = (SELECT current_day FROM river_races WHERE race_id = $1)
+      JOIN river_races rr_self ON rr_self.race_id = $1
+      WHERE rr.current_week = rr_self.current_week
+        AND rpt.current_day = rr_self.current_day
+        AND ((rr.season_id = rr_self.season_id AND rr_self.season_id IS NOT NULL) OR (rr.season_id IS NULL AND rr_self.season_id IS NULL))
         AND rpt.playertag = ANY($2)
         AND rpt.decks_used_today > 0
       GROUP BY rpt.playertag
@@ -1089,7 +1092,7 @@ export async function getLinkedPlayers(guildId: string, playertags: string[]): P
   return linkedPlayers;
 }
 
-function detectSeasonId(rrLog: CurrentRiverRaceLogResult): number | null {
+function detectSeasonId(rrLog: CurrentRiverRaceLogResult, raceData: CurrentRiverRace): number | null {
   if (isFetchError(rrLog) || rrLog.items.length === 0) {
     return null;
   }
@@ -1111,6 +1114,13 @@ function detectSeasonId(rrLog: CurrentRiverRaceLogResult): number | null {
   const clansWithHighestTrophies = lastRace.standings.filter((standing) => standing.trophyChange >= 20);
   const wasColosseumWeek = clansWithHighestTrophies.length >= 2;
   if (wasColosseumWeek) {
+    // The log may report the colosseum as finished slightly before the live race data
+    // (raceData) catches up. While raceData still shows the colosseum as ongoing,
+    // keep treating it as the old season to avoid creating a duplicate "phantom"
+    // week 4 row under the new season id.
+    if (raceData.periodType === 'colosseum') {
+      return lastRace.seasonId;
+    }
     return lastRace.seasonId + 1;
   } else {
     // Same season
