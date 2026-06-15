@@ -739,8 +739,8 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
       // Check if we already processed this rollover (end_time was set recently)
       if (existingEndTime) {
         const timeSinceEndTime = Date.now() - new Date(existingEndTime).getTime();
-        const fiveMinutesMs = 5 * 60 * 1000;
-        if (timeSinceEndTime < fiveMinutesMs) {
+        const fifteenMinutesMs = 15 * 60 * 1000;
+        if (timeSinceEndTime < fifteenMinutesMs) {
           logger.warn(
             `[Race Update - ${clantag}] Rollover detected but already processed ${Math.floor(timeSinceEndTime / 1000)}s ago. Skipping duplicate rollover.`,
           );
@@ -833,11 +833,26 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
 
     if (prevRaceQuery.rows.length > 0) {
       const prev = prevRaceQuery.rows[0];
-      const prevType = prev.current_data.periodType;
+      let prevType = prev.current_data.periodType;
 
       logger.info(
         `[Race Update - ${clantag}] Previous race found: race_id=${prev.race_id}, week=${prev.current_week}, season=${prev.season_id ?? 'null'}, type=${prevType}, end_time=${prev.end_time ?? 'null'}.`,
       );
+
+      // Skip if this race was already finalized recently (e.g. by the rollover
+      // path in a previous poll) to avoid posting a duplicate summary. A longer
+      // window is used here since the new race's data can take a while to appear
+      // after the previous one ends (e.g. colosseum -> new season transition).
+      if (prev.end_time) {
+        const timeSinceEndTime = Date.now() - new Date(prev.end_time).getTime();
+        const fifteenMinutesMs = 15 * 60 * 1000;
+        if (timeSinceEndTime < fifteenMinutesMs) {
+          logger.warn(
+            `[Race Update - ${clantag}] Previous race ${prev.race_id} was already finalized ${Math.floor(timeSinceEndTime / 1000)}s ago. Skipping duplicate finalization.`,
+          );
+          prevType = null;
+        }
+      }
 
       // Create final snapshot if previous was war/colosseum (not training)
       if (prevType === 'warDay' || prevType === 'colosseum') {
