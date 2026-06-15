@@ -1,14 +1,31 @@
 import { pool } from '../../db.js';
 import logger from '../../logger.js';
 import { getCurrentRiverRace, getRiverRaceLog, getPlayer, isFetchError, normalizeTag } from '../../api/CR_API.js';
-import { colToLetter, getAuthenticatedSheetsClient, getSheetIdByName } from './statsUtil.js';
+import {
+  colToLetter,
+  getAuthenticatedSheetsClient,
+  getServiceAccountEmail,
+  getSheetIdByName,
+  TITLE_ROW,
+  DATA_START_ROW,
+  buildUnmergeRequest,
+  buildTitleCellRequests,
+  buildHeaderRowRequest,
+  buildColumnWidthRequests,
+  buildFreezeRequest,
+  buildCheckboxValidationRequest,
+  buildClearValidationRequest,
+  buildClearConditionalFormatRequests,
+  buildProtectedRangeRequest,
+  buildClearProtectedRangeRequests,
+} from './statsUtil.js';
 import {
   buildGetL2WTags,
   buildUpsertL2WPlayer,
   buildBatchUpdateNotes,
   type UpsertL2WPlayerData,
 } from '../../sql_queries/playerL2W.js';
-import { getLeagueFromTrophies, AVAILABLE_SHEET_WEEKS_LOOKBACK } from '../../config/constants.js';
+import { getLeagueFromTrophies, AVAILABLE_SHEET_WEEKS_LOOKBACK, PROTECTED_RANGE_ADMIN_EMAILS } from '../../config/constants.js';
 import { averagesFameFormula, averagesNameFormula } from '../../commands/stats_commands/stats.js';
 
 // ─── Layout Config ────────────────────────────────────────────────────────────
@@ -16,16 +33,13 @@ import { averagesFameFormula, averagesNameFormula } from '../../commands/stats_c
 const COL_TAG = 0;
 const COL_PLAYER = 1;
 const COL_FAME_AVG = 2;
-// COL_STATUS = 3 (referenced by column index in formatting; not used as named constants)
+const COL_STATUS = 3;
 const COL_L2W = 4; // Send to L2W sheet
 const COL_INACTIVE = 5; // Send to Inactive sheet
 const COL_REMOVE = 6; // Remove player from available list
 const COL_NOTES = 7; // Notes — scoped per player per league
 
 const TOTAL_COLS = 8;
-const TITLE_ROW = 0;
-const HEADERS_ROW = 1;
-const DATA_START_ROW = 2; // 0-based; = row 3 in A1 notation
 
 // Title background colors indexed by league key
 const TITLE_BG_BY_LEAGUE: Record<string, { red: number; green: number; blue: number }> = {
@@ -35,8 +49,6 @@ const TITLE_BG_BY_LEAGUE: Record<string, { red: number; green: number; blue: num
 };
 const TITLE_BG_DEFAULT = { red: 0.5, green: 0.5, blue: 0.5 }; // gray fallback
 const TITLE_FG = { red: 1, green: 1, blue: 1 }; // white text
-
-const HEADER_BG = { red: 0.85, green: 0.85, blue: 0.85 };
 
 // Amber highlight for rostered rows (applied via conditional format)
 const ROSTERED_BG = { red: 1.0, green: 0.87, blue: 0.4 };
@@ -411,6 +423,19 @@ async function processAvailableCheckboxes(
       };
       await pool.query(buildUpsertL2WPlayer(guildId, data));
       changeCount++;
+    } else if (row[COL_STATUS] === 'Removed' && row[COL_REMOVE] === false) {
+      const data: UpsertL2WPlayerData = {
+        playertag: tag,
+        league,
+        playerName,
+        status: null,
+        notes,
+        durationDays: null,
+        durationDate: null,
+        markedByDiscordId: 'sheet',
+      };
+      await pool.query(buildUpsertL2WPlayer(guildId, data));
+      changeCount++;
     }
 
     // ── Send to L2W (col E) ──────────────────────────────────────────────────
@@ -467,95 +492,40 @@ async function writeAvailableSheet(
   sheets: any,
 ): Promise<void> {
   const titleBg = TITLE_BG_BY_LEAGUE[league] ?? TITLE_BG_DEFAULT;
+  const protectedRangeEditors = [await getServiceAccountEmail(), ...PROTECTED_RANGE_ADMIN_EMAILS];
 
   // ── 1. Clear existing values ─────────────────────────────────────────────────
   await sheets.spreadsheets.values.clear({ spreadsheetId, range: sheetName });
 
-  // ── 1b. Clear existing conditional format rules (prevents duplication on re-run) ──
+  // ── 1b. Clear existing conditional format rules + protected ranges (prevents duplication on re-run) ──
   const sheetMeta = await sheets.spreadsheets.get({
     spreadsheetId,
     ranges: [sheetName],
-    fields: 'sheets.conditionalFormats',
+    fields: 'sheets.conditionalFormats,sheets.protectedRanges.protectedRangeId',
   });
   const existingRules: unknown[] = sheetMeta.data.sheets?.[0]?.conditionalFormats ?? [];
-  if (existingRules.length > 0) {
-    const deleteRequests = existingRules
-      .map((_: unknown, index: number) => ({ deleteConditionalFormatRule: { sheetId, index } }))
-      .reverse();
-    await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: deleteRequests } });
+  const existingProtections: { protectedRangeId?: number }[] = sheetMeta.data.sheets?.[0]?.protectedRanges ?? [];
+  const clearRequests = [
+    ...buildClearConditionalFormatRequests(sheetId, existingRules.length),
+    ...buildClearProtectedRangeRequests(existingProtections.map((p) => p.protectedRangeId!)),
+  ];
+  if (clearRequests.length > 0) {
+    await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: clearRequests } });
   }
 
   // ── 2. Build formatting requests ─────────────────────────────────────────────
   const requests: object[] = [];
 
   // Unmerge title first (safe for re-runs)
-  requests.push({
-    unmergeCells: {
-      range: {
-        sheetId,
-        startRowIndex: TITLE_ROW,
-        endRowIndex: TITLE_ROW + 1,
-        startColumnIndex: 0,
-        endColumnIndex: TOTAL_COLS,
-      },
-    },
-  });
+  requests.push(buildUnmergeRequest(sheetId, TITLE_ROW, TITLE_ROW + 1, 0, TOTAL_COLS));
 
-  // Title: colored bg, white bold text, merged across all columns
-  requests.push({
-    repeatCell: {
-      range: {
-        sheetId,
-        startRowIndex: TITLE_ROW,
-        endRowIndex: TITLE_ROW + 1,
-        startColumnIndex: 0,
-        endColumnIndex: TOTAL_COLS,
-      },
-      cell: {
-        userEnteredFormat: {
-          backgroundColor: titleBg,
-          textFormat: { bold: true, foregroundColor: TITLE_FG, fontSize: 12 },
-          horizontalAlignment: 'CENTER',
-          verticalAlignment: 'MIDDLE',
-        },
-      },
-      fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)',
-    },
-  });
-
-  requests.push({
-    mergeCells: {
-      range: {
-        sheetId,
-        startRowIndex: TITLE_ROW,
-        endRowIndex: TITLE_ROW + 1,
-        startColumnIndex: 0,
-        endColumnIndex: TOTAL_COLS,
-      },
-      mergeType: 'MERGE_ALL',
-    },
-  });
+  // Title: colored bg (per league) across the whole row, white bold text, but
+  // merged starting after the frozen Tag/Player columns so freezing 2 columns
+  // doesn't split a merged cell.
+  requests.push(...buildTitleCellRequests(sheetId, 0, TOTAL_COLS, titleBg, TITLE_FG, 2));
 
   // Headers: gray bg, bold, centered
-  requests.push({
-    repeatCell: {
-      range: {
-        sheetId,
-        startRowIndex: HEADERS_ROW,
-        endRowIndex: HEADERS_ROW + 1,
-        startColumnIndex: 0,
-        endColumnIndex: TOTAL_COLS,
-      },
-      cell: {
-        userEnteredFormat: {
-          backgroundColor: HEADER_BG,
-          textFormat: { bold: true },
-          horizontalAlignment: 'CENTER',
-        },
-      },
-      fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
-    },
-  });
+  requests.push(buildHeaderRowRequest(sheetId, TOTAL_COLS));
 
   // Data rows: center-aligned (all columns)
   requests.push({
@@ -592,37 +562,17 @@ async function writeAvailableSheet(
     },
   });
 
-  // Clear any leftover checkbox validation beyond the current data rows
+  // Clear any leftover checkbox validation beyond the current data rows (e.g. if
+  // the player list shrank since the last refresh, stale checkboxes lower down
+  // would otherwise remain interactive).
   for (const col of [COL_L2W, COL_INACTIVE, COL_REMOVE]) {
-    requests.push({
-      setDataValidation: {
-        range: {
-          sheetId,
-          startRowIndex: DATA_START_ROW,
-          endRowIndex: 1500,
-          startColumnIndex: col,
-          endColumnIndex: col + 1,
-        },
-        // No rule = clears existing validation
-      },
-    });
+    requests.push(buildClearValidationRequest(sheetId, col, DATA_START_ROW, 1500));
   }
 
-  // Checkbox validation only on rows that have data
+  // Re-apply checkbox validation only on rows that currently have data
   if (players.length > 0) {
     for (const col of [COL_L2W, COL_INACTIVE, COL_REMOVE]) {
-      requests.push({
-        setDataValidation: {
-          range: {
-            sheetId,
-            startRowIndex: DATA_START_ROW,
-            endRowIndex: DATA_START_ROW + players.length,
-            startColumnIndex: col,
-            endColumnIndex: col + 1,
-          },
-          rule: { condition: { type: 'BOOLEAN' }, strict: true, showCustomUi: true },
-        },
-      });
+      requests.push(buildCheckboxValidationRequest(sheetId, col, DATA_START_ROW, DATA_START_ROW + players.length));
     }
   }
 
@@ -677,27 +627,27 @@ async function writeAvailableSheet(
     },
   });
 
+  // Locked: Tag, Player, Fame Avg, and Status (cols A-D) are all written by
+  // the bot on every refresh (Tag from the API, Player/Fame Avg via XLOOKUP
+  // formulas, Status derived from rostered/removed state) — manual edits here
+  // get silently overwritten on the next refresh, so editing is blocked.
+  requests.push(
+    buildProtectedRangeRequest(
+      sheetId,
+      { startRowIndex: DATA_START_ROW, endRowIndex: 2500, startColumnIndex: COL_TAG, endColumnIndex: COL_STATUS + 1 },
+      'Auto-generated by /stats — edits here are overwritten on the next refresh.',
+      protectedRangeEditors,
+    ),
+  );
+
   // Column widths
-  for (let i = 0; i < COL_WIDTHS.length; i++) {
-    requests.push({
-      updateDimensionProperties: {
-        range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 },
-        properties: { pixelSize: COL_WIDTHS[i] },
-        fields: 'pixelSize',
-      },
-    });
-  }
+  requests.push(...buildColumnWidthRequests(sheetId, COL_WIDTHS));
 
-  // Freeze title + header rows
-  requests.push({
-    updateSheetProperties: {
-      properties: { sheetId, gridProperties: { frozenRowCount: 2 } },
-      fields: 'gridProperties.frozenRowCount',
-    },
-  });
+  // Freeze title + header rows, and the Tag/Player columns
+  requests.push(buildFreezeRequest(sheetId, 2, 2));
 
+  // Fame Avg column (C): force a 2-decimal numeric display for the XLOOKUP'd average
   requests.push({
-    // Format column C, average column
     repeatCell: {
       range: {
         sheetId: sheetId,
@@ -718,7 +668,7 @@ async function writeAvailableSheet(
   await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests } });
 
   // ── 3. Write values ───────────────────────────────────────────────────────────
-  const titleRow = [`${league} Available`, '', '', '', '', '', '', ''];
+  const titleRow = ['', '', `${league} Available`, '', '', '', '', ''];
   const headerRow = ['Tag', 'Player', 'Fame Avg', 'Status', '→ L2W ☑', '→ Inactive ☑', '→ Remove ☑', 'Notes'];
 
   const dataRows: (string | boolean | null)[][] = players.map((p, i) => {
@@ -741,6 +691,38 @@ async function writeAvailableSheet(
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: [titleRow, headerRow, ...dataRows] },
   });
+
+  // ── 4. Sort each status group (Available / Rostered / Removed) independently
+  // by Fame Avg, without letting rows move between groups ────────────────────
+  // `players` is already ordered Available → Rostered → Removed (see sort in
+  // refreshAvailableSheet), so the groups form contiguous row blocks.
+  const availableCount = players.filter((p) => !p.isRemoved && !p.isRostered).length;
+  const rosteredCount = players.filter((p) => !p.isRemoved && p.isRostered).length;
+  const removedCount = players.filter((p) => p.isRemoved).length;
+
+  const sortRequests: object[] = [];
+  let groupStart = DATA_START_ROW;
+  for (const groupCount of [availableCount, rosteredCount, removedCount]) {
+    if (groupCount > 1) {
+      sortRequests.push({
+        sortRange: {
+          range: {
+            sheetId,
+            startRowIndex: groupStart,
+            endRowIndex: groupStart + groupCount,
+            startColumnIndex: 0,
+            endColumnIndex: TOTAL_COLS,
+          },
+          sortSpecs: [{ dimensionIndex: COL_FAME_AVG, sortOrder: 'DESCENDING' }],
+        },
+      });
+    }
+    groupStart += groupCount;
+  }
+
+  if (sortRequests.length > 0) {
+    await sheets.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: sortRequests } });
+  }
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────

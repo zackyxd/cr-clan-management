@@ -8,7 +8,23 @@ import {
   type L2WPlayerRow,
   type UpsertL2WPlayerData,
 } from '../../sql_queries/playerL2W.js';
-import { getAuthenticatedSheetsClient, colToLetter } from './statsUtil.js';
+import {
+  getAuthenticatedSheetsClient,
+  colToLetter,
+  HEADERS_ROW,
+  DATA_START_ROW,
+  buildUnmergeRequest,
+  buildTitleCellRequests,
+  buildHeaderRowRequest,
+  buildColumnWidthRequests,
+  buildFreezeRequest,
+  buildCheckboxValidationRequest,
+  buildClearConditionalFormatRequests,
+  buildProtectedRangeRequest,
+  buildClearProtectedRangeRequests,
+  getServiceAccountEmail,
+} from './statsUtil.js';
+import { PROTECTED_RANGE_ADMIN_EMAILS } from '../../config/constants.js';
 
 // ─── Layout Config ────────────────────────────────────────────────────────────
 
@@ -38,15 +54,9 @@ const INACTIVE_SWITCH_COL = 16; // → L2W checkbox
 const SECTION_COLS = 8;
 const TOTAL_COLS = 17; // 8 + 1 gap + 8
 
-// Row indices (0-based)
-const TITLE_ROW = 0;
-const HEADERS_ROW = 1;
-const DATA_START_ROW = 2;
-
 // Section colors
 const L2W_TITLE_BG = { red: 0.98, green: 0.8, blue: 0.2 }; // yellow
 const INACTIVE_TITLE_BG = { red: 1.0, green: 0.6, blue: 0.2 }; // orange
-const HEADER_BG = { red: 0.85, green: 0.85, blue: 0.85 };
 
 // Column widths (pixels) for all 17 cols
 const COL_WIDTHS = [
@@ -284,6 +294,16 @@ export async function buildL2WSheet(
 ): Promise<void> {
   const sheets = await getAuthenticatedSheetsClient();
 
+  // Snapshot each player's status BEFORE checkbox processing. Used below to tell
+  // "user switched L2W ↔ Inactive in this same edit" (status changes here, sheet
+  // section still matches the pre-checkbox status — sheet edits are fresh) apart
+  // from "status changed externally since the sheet was last rendered, e.g. /stats
+  // mark" (sheet section no longer matches — sheet edits are stale, don't apply).
+  const preCheckboxResult = await pool.query(buildGetL2WPlayers(guildId, league));
+  const preCheckboxStatusMap = new Map(
+    preCheckboxResult.rows.map((p) => [p.playertag.toUpperCase().replace('#', ''), p.l2w_status]),
+  );
+
   // Apply checkbox actions first so all reads below use latest DB state in same rebuild.
   if (processCheckboxes) {
     await processL2WSheetCheckboxes(guildId, spreadsheetId, sheetName, league);
@@ -296,6 +316,9 @@ export async function buildL2WSheet(
   const gridRowCount = targetSheetProps?.gridProperties?.rowCount ?? 1000;
   const gridColumnCount = targetSheetProps?.gridProperties?.columnCount ?? TOTAL_COLS;
   const existingConditionalRuleCount = targetSheet?.conditionalFormats?.length ?? 0;
+  const existingProtectedRangeIds = (targetSheet?.protectedRanges ?? [])
+    .map((p) => p.protectedRangeId)
+    .filter((id): id is number => id !== undefined);
 
   const effectiveColumnCount = Math.max(gridColumnCount, TOTAL_COLS);
 
@@ -333,7 +356,17 @@ export async function buildL2WSheet(
     const hasL2WNotes = typeof l2wNotes === 'string' && l2wNotes.trim().length > 0;
     const l2wTagNorm = l2wTag ? String(l2wTag).trim().toUpperCase().replace('#', '') : '';
     const l2wActivePlayer = activePlayerMap.get(l2wTagNorm);
-    if (l2wActivePlayer && (hasL2WNotes || l2wDurationDays !== null || l2wDurationDate !== null)) {
+    // Only persist sheet edits if the player was 'l2w' BEFORE this run's checkbox
+    // processing — i.e. the sheet's L2W section reflects their last-rendered state,
+    // so any edited notes/duration here are fresh (even if a checkbox just switched
+    // them to Inactive in this same pass). If their status changed externally since
+    // the sheet was last rendered (e.g. /stats mark), this section's data is stale
+    // and must not overwrite the new values.
+    if (
+      l2wActivePlayer &&
+      preCheckboxStatusMap.get(l2wTagNorm) === 'l2w' &&
+      (hasL2WNotes || l2wDurationDays !== null || l2wDurationDate !== null)
+    ) {
       await pool.query(
         buildUpsertL2WPlayer(guildId, {
           playertag: l2wTag,
@@ -355,7 +388,12 @@ export async function buildL2WSheet(
     const hasInactiveNotes = typeof inactiveNotes === 'string' && inactiveNotes.trim().length > 0;
     const inactiveTagNorm = inactiveTag ? String(inactiveTag).trim().toUpperCase().replace('#', '') : '';
     const inactiveActivePlayer = activePlayerMap.get(inactiveTagNorm);
-    if (inactiveActivePlayer && (hasInactiveNotes || inactiveDurationDays !== null || inactiveDurationDate !== null)) {
+    // Same guard as above, mirrored for the Inactive section.
+    if (
+      inactiveActivePlayer &&
+      preCheckboxStatusMap.get(inactiveTagNorm) === 'inactive' &&
+      (hasInactiveNotes || inactiveDurationDays !== null || inactiveDurationDate !== null)
+    ) {
       await pool.query(
         buildUpsertL2WPlayer(guildId, {
           playertag: inactiveTag,
@@ -388,17 +426,7 @@ export async function buildL2WSheet(
   const requests: object[] = [];
 
   // Unmerge entire sheet first so any legacy/partial merged ranges do not break rebuild.
-  requests.push({
-    unmergeCells: {
-      range: {
-        sheetId,
-        startRowIndex: 0,
-        endRowIndex: gridRowCount,
-        startColumnIndex: 0,
-        endColumnIndex: gridColumnCount,
-      },
-    },
-  });
+  requests.push(buildUnmergeRequest(sheetId, 0, gridRowCount, 0, gridColumnCount));
 
   // Ensure grid is large enough for formatting/data-validation ranges (especially on brand-new or shrunk sheets).
   if (gridRowCount < effectiveRowCount) {
@@ -420,106 +448,26 @@ export async function buildL2WSheet(
     });
   }
 
-  // Remove existing conditional formatting rules so they do not duplicate on rebuild.
-  for (let i = existingConditionalRuleCount - 1; i >= 0; i--) {
-    requests.push({
-      deleteConditionalFormatRule: {
-        sheetId,
-        index: i,
-      },
-    });
-  }
+  // Remove existing conditional formatting rules and protected ranges so they do not duplicate on rebuild.
+  requests.push(...buildClearConditionalFormatRequests(sheetId, existingConditionalRuleCount));
+  requests.push(...buildClearProtectedRangeRequests(existingProtectedRangeIds));
 
-  // L2W title cell: yellow
-  requests.push({
-    repeatCell: {
-      range: {
-        sheetId,
-        startRowIndex: TITLE_ROW,
-        endRowIndex: TITLE_ROW + 1,
-        startColumnIndex: 0,
-        endColumnIndex: SECTION_COLS,
-      },
-      cell: {
-        userEnteredFormat: {
-          backgroundColor: L2W_TITLE_BG,
-          textFormat: { bold: true, foregroundColor: { red: 0, green: 0, blue: 0 }, fontSize: 12 },
-          horizontalAlignment: 'CENTER',
-          verticalAlignment: 'MIDDLE',
-        },
-      },
-      fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)',
-    },
-  });
-  requests.push({
-    mergeCells: {
-      range: {
-        sheetId,
-        startRowIndex: TITLE_ROW,
-        endRowIndex: TITLE_ROW + 1,
-        startColumnIndex: 0,
-        endColumnIndex: SECTION_COLS,
-      },
-      mergeType: 'MERGE_ALL',
-    },
-  });
+  // L2W title cell: yellow, spans the left section (cols 0-7)
+  requests.push(
+    ...buildTitleCellRequests(sheetId, 0, SECTION_COLS, L2W_TITLE_BG, { red: 0, green: 0, blue: 0 }),
+  );
 
-  // Inactive title cell: orange
-  requests.push({
-    repeatCell: {
-      range: {
-        sheetId,
-        startRowIndex: TITLE_ROW,
-        endRowIndex: TITLE_ROW + 1,
-        startColumnIndex: INACTIVE_TAG_COL,
-        endColumnIndex: TOTAL_COLS,
-      },
-      cell: {
-        userEnteredFormat: {
-          backgroundColor: INACTIVE_TITLE_BG,
-          textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 12 },
-          horizontalAlignment: 'CENTER',
-          verticalAlignment: 'MIDDLE',
-        },
-      },
-      fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)',
-    },
-  });
-  requests.push({
-    mergeCells: {
-      range: {
-        sheetId,
-        startRowIndex: TITLE_ROW,
-        endRowIndex: TITLE_ROW + 1,
-        startColumnIndex: INACTIVE_TAG_COL,
-        endColumnIndex: TOTAL_COLS,
-      },
-      mergeType: 'MERGE_ALL',
-    },
-  });
+  // Inactive title cell: orange, spans the right section (cols 9-16)
+  requests.push(
+    ...buildTitleCellRequests(sheetId, INACTIVE_TAG_COL, TOTAL_COLS, INACTIVE_TITLE_BG, { red: 1, green: 1, blue: 1 }),
+  );
 
-  // Column headers row
-  requests.push({
-    repeatCell: {
-      range: {
-        sheetId,
-        startRowIndex: HEADERS_ROW,
-        endRowIndex: HEADERS_ROW + 1,
-        startColumnIndex: 0,
-        endColumnIndex: TOTAL_COLS,
-      },
-      cell: {
-        userEnteredFormat: {
-          backgroundColor: HEADER_BG,
-          textFormat: { bold: true },
-          horizontalAlignment: 'CENTER',
-        },
-      },
-      fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
-    },
-  });
+  // Column headers row: gray bg, bold, centered, across both sections
+  requests.push(buildHeaderRowRequest(sheetId, TOTAL_COLS));
 
-  // Conditional formatting for duration: light red background if duration date is in the future (still on L2W/Inactive)
+  // L2W section, "still pending": light red row highlight while
+  // Date Marked + Duration (days) is still in the future, i.e. the player's
+  // time away hasn't elapsed yet.
   requests.push({
     addConditionalFormatRule: {
       index: 0,
@@ -548,7 +496,8 @@ export async function buildL2WSheet(
     },
   });
 
-  // Same conditional formatting for l2w section but for finished
+  // L2W section, "ready to return": light green row highlight once
+  // Date Marked + Duration (days) has passed, signalling the player is due back.
   requests.push({
     addConditionalFormatRule: {
       index: 0,
@@ -577,7 +526,8 @@ export async function buildL2WSheet(
     },
   });
 
-  // Conditional formatting for inactive: light red background if inactive date is in the future (still on L2W/Inactive)
+  // Inactive section, "still pending": same red highlight as the L2W section
+  // above, applied to the Inactive columns.
   requests.push({
     addConditionalFormatRule: {
       index: 0,
@@ -606,7 +556,8 @@ export async function buildL2WSheet(
     },
   });
 
-  // Same conditional formatting for inactive section but for finished
+  // Inactive section, "ready to return": same green highlight as the L2W
+  // section above, applied to the Inactive columns.
   requests.push({
     addConditionalFormatRule: {
       index: 0,
@@ -635,40 +586,36 @@ export async function buildL2WSheet(
     },
   });
 
-  // Checkbox data validation on all action columns (data rows only)
+  // Checkbox data validation on all action columns (↩ Available / → Inactive / → L2W), data rows only
   for (const col of [L2W_RETURN_COL, L2W_SWITCH_COL, INACTIVE_RETURN_COL, INACTIVE_SWITCH_COL]) {
-    requests.push({
-      setDataValidation: {
-        range: {
-          sheetId,
-          startRowIndex: DATA_START_ROW,
-          endRowIndex: effectiveRowCount,
-          startColumnIndex: col,
-          endColumnIndex: col + 1,
-        },
-        rule: { condition: { type: 'BOOLEAN' }, strict: true, showCustomUi: true },
-      },
-    });
+    requests.push(buildCheckboxValidationRequest(sheetId, col, DATA_START_ROW, effectiveRowCount));
   }
+
+  // Locked: Tag and Player are written by the bot on every refresh (Tag from
+  // the DB, Player via XLOOKUP formula) for both sections — manual edits here
+  // get silently overwritten on the next refresh, so editing is blocked.
+  const protectedRangeDescription = 'Auto-generated by /stats — edits here are overwritten on the next refresh.';
+  const protectedRangeEditors = [await getServiceAccountEmail(), ...PROTECTED_RANGE_ADMIN_EMAILS];
+  requests.push(
+    buildProtectedRangeRequest(
+      sheetId,
+      { startRowIndex: DATA_START_ROW, endRowIndex: effectiveRowCount, startColumnIndex: L2W_TAG_COL, endColumnIndex: L2W_PLAYER_COL + 1 },
+      protectedRangeDescription,
+      protectedRangeEditors,
+    ),
+    buildProtectedRangeRequest(
+      sheetId,
+      { startRowIndex: DATA_START_ROW, endRowIndex: effectiveRowCount, startColumnIndex: INACTIVE_TAG_COL, endColumnIndex: INACTIVE_PLAYER_COL + 1 },
+      protectedRangeDescription,
+      protectedRangeEditors,
+    ),
+  );
 
   // Column widths
-  for (let i = 0; i < COL_WIDTHS.length; i++) {
-    requests.push({
-      updateDimensionProperties: {
-        range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 },
-        properties: { pixelSize: COL_WIDTHS[i] },
-        fields: 'pixelSize',
-      },
-    });
-  }
+  requests.push(...buildColumnWidthRequests(sheetId, COL_WIDTHS));
 
   // Freeze title + header rows
-  requests.push({
-    updateSheetProperties: {
-      properties: { sheetId, gridProperties: { frozenRowCount: 2 } },
-      fields: 'gridProperties.frozenRowCount',
-    },
-  });
+  requests.push(buildFreezeRequest(sheetId, 2));
 
   // Merge notes columns (2-3 and 11-12) for all data rows (handles re-runs without "already merged" error)
   requests.push({

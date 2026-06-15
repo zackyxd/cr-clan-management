@@ -17,7 +17,7 @@ export interface UpsertL2WPlayerData {
   playertag: string;
   league: string;
   playerName: string;
-  status: 'l2w' | 'inactive' | 'removed';
+  status: 'l2w' | 'inactive' | 'removed' | null;
   notes?: string | null;
   durationDays?: number | string | null;
   durationDate?: string | null; // ISO date string or null = indefinite
@@ -72,6 +72,7 @@ export function buildBatchUpdateNotes(
     ON CONFLICT (guild_id, playertag, league) DO UPDATE SET
       player_name = EXCLUDED.player_name,
       l2w_notes = EXCLUDED.l2w_notes
+    WHERE player_availability.l2w_status IS NULL
     `,
     values: [guildId, league, updates.map((u) => u.tag), updates.map((u) => u.playerName), updates.map((u) => u.notes)],
   };
