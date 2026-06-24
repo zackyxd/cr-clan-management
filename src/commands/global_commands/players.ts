@@ -38,7 +38,7 @@ const command: Command = {
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
-            .setDescription('**This user did not exist. Contact @Zacky if this is incorrect.**')
+            .setDescription('**This user does not exist. Contact @Zacky if this is incorrect.**')
             .setColor(EmbedColor.FAIL),
         ],
         flags: MessageFlags.Ephemeral,
@@ -50,7 +50,7 @@ const command: Command = {
     const discordId = user.id;
     const userPlayertagsQuery = await pool.query(
       `
-      SELECT playertag 
+      SELECT playertag, current_username
       FROM user_playertags
       WHERE guild_id = $1
       AND discord_id = $2
@@ -59,6 +59,9 @@ const command: Command = {
     );
 
     const playertagData = userPlayertagsQuery.rows;
+    const storedUsernames = new Map<string, string>(
+      playertagData.map((row: { playertag: string; current_username: string | null }) => [row.playertag, row.current_username ?? '']),
+    );
     if (playertagData.length === 0) {
       const emptyTagsEmbed = new EmbedBuilder()
         .setDescription(`There were no playertags linked to <@${discordId}>.`)
@@ -121,18 +124,21 @@ const command: Command = {
           });
           if (!firstEmbed) firstEmbed = embed;
           embedMap.set(player.tag, embed);
-          select.addOptions(
-            new StringSelectMenuOptionBuilder().setLabel(player.name).setDescription(player.tag).setValue(player.tag),
-          );
+          if (results.length !== 1) {
+            select.addOptions(
+              new StringSelectMenuOptionBuilder().setLabel(player.name).setDescription(player.tag).setValue(player.tag),
+            );
+          }
         }
       } else {
         // player is a FetchError here
         if (isFetchError(player)) {
           if (player.embed) {
             embedMap.set(player.tag ?? player.reason ?? 'unknown', player.embed);
+            const previousName = storedUsernames.get(player.tag) || 'Unknown';
             select.addOptions(
               new StringSelectMenuOptionBuilder()
-                .setLabel(player.reason || 'Error')
+                .setLabel(`${previousName} (Banned)`)
                 .setDescription(player.tag || 'Unknown')
                 .setValue(player.tag ?? player.reason ?? 'unknown'),
             );
@@ -142,7 +148,10 @@ const command: Command = {
       }
     }
     playerEmbedCache.set(interaction.id, embedMap);
-    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+    let row = null;
+    if (results.length !== 1) {
+      row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+    }
     // TODO fix needing firstEmbed to do this, it should always exist
     if (!firstEmbed) {
       const noFirstEmbed = new EmbedBuilder()
@@ -151,7 +160,7 @@ const command: Command = {
       await interaction.editReply({ embeds: [noFirstEmbed] });
       return;
     }
-    await interaction.editReply({ embeds: [firstEmbed], components: [row] });
+    await interaction.editReply({ embeds: [firstEmbed], components: row ? [row] : [] });
 
     // Remove components after 5 minutes so select menu doesn't stay forever
     setTimeout(
@@ -167,6 +176,7 @@ const command: Command = {
     );
   },
 };
+// TODO if no linked accounts, have it check tickets for any tags just not linked yet.
 
 async function fetchPlayerWorker(playertag: string) {
   return CR_API.getPlayer(playertag);

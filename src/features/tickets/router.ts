@@ -90,14 +90,13 @@ export class TicketInteractionRouter {
   }
 
   /**
-   * Handle ticket modal interactions
+   * Route ticket modal submissions to their specific handlers
    */
-  static async handleModal(interaction: ModalSubmitInteraction, parsed: ParsedCustomId): Promise<void> {
+  static async handleModalSubmit(interaction: ModalSubmitInteraction, parsed: ParsedCustomId): Promise<void> {
     const { action, guildId } = parsed;
-    console.log('handle modal for tickets');
+
     switch (action) {
       case 'ticketPlayertagsOpenModal': {
-        // Check ticket status and ownership to determine defer mode
         const res = await pool.query(
           `SELECT is_closed, created_by FROM tickets WHERE guild_id = $1 AND channel_id = $2`,
           [guildId, interaction.channelId],
@@ -106,7 +105,6 @@ export class TicketInteractionRouter {
         const isClosed = ticketData?.is_closed === true;
         const existingOwner = ticketData?.created_by;
 
-        // If ticket has an owner and it's not the current user, defer ephemeral and show error
         if (existingOwner && existingOwner !== interaction.user.id) {
           await interaction.deferReply({ ephemeral: true });
           await interaction.editReply({
@@ -115,13 +113,12 @@ export class TicketInteractionRouter {
           return;
         }
 
-        // Defer with ephemeral if closed, non-ephemeral if open or no owner yet
         await interaction.deferReply({ ephemeral: isClosed });
-        await this.handleModalSubmit(interaction, guildId);
+        await this.handlePlayertagsSubmit(interaction, guildId, Boolean(existingOwner));
         break;
       }
+
       case 'ticketAppendModal': {
-        // Staff only - check permissions
         const allowed = await checkPerms(interaction, guildId, 'modal', 'either', {
           hideNoPerms: true,
           deferEphemeral: true,
@@ -132,10 +129,8 @@ export class TicketInteractionRouter {
       }
 
       default:
-        await interaction.deferReply();
-        await interaction.editReply({
-          content: 'Unknown ticket modal action.',
-        });
+        await interaction.deferReply({ ephemeral: true });
+        await interaction.editReply({ content: 'Unknown ticket modal action.' });
     }
   }
 
@@ -154,7 +149,7 @@ export class TicketInteractionRouter {
   private static async showPlayertagsModal(interaction: ButtonInteraction, guildId: string): Promise<void> {
     const modal = new ModalBuilder()
       .setCustomId(makeCustomId('m', 'ticketPlayertagsOpenModal', guildId))
-      .setTitle('Enter Clash Royale Playertags')
+      .setTitle('Enter your Clash Royale playertag(s) here.')
       .addComponents(
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
@@ -308,10 +303,7 @@ export class TicketInteractionRouter {
     }
   }
 
-  /**
-   * Handle ticket_channel modal submission (adding playertags)
-   */
-  private static async handleModalSubmit(interaction: ModalSubmitInteraction, guildId: string): Promise<void> {
+  private static async handlePlayertagsSubmit(interaction: ModalSubmitInteraction, guildId: string, isUpdate: boolean): Promise<void> {
     const rawInput = interaction.fields.getTextInputValue('input');
 
     const res = await pool.query(
@@ -328,7 +320,7 @@ export class TicketInteractionRouter {
       return;
     }
     // Split by any whitespace or comma, then normalize each tag
-    const inputTags = rawInput.split(/[\s,]+/).filter((tag) => tag.length > 0);
+    const inputTags = rawInput.split(/[\s,]+/).filter((tag) => tag.length >= 3 && tag.length <= 13);
 
     // Remove empty strings, normalize, and deduplicate
     const normalizedTags = [
@@ -436,8 +428,8 @@ export class TicketInteractionRouter {
       await ticketService.sendLog(
         interaction.client,
         guildId,
-        '📬 New Ticket',
-        `<@${interaction.user.id}> created a ticket with the following playertags:\n${normalizedTags.join('\n')}`,
+        isUpdate ? '📬 Updated Ticket' : '📬 New Ticket',
+        `<@${interaction.user.id}> ${isUpdate ? 'added playertags to' : 'created'} a ticket with the following playertags:\n${normalizedTags.join('\n')}`,
       );
     } else if (result.invalidEmbeds && result.invalidEmbeds.length > 0) {
       // Helper function to get embed size (same as above)
@@ -635,7 +627,7 @@ export class TicketInteractionRouter {
         interaction.client,
         guildId,
         '📫 Ticket Reopened',
-        `<@${ticketData.createdBy}> reopened a ticket <#${channelId}>.`,
+        `<@${interaction.user.id}> reopened the ticket <#${channelId}> for <@${ticketData.createdBy}>.`,
       );
     } else {
       // Was open, now closed - closeTicket returns embeds

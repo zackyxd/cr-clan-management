@@ -86,7 +86,7 @@ export const periodTypeMap: { [key: string]: string } = {
  * ```
  */
 export function getBadgeEmoji(badgeId: number, suffix?: string): string {
-  const badgeIdStr = badgeId.toString();
+  const badgeIdStr = badgeId === 0 ? '00' : badgeId.toString();
 
   if (suffix) {
     const withSuffix = `${badgeIdStr}_${suffix}`;

@@ -97,7 +97,7 @@ export async function buildClanSelectMenu(guildId: string, ownerId: string) {
     logger.warn(`clanSettings.ts: No clans found for this guild: ${guildId}`);
     return new StringSelectMenuBuilder()
       .setCustomId(makeCustomId('s', 'clanSettings', guildId, { ownerId }))
-      .setPlaceholder('No clans linked! Use /add-clans')
+      .setPlaceholder('No clans linked! Use /add-clan')
       .setDisabled(true)
       .addOptions([
         {

@@ -128,7 +128,7 @@ export class ServerSettingsService {
         return await this.togglePinMessage(guildId, client);
       }
 
-      if (settingKey === 'send_logs') {
+      if (settingKey === 'send_logs' && tableName === 'server_settings') {
         return await this.toggleSendLogs(guildId, client, userId);
       }
 
@@ -262,10 +262,6 @@ export class ServerSettingsService {
           }
         } catch (err) {
           logger.error('Failed to pin/unpin message:', err);
-          await interaction.followUp({
-            content:
-              '⚠️ Failed to update message pin status on Discord. Please check the bot permissions and try again.',
-          });
         }
       }
 

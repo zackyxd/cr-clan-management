@@ -73,7 +73,7 @@ export async function handleTicketChannelUpdate(
         client,
         guildId,
         '📫 Ticket Reopened',
-        `<@${ticketData.createdBy}> reopened a ticket <#${newChannel.id}>.`,
+        `Closed identifier was removed from <#${newChannel.id}>. Ticket ${ticketData.createdBy ? `for <@${ticketData.createdBy}>` : `<#${ticketData.channelId}>`} has been reopened.`,
       );
       return true;
     }

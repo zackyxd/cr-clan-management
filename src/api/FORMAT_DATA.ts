@@ -2,6 +2,7 @@ import { EmbedBuilder } from 'discord.js';
 import { Player } from './CR_API.js';
 import { BOTCOLOR } from '../types/EmbedUtil.js';
 import { getEmoji } from '../utils/emoji.js';
+import { getBadgeEmoji, getClanBadgeEmoji } from '../features/race-tracking/service.js';
 type BadgeEmoji = {
   name: string;
   id: string;
@@ -60,7 +61,7 @@ type FullPlayer = Partial<{
   clan?: {
     name?: string;
     tag?: string;
-    badgeId?: string;
+    badgeId?: number;
   };
   expLevel: number;
   // role: string;
@@ -97,7 +98,15 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
   const expLevelIcon = expLevelData ? `<:${expLevelData.name}:${expLevelData.id}>` : `Level ${expLevel}`;
   const role = typeof data.role === 'string' ? (ROLE_DISPLAY[data.role] ?? '') : '';
   const clanName = data?.clan?.name ?? 'No Clan';
-  const badgeId = data?.clan?.badgeId?.toString() ?? '00';
+  let badgeId: string = '';
+  if (data && data.clan && data.clan.badgeId) {
+    badgeId = getBadgeEmoji(data.clan.badgeId);
+  } else {
+    badgeId = getBadgeEmoji(0);
+  }
+
+  const collectionLevel = (data.badges.find((b) => b.name === 'CollectionLevel')?.progress as number | undefined) ?? 0;
+
   const {
     currentPathOfLegendSeasonResult: { leagueNumber: currentPOLLeague, trophies: currentPOLTrophies } = {},
     lastPathOfLegendSeasonResult: { leagueNumber: lastPOLLeague, trophies: lastPOLTrophies, rank: lastPOLRank } = {},
@@ -144,6 +153,9 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
     if (card?.evolutionLevel === 1) {
       evolutions++;
     }
+    if (card?.evolutionLevel === 2) {
+      heroes++;
+    }
     if (card?.evolutionLevel === 3) {
       heroes++;
       evolutions++;
@@ -152,8 +164,7 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
   if (evolutions > MAX_EVOLUTIONS) MAX_EVOLUTIONS = evolutions;
   if (heroes > MAX_HEROES) MAX_HEROES = heroes;
 
-  const badgeEmoji = getEmoji(badgeId) || '';
-  const description = `${badgeEmoji} ${clanName} ${role}\n`;
+  const description = `${getEmoji('collection')} **${collectionLevel}**\n${badgeId} ${clanName} ${role}\n`;
 
   let pathOfLegendsDescription: string = '__**Ranked**__\n';
   if (currentPOLLeague || lastPOLLeague || bestPOLLeague) {
@@ -171,8 +182,8 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
 
     if (bestPOLLeague && bestPOLLeague === 10) {
       pathOfLegendsDescription += `Best: ${getEmoji('polMedal')} ${bestPOLTrophies} ${
-        bestPOLRank ? `(#${bestPOLRank})\n` : ''
-      }`;
+        bestPOLRank ? `(#${bestPOLRank})` : ''
+      }\n`;
     }
   }
 

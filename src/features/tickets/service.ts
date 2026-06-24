@@ -308,6 +308,11 @@ export class TicketService {
       const embeds: EmbedBuilder[] = [];
       const tagsToLink = ticketData.playertags.slice(0, availableSlots);
       const tagsExceedingLimit = ticketData.playertags.slice(availableSlots);
+      const newLinks: string[] = [];
+      const relinksNeeded: string[] = [];
+      const alreadyLinked: string[] = [];
+      const errors: string[] = [];
+
       await channel.send({
         content: `Ticket identified as closed, linking playertags to <@${ticketData.createdBy}>. Links shown below.`,
         embeds: [],
@@ -316,15 +321,25 @@ export class TicketService {
         const { embed, components } = await linkUser(dbClient, guildId, ticketData.createdBy, playertag);
 
         if (components && components.length > 0) {
-          // Convert builder instances to raw JSON data for Discord API
           const rawComponents = components.map((c) => c.toJSON());
           await channel.send({ embeds: [embed], components: rawComponents });
+          relinksNeeded.push(`\`${playertag}\` — ${embed.data.description ?? 'Conflict'}`);
         } else {
           const oldFooter = embed.data.footer?.text ?? '';
           if (oldFooter.length > 1) {
             embed.setFooter({ text: oldFooter, iconURL: avatarUrl });
           }
           await channel.send({ embeds: [embed] });
+
+          if (embed.data.footer?.text?.includes('New Link')) {
+            newLinks.push(`\`${playertag}\``);
+          } else if (embed.data.description?.includes('already linked')) {
+            alreadyLinked.push(`\`${playertag}\``);
+          } else if (embed.data.description?.includes('Failed') || embed.data.description?.includes('issue')) {
+            errors.push(`\`${playertag}\` — ${embed.data.description ?? 'Error'}`);
+          } else {
+            newLinks.push(`\`${playertag}\``);
+          }
         }
 
         embeds.push(embed);
@@ -343,19 +358,32 @@ export class TicketService {
       await dbClient.query('COMMIT');
 
       logger.info(`Closed ticket and auto-linked ${ticketData.playertags.length} accounts in guild ${guildId}`);
-      
-      // Track statistics (only if playertags were actually linked)
-      if (tagsToLink.length > 0) {
+
+      if (newLinks.length > 0) {
         StatsTracker.increment(guildId, 'total_tickets_with_playertags_linked').catch(() => {});
-        StatsTracker.increment(guildId, 'total_playertags_linked_from_tickets', tagsToLink.length).catch(() => {});
+        StatsTracker.increment(guildId, 'total_playertags_linked_from_tickets', newLinks.length).catch(() => {});
       }
-      
-      await ticketService.sendLog(
-        client,
-        guildId,
-        '📪 Ticket Closed',
-        `The ticket for <@${ticketData.createdBy}> has been closed.\nLinked accounts were:\n${ticketData.playertags.map((tag) => `\`${tag}\``).join('\n')}`,
-      );
+
+      const logParts: string[] = [`The ticket for <@${ticketData.createdBy}> has been closed.`];
+      if (newLinks.length > 0) {
+        logParts.push(`\n**✅ New Links:**\n${newLinks.join('\n')}`);
+      }
+      if (relinksNeeded.length > 0) {
+        logParts.push(`\n**⚠️ Relink Needed:**\n${relinksNeeded.join('\n')}`);
+      }
+      if (alreadyLinked.length > 0) {
+        logParts.push(`\n**Already Linked:**\n${alreadyLinked.join('\n')}`);
+      }
+      if (tagsExceedingLimit.length > 0) {
+        logParts.push(
+          `\n**❌ Not Linked (max ${maxLinks} reached):**\n${tagsExceedingLimit.map((t) => `\`${t}\``).join('\n')}`,
+        );
+      }
+      if (errors.length > 0) {
+        logParts.push(`\n**Errors:**\n${errors.join('\n')}`);
+      }
+
+      await ticketService.sendLog(client, guildId, '📪 Ticket Closed', logParts.join('\n'));
       return {
         success: true,
         embeds,
@@ -367,6 +395,121 @@ export class TicketService {
         success: false,
         error: 'Failed to close ticket',
       };
+    } finally {
+      dbClient.release();
+    }
+  }
+
+  /**
+   * Close a ticket when its channel is deleted - links tags and sends detailed log
+   */
+  async closeTicketOnDeletion(params: CloseTicketParams & { channelName: string }): Promise<TicketResponse> {
+    const { guildId, channelId, client, channelName } = params;
+
+    const dbClient = await pool.connect();
+
+    try {
+      await dbClient.query('BEGIN');
+
+      await dbClient.query(
+        `UPDATE tickets SET is_closed = TRUE, closed_at = NOW() WHERE guild_id = $1 AND channel_id = $2`,
+        [guildId, channelId],
+      );
+
+      const ticketData = await this.getTicketData(guildId, channelId);
+      if (!ticketData) {
+        await dbClient.query('ROLLBACK');
+        return { success: false, error: 'Ticket not found' };
+      }
+
+      if (!ticketData.createdBy || ticketData.playertags.length === 0) {
+        await dbClient.query('COMMIT');
+        logger.info(`Closed empty ticket (channel deleted) in guild ${guildId}, channel ${channelId}`);
+        await this.sendLog(
+          client,
+          guildId,
+          '🗑️ Ticket Closed (Channel Deleted)',
+          `An empty ticket **${channelName}** was deleted (no playertags were entered).`,
+        );
+        return { success: true, embeds: [] };
+      }
+
+      const maxLinkRes = await dbClient.query(`SELECT max_player_links FROM link_settings WHERE guild_id = $1`, [
+        guildId,
+      ]);
+      const maxLinks = maxLinkRes.rows[0]?.max_player_links ?? 10;
+
+      const userLinkCountRes = await dbClient.query(
+        `SELECT COUNT(*)::int AS link_count FROM user_playertags WHERE guild_id = $1 AND discord_id = $2`,
+        [guildId, ticketData.createdBy],
+      );
+      const currentUserLinkCount = userLinkCountRes.rows[0]?.link_count ?? 0;
+      const availableSlots = maxLinks - currentUserLinkCount;
+
+      const tagsToLink = ticketData.playertags.slice(0, availableSlots);
+      const tagsExceedingLimit = ticketData.playertags.slice(availableSlots);
+
+      const newLinks: string[] = [];
+      const relinksNeeded: string[] = [];
+      const alreadyLinked: string[] = [];
+      const errors: string[] = [];
+
+      for (const playertag of tagsToLink) {
+        const { embed, components } = await linkUser(dbClient, guildId, ticketData.createdBy, playertag);
+
+        if (components && components.length > 0) {
+          relinksNeeded.push(`\`${playertag}\` — ${embed.data.description ?? 'Conflict'}`);
+        } else if (embed.data.footer?.text?.includes('New Link')) {
+          newLinks.push(`\`${playertag}\``);
+        } else if (embed.data.description?.includes('already linked')) {
+          alreadyLinked.push(`\`${playertag}\``);
+        } else if (embed.data.description?.includes('Failed') || embed.data.description?.includes('issue')) {
+          errors.push(`\`${playertag}\` — ${embed.data.description ?? 'Error'}`);
+        } else {
+          newLinks.push(`\`${playertag}\``);
+        }
+      }
+
+      await dbClient.query('COMMIT');
+
+      if (tagsToLink.length > 0) {
+        StatsTracker.increment(guildId, 'total_tickets_with_playertags_linked').catch(() => {});
+        StatsTracker.increment(guildId, 'total_playertags_linked_from_tickets', newLinks.length).catch(() => {});
+      }
+
+      const logParts: string[] = [
+        `Ticket **${channelName}** for <@${ticketData.createdBy}> was closed (channel deleted).`,
+      ];
+
+      if (newLinks.length > 0) {
+        logParts.push(`\n**✅ New Links:**\n${newLinks.join('\n')}`);
+      }
+      if (relinksNeeded.length > 0) {
+        logParts.push(`\n**⚠️ Relink Needed:**\n${relinksNeeded.join('\n')}`);
+      }
+      if (alreadyLinked.length > 0) {
+        logParts.push(`\n**Already Linked:**\n${alreadyLinked.join('\n')}`);
+      }
+      if (tagsExceedingLimit.length > 0) {
+        logParts.push(
+          `\n**❌ Not Linked (max ${maxLinks} reached):**\n${tagsExceedingLimit.map((t) => `\`${t}\``).join('\n')}`,
+        );
+      }
+      if (errors.length > 0) {
+        logParts.push(`\n**Errors:**\n${errors.join('\n')}`);
+      }
+
+      await this.sendLog(client, guildId, '🗑️ Ticket Closed (Channel Deleted)', logParts.join('\n'));
+
+      logger.info(
+        `Closed ticket (channel deleted) in guild ${guildId}: ${newLinks.length} new, ${relinksNeeded.length} relinks needed, ${alreadyLinked.length} already linked`,
+      );
+
+      return { success: true };
+    } catch (error) {
+      await dbClient.query('ROLLBACK');
+      logger.error('Error closing ticket on channel deletion:', error);
+      return { success: false, error: 'Failed to close ticket' };
     } finally {
       dbClient.release();
     }
