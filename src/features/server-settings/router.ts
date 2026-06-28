@@ -39,7 +39,11 @@ export class ServerSettingsInteractionRouter {
         if (!cacheKey) break;
         const cacheData = getServerSettingsData(cacheKey);
         if (!cacheData) {
-          await interaction.editReply({ content: 'Settings data expired. Please try again.', embeds: [], components: [] });
+          await interaction.editReply({
+            content: 'Settings data expired. Please try again.',
+            embeds: [],
+            components: [],
+          });
           return;
         }
         if (cacheData.ownerId !== interaction.user.id) {
@@ -186,7 +190,12 @@ export class ServerSettingsInteractionRouter {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _tableName: string,
   ): Promise<void> {
-    const result = await serverSettingsService.toggleFeature(interaction.client, guildId, featureName, interaction.user.id);
+    const result = await serverSettingsService.toggleFeature(
+      interaction.client,
+      guildId,
+      featureName,
+      interaction.user.id,
+    );
     if (!result.success) {
       await interaction.editReply({ content: result.error || 'Error toggling feature. Please try again.' });
       return;
@@ -246,23 +255,27 @@ export class ServerSettingsInteractionRouter {
     try {
       switch (settingKey) {
         case 'logs_channel_id':
-          return interaction.showModal(
-            this.buildChannelSelectModal('Set Logs Channel', customId),
-          );
+          return interaction.showModal(this.buildChannelSelectModal('Set Logs Channel', customId));
 
         case 'category_id':
-          return interaction.showModal(
-            this.buildChannelSelectModal('Set Category', customId),
-          );
+          return interaction.showModal(this.buildChannelSelectModal('Set Category', customId));
 
         case 'replace_me_role_id':
           return interaction.showModal(
-            this.buildRoleSelectModal('Set Replace Me Role', 'Select the role for players who want to be replaced', customId),
+            this.buildRoleSelectModal(
+              'Set Replace Me Role',
+              'Select the role for players who want to be replaced',
+              customId,
+            ),
           );
 
         case 'attacking_late_role_id':
           return interaction.showModal(
-            this.buildRoleSelectModal('Set Attacking Late Role', 'Select the role for players attacking late', customId),
+            this.buildRoleSelectModal(
+              'Set Attacking Late Role',
+              'Select the role for players attacking late',
+              customId,
+            ),
           );
 
         case 'clan_roles_required_role_id':
@@ -276,22 +289,50 @@ export class ServerSettingsInteractionRouter {
 
         case 'delete_confirm_count':
           return interaction.showModal(
-            this.buildTextInputModal('Set Delete Confirm Count', customId, 'Number of confirmations required', 'Enter a number (minimum: 1)', 1, 2),
+            this.buildTextInputModal(
+              'Set Delete Confirm Count',
+              customId,
+              'Number of confirmations required',
+              'Enter a number (minimum: 1)',
+              1,
+              2,
+            ),
           );
 
         case 'max_player_links':
           return interaction.showModal(
-            this.buildTextInputModal('Set Max Player Links', customId, 'Maximum number of player links per user', 'Enter a number (minimum: 1)', 1, 2),
+            this.buildTextInputModal(
+              'Set Max Player Links',
+              customId,
+              'Maximum number of player links per user',
+              'Enter a number (minimum: 1)',
+              1,
+              2,
+            ),
           );
 
         case 'opened_identifier':
           return interaction.showModal(
-            this.buildTextInputModal('Set Ticket Opened Text', customId, 'Text for opened tickets', 'e.g., ticket', 1, 20),
+            this.buildTextInputModal(
+              'Set Ticket Opened Text',
+              customId,
+              'Text for opened tickets',
+              'e.g., ticket',
+              1,
+              20,
+            ),
           );
 
         case 'closed_identifier':
           return interaction.showModal(
-            this.buildTextInputModal('Set Ticket Closed Text', customId, 'Text for closed tickets', 'e.g., closed-ticket', 1, 20),
+            this.buildTextInputModal(
+              'Set Ticket Closed Text',
+              customId,
+              'Text for closed tickets',
+              'e.g., closed-ticket',
+              1,
+              20,
+            ),
           );
       }
     } catch (error) {
@@ -306,7 +347,7 @@ export class ServerSettingsInteractionRouter {
       .setCustomId(customId)
       .addLabelComponents(
         new LabelBuilder()
-          .setLabel('Channel Select')
+          .setLabel('Category Select')
           .setChannelSelectMenuComponent(new ChannelSelectMenuBuilder().setCustomId('input').setMaxValues(1)),
       );
   }
@@ -395,7 +436,7 @@ export class ServerSettingsInteractionRouter {
           `SELECT delete_confirm_count FROM member_channel_settings WHERE guild_id = $1`,
           [guildId],
         );
-        const requiredConfirms = settingsRes.rows[0]?.delete_confirm_count || 2;
+        const requiredConfirms = settingsRes.rows[0]?.delete_confirm_count || 1;
 
         const updateRes = await pool.query(
           `UPDATE member_channels
@@ -491,7 +532,12 @@ export class ServerSettingsInteractionRouter {
 
       const selectedChannel = channelField.first();
 
-      if (settingKey === 'logs_channel_id' && selectedChannel && selectedChannel.type !== 0 && selectedChannel.type !== 5) {
+      if (
+        settingKey === 'logs_channel_id' &&
+        selectedChannel &&
+        selectedChannel.type !== 0 &&
+        selectedChannel.type !== 5
+      ) {
         await interaction.editReply({ content: 'Please select a text channel.' });
         return;
       }
@@ -523,7 +569,11 @@ export class ServerSettingsInteractionRouter {
       return;
     }
 
-    if (settingKey === 'replace_me_role_id' || settingKey === 'attacking_late_role_id' || settingKey === 'clan_roles_required_role_id') {
+    if (
+      settingKey === 'replace_me_role_id' ||
+      settingKey === 'attacking_late_role_id' ||
+      settingKey === 'clan_roles_required_role_id'
+    ) {
       const roleField = interaction.fields.getSelectedRoles('input');
       if (!roleField || roleField.size === 0) {
         await interaction.editReply({ content: 'No role selected.' });

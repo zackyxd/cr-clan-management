@@ -400,7 +400,7 @@ export class MemberChannelService {
     console.log('[getFinalConfirmationData] Combined playertags:', Array.from(allPlayertags.entries()));
 
     // Fetch player names for all playertags
-    const accounts = new Map<string, PlayerInfo[] | { type: 'any'; count: number }>();
+    const accounts = new Map<string, PlayerInfo[] | { type: 'any'; count: number } | { type: 'invalid' }>();
 
     for (const [discordId, playertags] of allPlayertags.entries()) {
       const playerResults = await Promise.all(playertags.map((tag) => CR_API.getPlayer(tag)));
@@ -452,6 +452,8 @@ export class MemberChannelService {
     return {
       channelName: session.input.channelName,
       accounts,
+      invalidPlayertags: session.invalidPlayertags,
+      invalidDiscordIds: session.invalidDiscordIds,
       clanInfo,
     };
   }
@@ -789,6 +791,10 @@ export class MemberChannelService {
     return this.sessions.get(sessionId) || null;
   }
 
+  deleteSession(sessionId: string): void {
+    this.sessions.delete(sessionId);
+  }
+
   cleanupExpiredSessions(): void {
     const expiryTime = new Date(Date.now() - SESSION_EXPIRY_MINUTES * 60 * 1000);
     for (const [id, session] of this.sessions) {
@@ -845,13 +851,49 @@ export class MemberChannelService {
     channelId: string,
     userId: string,
     channelName?: string,
+    recreationText?: string,
   ): Promise<void> {
-    const description = `**Channel ID:** ${channelId}${channelName ? `\n**Name:** ${channelName}` : ''}\n**Deleted by:** <@${userId}>`;
-    this.sendLog(client, guildId, '🗑️ Member Channel Deleted', description).catch((err) =>
-      logger.error('Failed to log channel deletion:', err),
-    );
+    try {
+      const settingsResult = await pool.query(
+        `SELECT ts.send_logs, ss.logs_channel_id
+         FROM ticket_settings ts
+         JOIN server_settings ss ON ss.guild_id = ts.guild_id
+         WHERE ts.guild_id = $1`,
+        [guildId],
+      );
+      const { send_logs, logs_channel_id } = settingsResult.rows[0] || {};
 
-    // Track statistics
+      if (send_logs && logs_channel_id) {
+        const channel = await client.channels.fetch(logs_channel_id);
+        if (channel && (channel instanceof TextChannel || channel instanceof NewsChannel)) {
+          const description = `**Channel ID:** ${channelId}${channelName ? `\n**Name:** ${channelName}` : ''}\n**Deleted by:** <@${userId}>`;
+          const embed = new EmbedBuilder()
+            .setTitle('🗑️ Member Channel Deleted')
+            .setDescription(description)
+            .setColor(EmbedColor.LOGS)
+            .setTimestamp();
+
+          const sendOptions: { embeds: EmbedBuilder[]; files?: { attachment: Buffer; name: string }[] } = {
+            embeds: [embed],
+          };
+
+          if (recreationText) {
+            const safeName = (channelName || channelId).replace(/[^a-zA-Z0-9-_]/g, '');
+            sendOptions.files = [
+              {
+                attachment: Buffer.from(recreationText),
+                name: `${safeName}-backup.txt`,
+              },
+            ];
+          }
+
+          await channel.send(sendOptions);
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to log channel deletion:', error);
+    }
+
     StatsTracker.increment(guildId, 'total_member_channels_deleted').catch(() => {});
   }
 

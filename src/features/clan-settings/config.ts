@@ -156,7 +156,10 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
     clan_logs_add_role: dbRow.clan_logs_add_role || false,
     clan_logs_remove_role: dbRow.clan_logs_remove_role || false,
   };
-  const embed = new EmbedBuilder().setTitle(`Clan Settings: ${clanName}`).setColor(BOTCOLOR);
+  const embed = new EmbedBuilder()
+    .setTitle(`Clan Settings: ${clanName}`)
+    .setURL(`https://royaleapi.com/clan/${clantag.replace('#', '')}`)
+    .setColor(BOTCOLOR);
 
   let description = '';
 
@@ -210,7 +213,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
             const unix = Math.floor(timestamp.getTime() / 1000);
             return `<t:${unix}:t>`;
           });
-          lines.push(` * Schedule:\n  * ${timeStrings.join('\n  * ')}`);
+          lines.push(` * Schedule: ${timeStrings.join(', ')}`);
         } else if (nudgeMethod === 'hours_before_end' && hoursBeforeArray && hoursBeforeArray.length > 0) {
           const now = new Date();
           const warEndTime = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 9, 0, 0));
@@ -221,7 +224,7 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
               const unix = Math.floor(nudgeTime.getTime() / 1000);
               return `<t:${unix}:t> (${hoursBefore}h before)`;
             });
-          lines.push(` * Schedule:\n  * ${timeStrings.join('\n  * ')}`);
+          lines.push(` * Schedule: ${timeStrings.join(',')}`);
         } else if (nudgeMethod !== 'disabled') {
           lines.push(` * Schedule: *Not set*`);
         }

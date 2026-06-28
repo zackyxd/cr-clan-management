@@ -112,13 +112,13 @@ export const FeatureRegistry: Record<string, Feature> = {
         type: 'toggle',
         defaultValue: false,
       },
-      {
-        key: 'max_player_links',
-        label: 'Max Links',
-        description: 'Max amount of playertags linked to each @user',
-        type: 'number',
-        defaultValue: MAX_PLAYER_LINKS_PER_USER,
-      },
+      // {
+      //   key: 'max_player_links',
+      //   label: 'Max Links',
+      //   description: 'Max amount of playertags linked to each @user',
+      //   type: 'number',
+      //   defaultValue: MAX_PLAYER_LINKS_PER_USER,
+      // },
     ],
   },
   tickets: {
@@ -217,13 +217,14 @@ export const FeatureRegistry: Record<string, Feature> = {
         type: 'channel',
         defaultValue: '',
       },
-      {
-        key: 'pin_invite',
-        label: 'Pin Invite',
-        description: 'Pin the invite message in the member channel. Refresh when invite is regenerated.',
-        type: 'toggle',
-        defaultValue: false,
-      },
+      // TODO add pin invite later
+      // {
+      //   key: 'pin_invite',
+      //   label: 'Pin Invite',
+      //   description: 'Pin the invite message in the member channel. Refresh when invite is regenerated.',
+      //   type: 'toggle',
+      //   defaultValue: false,
+      // },
       {
         key: 'delete_confirm_count',
         label: 'Delete Confirmations',

@@ -41,7 +41,7 @@ const command: Command = {
     const validChannelSQL = await pool.query(
       `
       SELECT mc.channel_id, mc.clantag_focus, mc.clan_name_focus, mc.members, mc.last_ping, mc.current_delete_count, mc.delete_confirmed_by,
-             COALESCE(mcs.delete_confirm_count, 2) as delete_confirm_count, mc.is_locked
+             COALESCE(mcs.delete_confirm_count, 1) as delete_confirm_count, mc.is_locked
       FROM member_channels mc
       LEFT JOIN member_channel_settings mcs ON mc.guild_id = mcs.guild_id
       WHERE mc.guild_id = $1 AND mc.channel_id = $2

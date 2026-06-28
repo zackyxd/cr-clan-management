@@ -203,10 +203,15 @@ export function formatParticipantsList(
 ): string[] {
   const lines: string[] = [];
 
-  // Filter out completed non-violators
-  const filteredParticipants = participants.filter(
-    (p) => p.attacksRemaining > 0 || p.isSplitAttacker || p.hasAttackedElsewhere,
-  );
+  // Separate out players who finished all attacks in another clan (0 remaining, 0 used here)
+  const finishedElsewhere: FormattedParticipant[] = [];
+  const filteredParticipants = participants.filter((p) => {
+    if (p.attacksRemaining === 0 && p.hasAttackedElsewhere && p.attacksUsedToday === 0) {
+      finishedElsewhere.push(p);
+      return false;
+    }
+    return p.attacksRemaining > 0 || p.isSplitAttacker || p.hasAttackedElsewhere;
+  });
 
   // Count participants per attack group
   const groupCounts = new Map<number, number>();
@@ -248,6 +253,15 @@ export function formatParticipantsList(
     lines.push(formatParticipantLine(participant, options));
   }
 
+  // Show players who finished all attacks in another clan
+  if (finishedElsewhere.length > 0) {
+    lines.push('');
+    lines.push(`__**Finished elsewhere (${finishedElsewhere.length})**__`);
+    for (const p of finishedElsewhere) {
+      lines.push(`* ${p.playerName} — *${p.clansAttackedIn.join(' & ')}*`);
+    }
+  }
+
   lines.push(`\n${getEmoji('playersRemaining')} ${playersRemaining}\n${getEmoji('decksLeft')} ${attacksLeft}`);
 
   return lines;
@@ -258,9 +272,10 @@ export function formatParticipantsList(
  */
 export function buildFooterLegend(participants: FormattedParticipant[], options: FormatOptions): string {
   const footerParts: string[] = [];
-  const filteredParticipants = participants.filter(
-    (p) => p.attacksRemaining > 0 || p.isSplitAttacker || p.hasAttackedElsewhere,
-  );
+  const filteredParticipants = participants.filter((p) => {
+    if (p.attacksRemaining === 0 && p.hasAttackedElsewhere && p.attacksUsedToday === 0) return false;
+    return p.attacksRemaining > 0 || p.isSplitAttacker || p.hasAttackedElsewhere;
+  });
 
   const hasSplitAttackers = filteredParticipants.some((p) => p.isSplitAttacker);
   const hasAttackedElsewhere = filteredParticipants.some((p) => p.hasAttackedElsewhere);

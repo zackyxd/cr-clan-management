@@ -263,7 +263,7 @@ export async function processInviteLinkUpdate(
         return {
           success: false,
           embed: new EmbedBuilder()
-            .setDescription(`❌ Invite channel not set up. Please set the channel using \`/set-invite-channel\``)
+            .setDescription(`❌ Invite channel not set up. Please set the channel using \`/set-clan-invite-channel\``)
             .setColor(EmbedColor.FAIL),
         };
       }

@@ -268,22 +268,5 @@ function detectPropertyChanges(oldClan: Clan, newClan: Clan): ClanChange[] {
     });
   }
 
-  // Check description
-  if (oldClan.description !== newClan.description) {
-    changes.push({
-      type: 'clan_property_change',
-      clanName: newClan.name,
-      clantag: newClan.tag,
-      description: newClan.description,
-      badgeId: newClan.badgeId,
-      members: newClan.members,
-      clanScore: newClan.clanWarTrophies,
-      location: newClan.location,
-      property: 'badgeId',
-      oldValue: String(oldClan.badgeId),
-      newValue: String(newClan.badgeId),
-    });
-  }
-
   return changes;
 }

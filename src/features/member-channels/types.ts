@@ -72,7 +72,9 @@ export interface AccountSelection {
  */
 export interface FinalChannelData {
   channelName: string;
-  accounts: Map<string, PlayerInfo[] | { type: 'any'; count: number }>; // discord_id -> player info or 'any X accounts'
+  accounts: Map<string, PlayerInfo[] | { type: 'any'; count: number } | { type: 'invalid' }>; // discord_id -> player info or 'any X accounts' or unlinked
+  invalidPlayertags: string[];
+  invalidDiscordIds: string[];
   clanInfo?: {
     clantag: string;
     clanName: string;

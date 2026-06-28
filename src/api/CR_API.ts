@@ -12,6 +12,11 @@ export function normalizeTag(rawTag: string): string {
   return tag.startsWith('#') ? tag : `#${tag}`;
 }
 
+export function royaleApiLink(name: string, tag: string): string {
+  const stripped = tag.startsWith('#') ? tag.substring(1) : tag;
+  return `[${name}](<https://royaleapi.com/player/${stripped}>)`;
+}
+
 export type FetchError = {
   error: true;
   statusCode: number;

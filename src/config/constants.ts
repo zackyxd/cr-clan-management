@@ -12,6 +12,9 @@ export const MAX_PLAYER_LINKS_PER_USER = 10;
 export const DEFAULT_TICKET_OPENED_IDENTIFIER = 'ticket';
 export const DEFAULT_TICKET_CLOSED_IDENTIFIER = 'closed';
 
+// Member channel limits
+export const MAX_MEMBER_CHANNEL_ACCOUNTS = 70;
+
 // Session timeouts
 export const SESSION_EXPIRY_MINUTES = 30;
 export const SESSION_CLEANUP_INTERVAL_MINUTES = 5;

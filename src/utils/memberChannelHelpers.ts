@@ -8,7 +8,7 @@ export interface PlayerInfo {
 
 export interface MemberData {
   discordId: string;
-  players: PlayerInfo[] | { type: 'any'; count: number }; // Can be specific players or 'any X accounts' requirement
+  players: PlayerInfo[] | { type: 'any'; count: number } | { type: 'invalid' }; // Can be specific players, 'any X accounts' requirement, or unlinked user
   joiningLate?: boolean;
 }
 
@@ -148,7 +148,7 @@ export async function buildPermissionOverwrites(
  * Supports both specific players and 'any X accounts' requirements
  */
 export function convertToMemberData(
-  finalAccountSelection: Map<string, PlayerInfo[] | { type: 'any'; count: number }>,
+  finalAccountSelection: Map<string, PlayerInfo[] | { type: 'any'; count: number } | { type: 'invalid' }>,
 ): {
   members: MemberData[];
   discordIds: string[];
@@ -160,16 +160,19 @@ export function convertToMemberData(
     discordIds.push(discordId);
 
     if (Array.isArray(accountData)) {
-      // Specific players selected
       members.push({
         discordId,
         players: accountData.map((p) => ({ tag: p.tag, name: p.name })),
       });
-    } else {
-      // 'any X accounts' requirement
+    } else if (accountData.type === 'any') {
       members.push({
         discordId,
         players: { type: 'any', count: accountData.count },
+      });
+    } else {
+      members.push({
+        discordId,
+        players: { type: 'invalid' },
       });
     }
   });

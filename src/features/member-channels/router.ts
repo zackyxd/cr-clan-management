@@ -21,12 +21,69 @@ import type { ParsedCustomId } from '../../types/ParsedCustomId.js';
 import { makeCustomId } from '../../utils/customId.js';
 import { pool } from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
-import { CR_API, FetchError, normalizeTag } from '../../api/CR_API.js';
+import { CR_API, FetchError, normalizeTag, royaleApiLink } from '../../api/CR_API.js';
 import { clanInviteService } from '../clan-invites/service.js';
 import { createInviteEmbed } from '../clan-invites/utils.js';
 import { MemberData } from '../../utils/memberChannelHelpers.js';
 import { buildMemberChannelCheckUI } from '../../utils/memberChannelCheckHelpers.js';
 import logger from '../../logger.js';
+import { MAX_MEMBER_CHANNEL_ACCOUNTS } from '../../config/constants.js';
+
+// ====== DEV TESTING: Remove after verification ======
+const DEV_FAKE_DATA = true;
+const FAKE_MEMBERS: MemberData[] = [
+  { discordId: '111111111111111101', players: [{ tag: '#FKY8QJ2C', name: 'DarkPrince' }] },
+  { discordId: '111111111111111102', players: [{ tag: '#FKP2QRJV', name: 'StormBreaker' }] },
+  { discordId: '111111111111111103', players: [{ tag: '#FKL9CG2Y', name: 'IceMaster99' }] },
+  { discordId: '111111111111111104', players: [{ tag: '#FKR4VJ8Q', name: 'GoblinKing' }] },
+  { discordId: '111111111111111105', players: [{ tag: '#FKU7WK3N', name: 'RoyalGhost' }] },
+  { discordId: '111111111111111106', players: [{ tag: '#FKJ2QP8V', name: 'ElectroDragon' }] },
+  { discordId: '111111111111111107', players: [{ tag: '#FKK3LM9N', name: 'ShadowHunter' }] },
+  { discordId: '111111111111111108', players: [{ tag: '#FKT8RV2W', name: 'BlazeFury' }] },
+  { discordId: '111111111111111109', players: [{ tag: '#FKM5NP7Q', name: 'ThunderStrike' }] },
+  { discordId: '111111111111111110', players: [{ tag: '#FKG2HJ4K', name: 'FrostBite' }] },
+  { discordId: '111111111111111111', players: [{ tag: '#FKW9XY1Z', name: 'WarriorX' }] },
+  { discordId: '111111111111111112', players: [{ tag: '#FKA3BC4D', name: 'MegaKnight' }] },
+  { discordId: '111111111111111113', players: [{ tag: '#FKE5FG6H', name: 'DragonSlayer' }] },
+  { discordId: '111111111111111114', players: [{ tag: '#FKI7JK8L', name: 'WizardPro' }] },
+  { discordId: '111111111111111115', players: [{ tag: '#FKM9NO0P', name: 'KnightRider' }] },
+  { discordId: '111111111111111116', players: [{ tag: '#FKQ1RS2T', name: 'GolemMaster' }] },
+  { discordId: '111111111111111117', players: [{ tag: '#FKU3VW4X', name: 'BanditQueen' }] },
+  { discordId: '111111111111111118', players: [{ tag: '#FKY5ZA6B', name: 'ClanWarrior' }] },
+  { discordId: '111111111111111119', players: [{ tag: '#FKC7DE8F', name: 'BattleChamp' }] },
+  { discordId: '111111111111111120', players: [{ tag: '#FKG9HI0J', name: 'TrophyHunter' }] },
+  { discordId: '111111111111111121', players: [{ tag: '#FKK1LM2N', name: 'ArenaKing' }] },
+  { discordId: '111111111111111122', players: [{ tag: '#FKO3PQ4R', name: 'LavaHound' }] },
+  { discordId: '111111111111111123', players: [{ tag: '#FKS5TU6V', name: 'SparkyGod' }] },
+  { discordId: '111111111111111124', players: [{ tag: '#FKW7XY8Z', name: 'BowlerBoss' }] },
+  { discordId: '111111111111111125', players: [{ tag: '#FKA9BC0D', name: 'EliteBarbs' }] },
+  { discordId: '111111111111111126', players: [{ tag: '#FKE1FG2H', name: 'MinerKing' }] },
+  { discordId: '111111111111111127', players: [{ tag: '#FKI3JK4L', name: 'PoisonMaster' }] },
+  { discordId: '111111111111111128', players: [{ tag: '#FKM5NO6P', name: 'RamRider' }] },
+  { discordId: '111111111111111129', players: [{ tag: '#FKQ7RS8T', name: 'RocketQueen' }] },
+  { discordId: '111111111111111130', players: [{ tag: '#FKU9VW0X', name: 'HogCycle' }] },
+  { discordId: '111111111111111131', players: [{ tag: '#FKY1ZA2B', name: 'XbowGod' }] },
+  { discordId: '111111111111111132', players: [{ tag: '#FKC3DE4F', name: 'MortarKing' }] },
+  { discordId: '111111111111111133', players: [{ tag: '#FKG5HI6J', name: 'GraveyardPro' }] },
+  { discordId: '111111111111111134', players: [{ tag: '#FKK7LM8N', name: 'LumberjackX' }] },
+  { discordId: '111111111111111135', players: [{ tag: '#FKO9PQ0R', name: 'NightWitch' }] },
+  { discordId: '111111111111111136', players: [{ tag: '#FKS1TU2V', name: 'InfernoDragon' }] },
+  { discordId: '111111111111111137', players: [{ tag: '#FKW3XY4Z', name: 'BabyDragon' }] },
+  { discordId: '111111111111111138', players: [{ tag: '#FKA5BC6D', name: 'MagicArcher' }] },
+  { discordId: '111111111111111139', players: [{ tag: '#FKE7FG8H', name: 'Executioner' }] },
+  { discordId: '111111111111111140', players: [{ tag: '#FKI9JK0L', name: 'PekkaSmash' }] },
+  { discordId: '111111111111111141', players: [{ tag: '#FKM1NO2P', name: 'RoyaleGiant' }] },
+  { discordId: '111111111111111142', players: [{ tag: '#FKQ3RS4T', name: 'ElectroGiant' }] },
+  { discordId: '111111111111111143', players: [{ tag: '#FKU5VW6X', name: 'WallBreaker' }] },
+  { discordId: '111111111111111144', players: [{ tag: '#FKY7ZA8B', name: 'RoyalHogs' }] },
+  { discordId: '111111111111111145', players: [{ tag: '#FKC9DE0F', name: 'FlyingMachine' }] },
+  { discordId: '111111111111111146', players: [{ tag: '#FKG1HI2J', name: 'ZappyBoi' }] },
+  { discordId: '111111111111111147', players: [{ tag: '#FKK3LX4N', name: 'CannonCart' }] },
+  { discordId: '111111111111111148', players: [{ tag: '#FKO5PX6R', name: 'DarkKnight' }] },
+  { discordId: '111111111111111149', players: [{ tag: '#FKS7TX8V', name: 'TornadoKing' }] },
+  { discordId: '111111111111111150', players: [{ tag: '#FKW8YZ9A', name: 'FireballPro' }] },
+];
+// ====== END DEV TESTING ======
 
 /**
  * Router for member channel interactions
@@ -406,11 +463,16 @@ export class MemberChannelInteractionRouter {
       return;
     }
 
-    // TODO: Create embed showing:
-    // - Channel name
-    // - List of all users and their accounts
-    // - Clan info if detected
-    // - Total member count
+    // DEV TESTING: Remove after verification
+    if (DEV_FAKE_DATA) {
+      for (const member of FAKE_MEMBERS) {
+        if (Array.isArray(member.players)) {
+          finalData.accounts.set(member.discordId, member.players);
+        } else if ('type' in member.players && member.players.type === 'any') {
+          finalData.accounts.set(member.discordId, member.players);
+        }
+      }
+    }
 
     console.log('=== Final Confirmation Data ===');
     console.log('Channel Name:', finalData.channelName);
@@ -432,6 +494,7 @@ export class MemberChannelInteractionRouter {
         2,
       ),
     );
+    console.log(finalData);
 
     // Build description with all accounts
     const isAddMode = session.mode === 'add_member';
@@ -445,35 +508,55 @@ export class MemberChannelInteractionRouter {
     let totalAccountCount = 0;
 
     for (const [discordId, accountData] of finalData.accounts.entries()) {
-      description += `**<@${discordId}>**\n`;
-
       if (Array.isArray(accountData)) {
-        // Specific accounts selected
         totalAccountCount += accountData.length;
         const accountsList = accountData
-          .map((p) => `* [${p.name}](<https://royaleapi.com/player/${p.tag.substring(1)}>)`)
+          .map((p) => `* [${p.name}](https://royaleapi.com/player/${encodeURIComponent(p.tag)})`)
           .join('\n');
-        description += `${accountsList}\n\n`;
+        description += `${accountsList}\n`;
       } else if (accountData.type === 'any') {
-        // 'Any X accounts' placeholder
         totalAccountCount += accountData.count;
-        description += `* ${accountData.count} account${accountData.count !== 1 ? 's' : ''}\n\n`;
+        description += `<@${discordId}> - ${accountData.count} account${accountData.count !== 1 ? 's' : ''}\n`;
       }
     }
 
-    description += `**Total:** ${totalAccountCount} account${totalAccountCount !== 1 ? 's' : ''} • ${finalData.accounts.size} member${finalData.accounts.size !== 1 ? 's' : ''}`;
+    if (totalAccountCount > MAX_MEMBER_CHANNEL_ACCOUNTS) {
+      await interaction.editReply({
+        content: `❌ Too many accounts (**${totalAccountCount}**). The maximum is **${MAX_MEMBER_CHANNEL_ACCOUNTS}** per member channel.`,
+        embeds: [],
+        components: [],
+      });
+      return;
+    }
 
+    let invalidPeople = '';
+    if (finalData.invalidDiscordIds.length !== 0 || finalData.invalidPlayertags.length !== 0) {
+      invalidPeople += `There were playertags or Discord ids that weren't linked to anyone. Check before creating the channel, otherwise continue.\n`;
+      for (const tag of finalData.invalidPlayertags) {
+        invalidPeople += `* ${royaleApiLink(tag, tag)}\n`;
+      }
+      for (const id of finalData.invalidDiscordIds) {
+        invalidPeople += `* <@${id}>\n`;
+      }
+    }
+
+    description += invalidPeople + '\n';
+    description += `**Total:** ${totalAccountCount} account${totalAccountCount !== 1 ? 's' : ''} • ${finalData.accounts.size} member${finalData.accounts.size !== 1 ? 's' : ''}`;
     const embedTitle = isAddMode ? 'Confirm Adding Members' : 'Confirm Member Channel Creation';
+    console.log(`[DEBUG] Description length: ${description.length}/4096, accounts: ${totalAccountCount}`);
+
+    if (description.length > 4096) {
+      await interaction.editReply({
+        content: `❌ Too many accounts (**${totalAccountCount}**) to display. The embed description is **${description.length}/4096** characters. Reduce the number of members and try again.`,
+        embeds: [],
+        components: [],
+      });
+      return;
+    }
+
     const embed = new EmbedBuilder().setTitle(embedTitle).setDescription(description).setColor('Green');
 
-    // Calculate total character count
-    const titleLength = embedTitle.length;
-    const descriptionLength = description.length;
-    const totalCharCount = titleLength + descriptionLength;
-
-    console.log(
-      `[Embed Character Count] Title: ${titleLength}, Description: ${descriptionLength}, Total: ${totalCharCount}/4096`,
-    );
+    console.log(`[Embed Character Count] ${description.length}/4096`);
 
     // Extract short ID (timestamp) from full sessionId
     const shortSessionId = sessionId.split('_')[2];
@@ -626,7 +709,7 @@ export class MemberChannelInteractionRouter {
 
     const isAddMode = session?.mode === 'add_member';
     if (session) {
-      // TODO: Add a deleteSession method to service if needed
+      memberChannelService.deleteSession(sessionId);
     }
 
     const cancelMessage = isAddMode ? '❌ Adding members cancelled' : '❌ Channel creation cancelled';
@@ -844,17 +927,15 @@ export class MemberChannelInteractionRouter {
 
         // Check if Discord ID should be removed
         if (inputDiscordIds.includes(discordId)) {
-          // If member has 'any' type, remove them completely
-          if (!Array.isArray(players)) {
-            shouldKeep = false;
-            removedMembers.push(`<@${discordId}> (any ${players.count} accounts)`);
-            continue;
-          } else {
-            // If specific accounts, remove all of them
-            shouldKeep = false;
+          shouldKeep = false;
+          if (Array.isArray(players)) {
             removedMembers.push(`<@${discordId}> (${players.length} accounts)`);
-            continue;
+          } else if (players.type === 'any') {
+            removedMembers.push(`<@${discordId}> (any ${players.count} accounts)`);
+          } else {
+            removedMembers.push(`<@${discordId}>`);
           }
+          continue;
         }
 
         // Check if specific playertags should be removed
@@ -964,6 +1045,26 @@ export class MemberChannelInteractionRouter {
     }
 
     try {
+      // Check existing account count against limit
+      const existingRes = await pool.query(
+        `SELECT members FROM member_channels WHERE guild_id = $1 AND channel_id = $2`,
+        [parsed.guildId, interaction.channelId],
+      );
+      if (existingRes.rows[0]?.members) {
+        const existingMembers: MemberData[] = existingRes.rows[0].members;
+        const currentCount = existingMembers.reduce((sum, m) => {
+          if (Array.isArray(m.players)) return sum + m.players.length;
+          if (m.players && 'type' in m.players && m.players.type === 'any') return sum + m.players.count;
+          return sum;
+        }, 0);
+        if (currentCount >= MAX_MEMBER_CHANNEL_ACCOUNTS) {
+          await interaction.editReply({
+            content: `❌ This channel already has **${currentCount}** accounts, which is at the limit of **${MAX_MEMBER_CHANNEL_ACCOUNTS}**.`,
+          });
+          return;
+        }
+      }
+
       const sessionId = await memberChannelService.startAddingMembers(
         parsed.guildId,
         interaction.channelId!,
@@ -1113,6 +1214,8 @@ export class MemberChannelInteractionRouter {
     }
 
     const memberList = members.rows[0].members;
+    // DEV TESTING: Remove after verification
+    if (DEV_FAKE_DATA) memberList.push(...FAKE_MEMBERS);
 
     // Fetch clan info to check members against
     const clanInfo = await CR_API.getClan(members.rows[0].clantag_focus);
@@ -1169,9 +1272,12 @@ export class MemberChannelInteractionRouter {
       }
     }
 
+    const checkDesc = statusLines.join('\n') || 'No members to check';
+    console.log(`[Check Members] Description length: ${checkDesc.length}/4096`);
+
     const embed = new EmbedBuilder()
       .setTitle(`Member Status - ${members.rows[0].clan_name_focus}`)
-      .setDescription(statusLines.join('\n') || 'No members to check')
+      .setDescription(checkDesc)
       .setColor('Blue');
 
     await interaction.editReply({ embeds: [embed] });
@@ -1366,6 +1472,8 @@ export class MemberChannelInteractionRouter {
     }
 
     const memberList = membersRes.rows[0].members;
+    // DEV TESTING: Remove after verification
+    if (DEV_FAKE_DATA) memberList.push(...FAKE_MEMBERS);
 
     // Fetch clan info
     const clanInfo = await CR_API.getClan(clantagFocus);
@@ -1465,9 +1573,12 @@ export class MemberChannelInteractionRouter {
       });
     }
 
+    const pingDesc = embedLines.join('\n');
+    console.log(`[Ping Members] Description length: ${pingDesc.length}/4096`);
+
     const embed = new EmbedBuilder()
       .setTitle(`Missing Members - ${clanNameFocus}`)
-      .setDescription(embedLines.join('\n'))
+      .setDescription(pingDesc)
       .setColor('Orange');
 
     const joiningLateButton = new ButtonBuilder()
@@ -1598,6 +1709,9 @@ export class MemberChannelInteractionRouter {
       if (membersRes.rowCount === 0) return;
 
       const memberList = membersRes.rows[0].members;
+      // DEV TESTING: Remove after verification
+      if (DEV_FAKE_DATA) memberList.push(...FAKE_MEMBERS);
+
       const clanNameFocus = membersRes.rows[0].clan_name_focus;
       const clantagFocus = membersRes.rows[0].clantag_focus;
 
@@ -1703,6 +1817,8 @@ export class MemberChannelInteractionRouter {
           allMembersDescription += '\n';
         }
 
+        console.log(`[Initial Status - All In Clan] Description length: ${allMembersDescription.trim().length}/4096`);
+
         const allInClanEmbed = new EmbedBuilder()
           .setTitle(`Member Channel Created - ${clanNameFocus}`)
           .setDescription(allMembersDescription.trim())
@@ -1739,9 +1855,12 @@ export class MemberChannelInteractionRouter {
         });
       }
 
+      const initialMissingDesc = embedLines.join('\n');
+      console.log(`[Initial Status - Missing] Description length: ${initialMissingDesc.length}/4096`);
+
       const embed = new EmbedBuilder()
         .setTitle(`Missing Members - ${clanNameFocus}`)
-        .setDescription(embedLines.join('\n'))
+        .setDescription(initialMissingDesc)
         .setColor('Orange');
 
       // Build the ping message for missing members
@@ -1854,7 +1973,7 @@ export class MemberChannelInteractionRouter {
     const result = await pool.query(
       `
       SELECT mc.channel_id, mc.current_delete_count, mc.delete_confirmed_by, mc.members, mc.clantag_focus, mc.clan_name_focus, mc.last_ping,
-             COALESCE(mcs.delete_confirm_count, 2) as delete_confirm_count, mc.is_locked
+             COALESCE(mcs.delete_confirm_count, 1) as delete_confirm_count, mc.is_locked
       FROM member_channels mc
       LEFT JOIN member_channel_settings mcs ON mc.guild_id = mcs.guild_id
       WHERE mc.guild_id = $1 AND mc.channel_id = $2`,
@@ -1871,7 +1990,7 @@ export class MemberChannelInteractionRouter {
       return;
     }
 
-    const deleteConfirmCount = result.rows[0].delete_confirm_count || 2;
+    const deleteConfirmCount = result.rows[0].delete_confirm_count || 1;
     const confirmedBy: string[] = result.rows[0].delete_confirmed_by || [];
     const currentUserId = interaction.user.id;
 
@@ -1900,31 +2019,65 @@ export class MemberChannelInteractionRouter {
 
     // Check if we should delete the channel
     if (newDeleteCount >= deleteConfirmCount) {
-      // Mark as deleted in database first
       try {
-        // Get channel info before deletion
         const channel = interaction.channel;
         const channelName = channel && 'name' in channel ? channel.name : undefined;
+        const members: MemberData[] = result.rows[0].members;
+        const clanFocus = result.rows[0].clan_name_focus
+          ? `${result.rows[0].clan_name_focus} (${result.rows[0].clantag_focus})`
+          : 'None';
+
+        // Build recreation backup text file
+        let recreationText = `=== Member Channel Backup ===\n`;
+        recreationText += `Channel Name: ${channelName || 'Unknown'}\n`;
+        recreationText += `Clan Focus: ${clanFocus}\n`;
+        recreationText += `Deleted by: ${interaction.user.tag} (${interaction.user.id})\n`;
+        recreationText += `Deleted at: ${new Date().toISOString()}\n\n`;
+        recreationText += `=== Members ===\n`;
+
+        const playertags: string[] = [];
+        const discordIds: string[] = [];
+
+        for (const member of members) {
+          discordIds.push(member.discordId);
+          recreationText += `Discord ID ${member.discordId}:\n`;
+
+          if (Array.isArray(member.players)) {
+            for (const player of member.players) {
+              playertags.push(player.tag);
+              recreationText += `  - ${player.name} (${player.tag})\n`;
+            }
+          } else if ('type' in member.players && member.players.type === 'any') {
+            recreationText += `  - Any ${member.players.count} accounts\n`;
+          }
+        }
+
+        recreationText += `\n=== Quick Recreate ===\n`;
+        recreationText += `Use /member-channel create with these inputs:\n`;
+        recreationText += `Channel Name: ${channelName?.replace(/^🔒\s*/, '') || 'Unknown'}\n`;
+        recreationText += `Playertags: ${playertags.join(', ')}\n`;
+        recreationText += `Discord IDs: ${discordIds.join(' ')}\n`;
 
         await pool.query(
-          `UPDATE member_channels 
-           SET is_deleted = true, deleted_at = NOW() 
+          `UPDATE member_channels
+           SET is_deleted = true, deleted_at = NOW()
            WHERE guild_id = $1 AND channel_id = $2`,
           [interaction.guildId, interaction.channelId],
         );
 
-        // Log channel deletion (fire-and-forget)
+        // Log channel deletion with backup file (fire-and-forget)
         memberChannelService.logChannelDeleted(
           interaction.client,
           interaction.guildId!,
           interaction.channelId!,
           interaction.user.id,
           channelName ?? undefined,
+          recreationText,
         );
 
         await interaction.editReply('Deleting channel in 5 seconds...');
 
-        // Delete the Discord channel after 5 seconds
+        // Delete the Discord channel after a short delay
         if (channel?.isTextBased() && 'delete' in channel) {
           setTimeout(async () => {
             try {
@@ -1935,7 +2088,7 @@ export class MemberChannelInteractionRouter {
           }, 5000);
         }
       } catch (error) {
-        console.error('[handleDeleteChannelButton] Error marking channel for deletion:', error);
+        console.error('[handleDeleteChannelButton] Error:', error);
         await interaction.editReply({ content: '❌ Failed to delete channel.' });
       }
       return;
@@ -2024,7 +2177,7 @@ export class MemberChannelInteractionRouter {
     const validChannelSQL = await pool.query(
       `
       SELECT mc.channel_id, mc.clantag_focus, mc.clan_name_focus, mc.members, mc.last_ping, mc.current_delete_count, mc.delete_confirmed_by,
-             COALESCE(mcs.delete_confirm_count, 2) as delete_confirm_count, mc.is_locked
+             COALESCE(mcs.delete_confirm_count, 1) as delete_confirm_count, mc.is_locked
       FROM member_channels mc
       LEFT JOIN member_channel_settings mcs ON mc.guild_id = mcs.guild_id
       WHERE mc.guild_id = $1 AND mc.channel_id = $2
@@ -2049,7 +2202,7 @@ export class MemberChannelInteractionRouter {
         newChannelName = currentName.startsWith('🔒') ? currentName : `🔒${currentName}`;
       } else {
         // Unlocking: Remove lock icon if present
-        newChannelName = currentName.startsWith('🔒') ? currentName.slice(1) : currentName;
+        newChannelName = currentName.replace(/^🔒\s*/, '');
       }
 
       // Don't await this - let it happen in the background
@@ -2069,6 +2222,10 @@ export class MemberChannelInteractionRouter {
   }
 
   static async handleRenameChannelButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
+    let defaultName =
+      interaction.channel && 'name' in interaction.channel ? (interaction.channel.name ?? '') : '';
+    defaultName = defaultName.replace(/^🔒\s*/, '');
+
     const modal = new ModalBuilder()
       .setCustomId(makeCustomId('m', 'memberChannel_renameChannelModal', interaction.guildId!, { cooldown: 5 }))
       .setTitle('Rename Member Channel')
@@ -2080,7 +2237,8 @@ export class MemberChannelInteractionRouter {
               .setCustomId('renameChannelInput')
               .setStyle(TextInputStyle.Short)
               .setMinLength(1)
-              .setMaxLength(30),
+              .setMaxLength(30)
+              .setValue(defaultName),
           ),
       );
     await interaction.showModal(modal);
