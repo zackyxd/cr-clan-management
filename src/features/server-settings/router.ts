@@ -137,13 +137,21 @@ export class ServerSettingsInteractionRouter {
     interaction: ButtonInteraction,
     cacheKey: string,
   ): Promise<ServerSettingsData | null> {
+    const sendError = async (content: string) => {
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({ content });
+      } else {
+        await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+      }
+    };
+
     const cacheData = getServerSettingsData(cacheKey);
     if (!cacheData) {
-      await interaction.editReply({ content: 'Settings data expired. Please try again.' });
+      await sendError('Settings data expired. Please try again.');
       return null;
     }
     if (cacheData.ownerId !== interaction.user.id) {
-      await interaction.editReply({ content: 'You can only interact with settings you opened.' });
+      await sendError('You can only interact with settings you opened.');
       return null;
     }
     return cacheData;
