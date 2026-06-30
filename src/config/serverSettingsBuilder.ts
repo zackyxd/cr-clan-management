@@ -39,21 +39,34 @@ export async function buildFeatureEmbedAndComponents(
   let currentRow = new ActionRowBuilder<ButtonBuilder>();
 
   // Add return button
+  const returnCacheKey = storeServerSettingsData({
+    featureName: featureName,
+    guildId: guildId,
+    ownerId: ownerId,
+    settingType: 'return',
+  });
   const returnToSettings = new ButtonBuilder()
     .setEmoji('↩')
     .setStyle(ButtonStyle.Primary)
-    .setCustomId(makeCustomId(`b`, 'serverSettingsReturn', guildId, { cooldown: 1, extra: ['return'] }));
+    .setCustomId(makeCustomId(`b`, 'serverSettingsReturn', guildId, { cooldown: 1, extra: [returnCacheKey] }));
 
   currentRow.addComponents(returnToSettings);
 
   // Add toggle button only if not the global feature
   if (featureName !== 'global') {
+    const toggleCacheKey = storeServerSettingsData({
+      featureName: featureName,
+      tableName: feature.tableName,
+      guildId: guildId,
+      ownerId: ownerId,
+      settingType: 'toggle_feature',
+    });
     const toggleFeature = new ButtonBuilder()
       .setLabel(`${isEnabled ? 'Disable Feature' : 'Enable Feature'}`)
       .setCustomId(
         makeCustomId('b', `serverSettingToggleFeature`, guildId, {
           cooldown: 1,
-          extra: [`${featureName}_feature`, feature.tableName],
+          extra: [toggleCacheKey],
         }),
       )
       .setStyle(ButtonStyle.Primary);

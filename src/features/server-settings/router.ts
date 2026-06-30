@@ -48,7 +48,7 @@ export class ServerSettingsInteractionRouter {
           return;
         }
         if (cacheData.ownerId !== interaction.user.id) {
-          await interaction.editReply({ content: 'You can only interact with settings you opened.' });
+          await interaction.followUp({ content: 'You can only interact with settings you opened.', flags: MessageFlags.Ephemeral });
           return;
         }
         if (cacheData.featureName) {
@@ -62,19 +62,16 @@ export class ServerSettingsInteractionRouter {
 
       case 'serverSettingsReturn': {
         if (!cacheKey) break;
-        await this.handleReturnToMain(interaction, guildId, interaction.user.id);
+        const cacheData = await this.resolveCacheData(interaction, cacheKey);
+        if (!cacheData) return;
+        await this.handleReturnToMain(interaction, guildId, cacheData.ownerId);
         break;
       }
 
       case 'serverSettingToggleFeature': {
-        if (extra.length < 2) {
-          logger.warn('Invalid feature toggle data - missing extra parameters');
-          await interaction.editReply({ content: 'Invalid feature data.' });
-          break;
-        }
-        const featureName = extra[0].replace('_feature', '');
-        const tableName = extra[1];
-        await this.handleFeatureToggle(interaction, guildId, interaction.user.id, featureName, tableName);
+        const cacheData = await this.resolveCacheData(interaction, cacheKey);
+        if (!cacheData?.featureName || !cacheData?.tableName) return;
+        await this.handleFeatureToggle(interaction, guildId, cacheData.ownerId, cacheData.featureName, cacheData.tableName);
         break;
       }
 
@@ -137,21 +134,21 @@ export class ServerSettingsInteractionRouter {
     interaction: ButtonInteraction,
     cacheKey: string,
   ): Promise<ServerSettingsData | null> {
-    const sendError = async (content: string) => {
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply({ content });
-      } else {
-        await interaction.reply({ content, flags: MessageFlags.Ephemeral });
-      }
-    };
-
     const cacheData = getServerSettingsData(cacheKey);
     if (!cacheData) {
-      await sendError('Settings data expired. Please try again.');
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({ content: 'Settings data expired. Please try again.' });
+      } else {
+        await interaction.reply({ content: 'Settings data expired. Please try again.', flags: MessageFlags.Ephemeral });
+      }
       return null;
     }
     if (cacheData.ownerId !== interaction.user.id) {
-      await sendError('You can only interact with settings you opened.');
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp({ content: 'You can only interact with settings you opened.', flags: MessageFlags.Ephemeral });
+      } else {
+        await interaction.reply({ content: 'You can only interact with settings you opened.', flags: MessageFlags.Ephemeral });
+      }
       return null;
     }
     return cacheData;
