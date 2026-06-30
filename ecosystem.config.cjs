@@ -19,6 +19,7 @@ module.exports = {
       script: 'node',
       args: 'dist/bot.js',
       env_file: '.env.prod',
+      env: { NODE_ENV: 'prod' },
       instances: 1,
       autorestart: true,
       watch: false,
