@@ -205,7 +205,7 @@ export class ClanSettingsInteractionRouter {
         return;
       }
 
-      const { settingKey: featureName, guildId } = settingsData;
+      const { settingKey: featureName, guildId: _guildId } = settingsData;
 
       // Check permissions
       const allowed = await checkPerms(interaction, 'button', 'higher', {
@@ -263,7 +263,7 @@ export class ClanSettingsInteractionRouter {
         return;
       }
 
-      const { settingKey: featureName, guildId } = settingsData;
+      const { settingKey: featureName, guildId: _guildId2 } = settingsData;
 
       // Check permissions
       const allowed = await checkPerms(interaction, 'button', 'either', { hideNoPerms: true });

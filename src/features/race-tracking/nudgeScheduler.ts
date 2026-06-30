@@ -427,9 +427,10 @@ export class NudgeTrackingScheduler {
   ) {
     try {
       // Try to fetch the staff channel to send notification there
-      const channel = await this.client.channels
-        .fetch(clan.staff_channel_id)
-        .catch(() => logger.warn('Staff channel not found for skip notification'));
+      const channel = await this.client.channels.fetch(clan.staff_channel_id).catch(() => {
+        logger.warn('Staff channel not found for skip notification');
+        return null;
+      });
       if (!channel?.isTextBased() || !(channel instanceof TextChannel)) {
         return; // Silently skip if channel not found
       }

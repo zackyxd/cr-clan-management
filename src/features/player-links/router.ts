@@ -20,7 +20,7 @@ export class PlayerLinksInteractionRouter {
     }
   }
 
-  static async handleSelectMenu(interaction: StringSelectMenuInteraction, parsed: ParsedCustomId): Promise<void> {
+  static async handleSelectMenu(interaction: StringSelectMenuInteraction, _parsed: ParsedCustomId): Promise<void> {
     const playertag = interaction.values[0];
     const metadata = interaction.message.interactionMetadata;
     const interactionId = metadata?.id;

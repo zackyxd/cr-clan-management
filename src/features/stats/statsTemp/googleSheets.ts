@@ -244,13 +244,13 @@ async function testWriteAndFormat() {
       ['Discord', 'Tag', 'Player', 'Last Clan', 'Fame / Atk.'], // Header row
     ];
 
-    const resource = { values: header };
+    const requestBody = { values: header };
 
     const result = await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: 'Sheet1!A1',
       valueInputOption: 'RAW',
-      resource,
+      requestBody,
     });
     console.log('%d cells updated.', result.data.updatedCells);
 

@@ -25,14 +25,14 @@ export async function sync_default_features(client: PoolClient): Promise<void> {
   await client.query(
     `INSERT INTO server_settings (guild_id)
    SELECT guild_id FROM guilds
-   WHERE guild_id NOT IN (SELECT guild_id FROM server_settings)`
+   WHERE guild_id NOT IN (SELECT guild_id FROM server_settings)`,
   );
 
   // Get all existing guild-features pairs
   const res = await client.query(
     `
     SELECT guild_id, feature_name
-    FROM guild_features`
+    FROM guild_features`,
   );
 
   const existing = new Set(res.rows.map((row) => `${row.guild_id}:${row.feature_name}`));
@@ -71,11 +71,11 @@ export async function sync_default_features(client: PoolClient): Promise<void> {
     .map((_, i) => `$${i + 1}`)
     .join(', ')})
 `,
-    Object.keys(DEFAULT_FEATURES)
+    Object.keys(DEFAULT_FEATURES),
   );
 
   // === Sync settings for each feature that has a settings table ===
-  for (const [feature_name, { table, defaults }] of Object.entries(FEATURE_SETTINGS_DEFAULTS)) {
+  for (const [_feature_name, { table, defaults }] of Object.entries(FEATURE_SETTINGS_DEFAULTS)) {
     const existingRes = await client.query(`SELECT guild_id FROM ${table}`);
     const existingGuilds = new Set(existingRes.rows.map((row) => row.guild_id));
 
@@ -165,7 +165,7 @@ export async function insert_guilds_on_startup(client: PoolClient, guilds: Colle
     `
     SELECT guild_id FROM guilds WHERE guild_id = ANY($1);
     `,
-    [allGuildIds]
+    [allGuildIds],
   );
 
   const existingIds = new Set(existing.rows.map((row) => row.guild_id));
@@ -202,7 +202,7 @@ export async function remove_guilds_on_startup(client: PoolClient, guilds: Colle
   const existing = await client.query(
     `
     SELECT guild_id FROM guilds WHERE in_guild = true;
-    `
+    `,
   );
 
   const dbGuildIds = existing.rows.map((row) => row.guild_id); // Array of guilds on db

@@ -3,7 +3,7 @@ module.exports = {
     {
       name: 'bot-dev',
       script: 'npm',
-      args: 'run .',
+      args: 'run dev',
       env_file: '.env.dev',
       instances: 1,
       autorestart: true,
@@ -16,8 +16,8 @@ module.exports = {
     },
     {
       name: 'bot-prod',
-      script: 'npx',
-      args: 'tsx src/bot.ts',
+      script: 'node',
+      args: 'dist/bot.js',
       env_file: '.env.prod',
       instances: 1,
       autorestart: true,

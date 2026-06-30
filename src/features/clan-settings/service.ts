@@ -59,7 +59,7 @@ export class ClanSettingsService {
    * Update clan abbreviation
    */
   async updateAbbreviation(
-    client: Client,
+    _client: Client,
     guildId: string,
     clantag: string,
     abbreviation: string,
@@ -109,7 +109,7 @@ export class ClanSettingsService {
    * Update clan role ID
    */
   async updateClanRole(
-    client: Client,
+    _client: Client,
     guildId: string,
     clantag: string,
     roleId: string,
@@ -136,7 +136,7 @@ export class ClanSettingsService {
    * Generic method to update a specific clan setting
    */
   async updateClanSetting(
-    client: Client,
+    _client: Client,
     guildId: string,
     clantag: string,
     settingKey: string,
@@ -200,11 +200,10 @@ export class ClanSettingsService {
    * Used by grouped modal where checkbox directly sets the value
    */
   async setFamilyClan(
-    client: Client,
+    _client: Client,
     guildId: string,
     clantag: string,
     enabled: boolean,
-    userId: string,
   ): Promise<ClanSettingsResponse> {
     const dbClient = await pool.connect();
 

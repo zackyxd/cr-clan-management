@@ -20,7 +20,7 @@ export class DailyResetScheduler {
   private readonly RESET_HOUR = 9; // 9:00 AM UTC (war day end/start time)
   private readonly RESET_MINUTE = 0;
 
-  constructor(private client: Client) {}
+  constructor(_client: Client) {}
 
   async start() {
     if (this.task) return;

@@ -19,5 +19,15 @@
     "isolatedModules": true
   },
   "include": ["src/**/*", "src/types"],
-  "exclude": ["nodes_modules", "dist"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/api/testApiLimiter.ts",
+    "src/utils/memberChannelHelpers.examples.ts",
+    "__tests__",
+    "src/commands/stats_commands",
+    "src/features/stats/availableSheet.ts",
+    "src/features/stats/l2wSheet.ts",
+    "src/features/stats/statsTemp"
+  ]
 }

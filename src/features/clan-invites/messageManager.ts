@@ -9,7 +9,7 @@ import {
   TextChannel,
 } from 'discord.js';
 import { Pool, PoolClient } from 'pg';
-import { BOTCOLOR, EmbedColor, EmbedColor } from '../../types/EmbedUtil.js';
+import { EmbedColor } from '../../types/EmbedUtil.js';
 import { makeCustomId } from '../../utils/customId.js';
 import logger from '../../logger.js';
 import { clanInviteService } from './service.js';
@@ -189,7 +189,8 @@ export async function repostInviteMessage(options: RepostInviteMessageOptions): 
       // delete the system pin message
       const recent = await channel.messages.fetch({ limit: 5 });
       const systemMessage = recent.find((msg) => msg.type === 6);
-      if (systemMessage) await systemMessage.delete().catch((err) => logger.warn('Failed to delete system pin message:', err));
+      if (systemMessage)
+        await systemMessage.delete().catch((err) => logger.warn('Failed to delete system pin message:', err));
     } catch (err) {
       logger.warn('Failed to pin or remove system message:', err);
     }

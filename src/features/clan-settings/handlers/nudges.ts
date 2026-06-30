@@ -14,10 +14,8 @@ import {
   TextInputStyle,
   LabelBuilder,
   MessageFlags,
-  CheckboxBuilder,
   ChannelSelectMenuBuilder,
   ChannelType,
-  RadioGroupOptionBuilder,
   RadioGroupBuilder,
 } from 'discord.js';
 import { pool } from '../../../db.js';
@@ -27,7 +25,6 @@ import type { ClanSettingsData } from '../types.js';
 import { clanSettingsService } from '../service.js';
 import { updateClanSettingsView } from './helpers.js';
 import logger from '../../../logger.js';
-import { getNudgeMessage } from '../../race-tracking/nudgeHelper.js';
 
 export class NudgesHandler {
   /**
@@ -243,9 +240,9 @@ export class NudgesHandler {
           clantag,
         ]);
         if (oldValues.nudge_method !== nudgeMethod) {
-          const methodNames = { disabled: 'Disabled', interval: 'Interval', hours_before_end: 'Hours Before End' };
+          const methodNames: Record<string, string> = { disabled: 'Disabled', interval: 'Interval', hours_before_end: 'Hours Before End' };
           changes.push(
-            `Nudge Method: ${methodNames[oldValues.nudge_method] || 'Unknown'} → ${methodNames[nudgeMethod] || 'Unknown'}`,
+            `Nudge Method: ${methodNames[String(oldValues.nudge_method)] ?? 'Unknown'} → ${methodNames[nudgeMethod ?? ''] ?? 'Unknown'}`,
           );
         }
 

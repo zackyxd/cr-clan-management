@@ -6,7 +6,6 @@ import { checkPerms } from '../../utils/checkPermissions.js';
 import { Command } from '../../types/Command.js';
 import { pool } from '../../db.js';
 import { clanInviteService } from '../../features/clan-invites/service.js';
-import { createInviteEmbed } from '../../features/clan-invites/utils.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()

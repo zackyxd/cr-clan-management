@@ -2,7 +2,6 @@ import { Client, EmbedBuilder, NewsChannel, TextChannel } from 'discord.js';
 import { pool } from '../../db.js';
 import logger from '../../logger.js';
 import { clanInviteService } from './service.js';
-import { INVITE_EXPIRY_MS } from '../../config/clanInvitesConfig.js';
 import { updateInviteMessage, repostInviteMessage } from './messageManager.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 

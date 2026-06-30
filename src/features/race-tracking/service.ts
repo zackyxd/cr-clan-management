@@ -12,10 +12,10 @@ import type { RaceAttacksData, RaceHistoryData, RaceStatsData, RaceUpdateResult 
 import { Client, EmbedBuilder, TextChannel } from 'discord.js';
 import { buildAttacksEmbed, buildRaceEmbed } from './embedBuilders.js';
 import { resetCustomNudgeMessageOnNewDay } from './nudgeHelper.js';
-import { BOTCOLOR, EmbedColor } from '../../types/EmbedUtil.js';
+import { EmbedColor } from '../../types/EmbedUtil.js';
 import { getEmoji, hasEmoji } from '../../utils/emoji.js';
 import logger from '../../logger.js';
-import { refreshAvailableSheet } from '../stats/availableSheet.js';
+// import { refreshAvailableSheet } from '../stats/availableSheet.js';
 
 // In-memory cache to prevent concurrent updates to the same race
 const ongoingRaceUpdates = new Map<string, Promise<RaceUpdateResult | null>>();
@@ -24,38 +24,38 @@ const ongoingRaceUpdates = new Map<string, Promise<RaceUpdateResult | null>>();
 let discordClient: Client | null = null;
 
 // Debounce timers for Available sheet auto-refresh (one 15-min timer per guild)
-const availableSheetRefreshTimers = new Map<string, NodeJS.Timeout>();
+// const availableSheetRefreshTimers = new Map<string, NodeJS.Timeout>();
 
-/**
+/*
  * Schedules (or resets) a 15-minute debounced refresh of both Available sheets
  * for the given guild.  Only fires if GOOGLE_SHEETS_SPREADSHEET_ID is configured.
  */
-function scheduleAvailableSheetRefresh(guildId: string): void {
+// function scheduleAvailableSheetRefresh(guildId: string): void {
   // TODO automate?
-  const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
-  if (!spreadsheetId) return;
+//   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+//   if (!spreadsheetId) return;
 
-  const existing = availableSheetRefreshTimers.get(guildId);
-  if (existing) clearTimeout(existing);
+//   const existing = availableSheetRefreshTimers.get(guildId);
+//   if (existing) clearTimeout(existing);
 
-  const timer = setTimeout(
-    async () => {
-      availableSheetRefreshTimers.delete(guildId);
-      try {
-        await Promise.all([
-          refreshAvailableSheet(guildId, spreadsheetId, '5k Available', '5k'),
-          refreshAvailableSheet(guildId, spreadsheetId, '4k Available', '4k'),
-        ]);
-        logger.info(`[race-tracking] Auto-refreshed Available sheets for guild ${guildId}`);
-      } catch (err) {
-        logger.error(`[race-tracking] Failed to auto-refresh Available sheets for guild ${guildId}:`, err);
-      }
-    },
-    15 * 60 * 1000,
-  ); // 15 minutes
+//   const timer = setTimeout(
+//     async () => {
+//       availableSheetRefreshTimers.delete(guildId);
+//       try {
+//         await Promise.all([
+//           refreshAvailableSheet(guildId, spreadsheetId, '5k Available', '5k'),
+//           refreshAvailableSheet(guildId, spreadsheetId, '4k Available', '4k'),
+//         ]);
+//         logger.info(`[race-tracking] Auto-refreshed Available sheets for guild ${guildId}`);
+//       } catch (err) {
+//         logger.error(`[race-tracking] Failed to auto-refresh Available sheets for guild ${guildId}:`, err);
+//       }
+//     },
+//     15 * 60 * 1000,
+//   ); // 15 minutes
 
-  availableSheetRefreshTimers.set(guildId, timer);
-}
+//   availableSheetRefreshTimers.set(guildId, timer);
+// }
 
 /**
  * Set the Discord client for the race tracking service.
@@ -335,7 +335,7 @@ export async function getRaceAttacks(
  * @param clantag - Clan tag (normalized with #)
  * @returns Race statistics ready for display
  */
-export function getRaceStats(guildId: string, data: CurrentRiverRace): RaceStatsData | null {
+export function getRaceStats(_guildId: string, data: CurrentRiverRace): RaceStatsData | null {
   // TODO: Implement
   // 1. Call getCurrentRiverRace(clantag)
   // 2. Get or create race record
@@ -636,7 +636,7 @@ export async function createDaySnapshot(
  * @param day - Race day (1-4)
  * @returns Historical snapshot data or null if not found
  */
-export async function getRaceHistory(guildId: string, clantag: string, day: number): Promise<RaceHistoryData | null> {
+export async function getRaceHistory(_guildId: string, _clantag: string, _day: number): Promise<RaceHistoryData | null> {
   // TODO: Implement
   // 1. Query river_races to get race_id for clan
   // 2. Query race_day_snapshots for specific day
@@ -823,8 +823,8 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
       }
       // Schedule a debounced Available sheet refresh for all tracking guilds
       // TODO ??
-      for (const guildId of guildsTracking) {
-        // scheduleAvailableSheetRefresh(guildId);
+      for (const _guildId of guildsTracking) {
+        // scheduleAvailableSheetRefresh(_guildId);
       }
     }
   } else {

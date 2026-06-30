@@ -2,13 +2,13 @@ import { EmbedBuilder } from 'discord.js';
 import { Player } from './CR_API.js';
 import { BOTCOLOR } from '../types/EmbedUtil.js';
 import { getEmoji } from '../utils/emoji.js';
-import { getBadgeEmoji, getClanBadgeEmoji } from '../features/race-tracking/service.js';
+import { getBadgeEmoji } from '../features/race-tracking/service.js';
 type BadgeEmoji = {
   name: string;
   id: string;
   guildId: string;
 };
-const { default: rawBadgeData } = (await import('../utils/uploaded_badges.json', {
+const { default: _rawBadgeData } = (await import('../utils/uploaded_badges.json', {
   with: { type: 'json' },
 })) as { default: Record<string, BadgeEmoji> };
 
@@ -94,8 +94,6 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
   const playerName = data.name ?? 'N/A';
   const playertag = data.tag ?? 'N/A';
   const expLevel = data.expLevel ?? 1;
-  const expLevelData = rawExpData[`experience_${expLevel}`];
-  const expLevelIcon = expLevelData ? `<:${expLevelData.name}:${expLevelData.id}>` : `Level ${expLevel}`;
   const role = typeof data.role === 'string' ? (ROLE_DISPLAY[data.role] ?? '') : '';
   const clanName = data?.clan?.name ?? 'No Clan';
   let badgeId: string = '';

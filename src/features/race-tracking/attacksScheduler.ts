@@ -17,7 +17,7 @@ export class AttacksTrackingScheduler {
   private isRunning = false;
   private readonly TRAINING_DAY_INTERVAL_MINUTES = 5; // Update training day clans every 5 minutes
 
-  constructor(private client: Client) {
+  constructor(_client: Client) {
     logger.info('Race update scheduler initialized');
   }
 

@@ -73,6 +73,7 @@ export interface RaceDaySnapshot {
 
 // Complete snapshot data structure
 export interface SnapshotData {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   rawApiData: any; // Raw CurrentRiverRace response for debugging/recomputation
   embedData: SnapshotEmbedData; // Pre-computed embed display data
 }

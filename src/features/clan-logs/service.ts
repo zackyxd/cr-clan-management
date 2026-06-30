@@ -70,7 +70,7 @@ async function sendActivityLog(
   client: Client,
   guildId: string,
   channelId: string,
-  clanName: string,
+  _clanName: string,
   changes: ClanChange[],
 ): Promise<void> {
   try {

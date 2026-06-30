@@ -88,20 +88,19 @@ interface AvailablePlayer {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Always checks 5k Averages first, then 4k Averages, regardless of which sheet we're writing. */
-function nameFormula(row: number): string {
-  return (
-    `=IFERROR(XLOOKUP(A${row},'5k Averages'!B:B,'5k Averages'!C:C),` +
-    `IFERROR(XLOOKUP(A${row},'4k Averages'!B:B,'4k Averages'!C:C),"—"))`
-  );
-}
-
-function fameFormula(row: number): string {
-  return (
-    `=IFERROR(XLOOKUP(A${row},'5k Averages'!B:B,'5k Averages'!E:E),` +
-    `IFERROR(XLOOKUP(A${row},'4k Averages'!B:B,'4k Averages'!E:E),"—"))`
-  );
-}
+// function nameFormula(row: number): string {
+//   return (
+//     `=IFERROR(XLOOKUP(A${row},'5k Averages'!B:B,'5k Averages'!C:C),` +
+//     `IFERROR(XLOOKUP(A${row},'4k Averages'!B:B,'4k Averages'!C:C),"—"))`
+//   );
+// }
+//
+// function fameFormula(row: number): string {
+//   return (
+//     `=IFERROR(XLOOKUP(A${row},'5k Averages'!B:B,'5k Averages'!E:E),` +
+//     `IFERROR(XLOOKUP(A${row},'4k Averages'!B:B,'4k Averages'!E:E),"—"))`
+//   );
+// }
 
 function buildAveragesFameFormula(rowNumber: number, lastWeekColLetter: string): string {
   return (
@@ -386,7 +385,7 @@ async function processAvailableCheckboxes(
   league: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sheets: any,
-): Promise<void> {
+): Promise<number> {
   let changeCount = 0;
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,

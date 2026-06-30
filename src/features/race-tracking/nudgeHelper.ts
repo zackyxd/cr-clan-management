@@ -33,7 +33,7 @@ export async function getNudgeMessage(
   guildId: string,
   clantag: string,
   clanName: string,
-  raceDay?: number,
+  _raceDay?: number,
   customMessage?: string | null,
 ): Promise<string> {
   let message: string;

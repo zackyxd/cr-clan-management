@@ -1,5 +1,3 @@
-import type { Player } from '../../api/CR_API.js';
-
 /**
  * Step 2: Initial modal input from user
  */
@@ -65,6 +63,12 @@ export interface AccountSelection {
 
   // For 'any' type
   accountCount?: number;
+}
+
+export interface AccountSelectionContext {
+  discordId: string;
+  userIndex: number;
+  totalUsers: number;
 }
 
 /**

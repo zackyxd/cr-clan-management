@@ -88,12 +88,12 @@ function nameFormula(tagColLetter: string, row: number): string {
   );
 }
 
-function clanFormula(tagColLetter: string, row: number): string {
-  return (
-    `=IFERROR(XLOOKUP(${tagColLetter}${row},'5k Averages'!B:B,'5k Averages'!D:D),` +
-    `IFERROR(XLOOKUP(${tagColLetter}${row},'4k Averages'!B:B,'4k Averages'!D:D),"—"))`
-  );
-}
+// function clanFormula(tagColLetter: string, row: number): string {
+//   return (
+//     `=IFERROR(XLOOKUP(${tagColLetter}${row},'5k Averages'!B:B,'5k Averages'!D:D),` +
+//     `IFERROR(XLOOKUP(${tagColLetter}${row},'4k Averages'!B:B,'4k Averages'!D:D),"—"))`
+//   );
+// }
 
 function formatDurationDays(
   durationDays: number | null | undefined,

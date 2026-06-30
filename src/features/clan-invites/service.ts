@@ -132,7 +132,7 @@ export class ClanInviteService {
   /**
    * Mark an invite link as expired
    */
-  async markInviteAsExpired(client: Client, inviteLinkId: number, guildId: string, clantag: string): Promise<void> {
+  async markInviteAsExpired(_client: Client, inviteLinkId: number, _guildId: string, clantag: string): Promise<void> {
     await pool.query(
       `UPDATE clan_invite_links
        SET is_expired = TRUE

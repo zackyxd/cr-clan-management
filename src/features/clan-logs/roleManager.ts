@@ -25,7 +25,7 @@ import logger from '../../logger.js';
 export async function handleRoleChanges(
   client: Client,
   guildId: string,
-  clantag: string,
+  _clantag: string,
   clanRoleId: string | null,
   changes: ClanChange[],
   addRole: boolean,

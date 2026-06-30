@@ -1,5 +1,5 @@
-import { ChannelType, Client, EmbedBuilder, Guild, NewsChannel, PermissionFlagsBits, TextChannel } from 'discord.js';
-import { CR_API, FetchError, isFetchError, normalizeTag, Player, PlayerResult } from '../../api/CR_API.js';
+import { ChannelType, Client, EmbedBuilder, Guild, NewsChannel, TextChannel } from 'discord.js';
+import { CR_API, isFetchError, normalizeTag, Player } from '../../api/CR_API.js';
 import { pool } from '../../db.js';
 import { buildGetLinkedDiscordIds, buildGetLinkedPlayertags } from '../../sql_queries/users.js';
 import {
@@ -201,7 +201,7 @@ export class MemberChannelService {
    * - singleAccountUsers: Discord IDs with only 1 account
    * - multipleAccountUsers: Discord IDs with 2+ accounts (need selection)
    */
-  private categorizeAccounts(dbResults: DatabaseLookupResult, parsed: ParsedChannelInput): CategorizedAccounts {
+  private categorizeAccounts(dbResults: DatabaseLookupResult, _parsed: ParsedChannelInput): CategorizedAccounts {
     const finalAccounts = new Map<string, string[]>();
     const singleAccountUsers = new Map<string, string>();
     const multipleAccountUsers = new Map<string, string[]>();
@@ -606,7 +606,7 @@ export class MemberChannelService {
     addedCount?: number;
     addedMembers?: Array<{
       discordId: string;
-      players: import('../../utils/memberChannelHelpers.js').PlayerInfo[] | { type: 'any'; count: number };
+      players: import('../../utils/memberChannelHelpers.js').PlayerInfo[] | { type: 'any'; count: number } | { type: 'invalid' };
     }>;
   }> {
     const session = this.sessions.get(sessionId);
@@ -641,11 +641,13 @@ export class MemberChannelService {
           // Verify user exists in guild before setting permissions
           const member = await guild.members.fetch(discordId);
           if (member) {
-            await channel.permissionOverwrites.edit(discordId, {
-              ViewChannel: true,
-              SendMessages: true,
-              ReadMessageHistory: true,
-            });
+            if ('permissionOverwrites' in channel) {
+              await channel.permissionOverwrites.edit(discordId, {
+                ViewChannel: true,
+                SendMessages: true,
+                ReadMessageHistory: true,
+              });
+            }
           }
         } catch (error) {
           logger.warn(`[addMembersToChannel] Could not set permissions for user ${discordId}:`, error);
@@ -667,7 +669,7 @@ export class MemberChannelService {
       // Track added members for notification
       const addedMembers: Array<{
         discordId: string;
-        players: import('../../utils/memberChannelHelpers.js').PlayerInfo[] | { type: 'any'; count: number };
+        players: import('../../utils/memberChannelHelpers.js').PlayerInfo[] | { type: 'any'; count: number } | { type: 'invalid' };
       }> = [];
 
       // Process new members

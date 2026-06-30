@@ -23,7 +23,6 @@ import { pool } from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { CR_API, FetchError, normalizeTag, royaleApiLink } from '../../api/CR_API.js';
 import { clanInviteService } from '../clan-invites/service.js';
-import { createInviteEmbed } from '../clan-invites/utils.js';
 import { MemberData } from '../../utils/memberChannelHelpers.js';
 import { buildMemberChannelCheckUI } from '../../utils/memberChannelCheckHelpers.js';
 import logger from '../../logger.js';
@@ -178,6 +177,8 @@ export class MemberChannelInteractionRouter {
       // Use editReply if interaction was already deferred or replied to
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply(updateData);
+      } else if (interaction instanceof ModalSubmitInteraction) {
+        await interaction.reply(updateData);
       } else {
         await interaction.update(updateData);
       }
@@ -484,6 +485,8 @@ export class MemberChannelInteractionRouter {
     // Use update for non-deferred button interactions
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply(updateData);
+    } else if (interaction instanceof ModalSubmitInteraction) {
+      await interaction.reply(updateData);
     } else {
       await interaction.update(updateData);
     }
@@ -664,7 +667,7 @@ export class MemberChannelInteractionRouter {
   /**
    * Handle "Add Members" button click - show modal for input
    */
-  static async handleAddMembersButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
+  static async handleAddMembersButton(interaction: ButtonInteraction, _parsed: ParsedCustomId) {
     const modal = new ModalBuilder()
       .setCustomId(makeCustomId('m', 'memberChannel_addMemberModal', interaction.guildId!))
       .setTitle('Add Members to Channel')
@@ -709,7 +712,7 @@ export class MemberChannelInteractionRouter {
   /**
    * Handle "Remove Member" button click - show modal for input
    */
-  static async handleRemoveMembersButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
+  static async handleRemoveMembersButton(interaction: ButtonInteraction, _parsed: ParsedCustomId) {
     const modal = new ModalBuilder()
       .setCustomId(makeCustomId('m', 'memberChannel_removeMemberModal', interaction.guildId!))
       .setTitle('Remove Members from Channel')
@@ -1018,7 +1021,6 @@ export class MemberChannelInteractionRouter {
         const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
 
         if (lastRenamed > tenMinutesAgo) {
-          const timeLeft = Math.ceil((lastRenamed.getTime() + 10 * 60 * 1000 - Date.now()) / 60000);
           await interaction.editReply({
             content: `❌ Channel was renamed recently. Try again <t:${Math.floor((lastRenamed.getTime() + 10 * 60 * 1000) / 1000)}:R>.`,
           });
@@ -1804,7 +1806,7 @@ export class MemberChannelInteractionRouter {
     channelId: string,
     addedMembers: Array<{
       discordId: string;
-      players: import('../../utils/memberChannelHelpers.js').PlayerInfo[] | { type: 'any'; count: number };
+      players: import('../../utils/memberChannelHelpers.js').PlayerInfo[] | { type: 'any'; count: number } | { type: 'invalid' };
     }>,
   ): Promise<void> {
     try {
@@ -1850,7 +1852,7 @@ export class MemberChannelInteractionRouter {
     }
   }
 
-  static async handleDeleteChannelButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
+  static async handleDeleteChannelButton(interaction: ButtonInteraction, _parsed: ParsedCustomId) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const result = await pool.query(
       `
@@ -2104,7 +2106,7 @@ export class MemberChannelInteractionRouter {
     });
   }
 
-  static async handleRenameChannelButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
+  static async handleRenameChannelButton(interaction: ButtonInteraction, _parsed: ParsedCustomId) {
     let defaultName = interaction.channel && 'name' in interaction.channel ? (interaction.channel.name ?? '') : '';
     defaultName = defaultName.replace(/^🔒\s*/, '');
 

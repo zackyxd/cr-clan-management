@@ -191,13 +191,7 @@ export class ClanSettingsHandler {
 
       // Update family clan if changed (set to specific value, not toggle)
       if (familyClan !== (old.family_clan || false)) {
-        const result = await clanSettingsService.setFamilyClan(
-          interaction.client,
-          guildId,
-          clantag,
-          familyClan,
-          interaction.user.id,
-        );
+        const result = await clanSettingsService.setFamilyClan(interaction.client, guildId, clantag, familyClan);
 
         if (!result.success) {
           // If failed (e.g., max family clans), show error and stop
@@ -234,12 +228,7 @@ export class ClanSettingsHandler {
 
       // Update abbreviation if changed
       if (abbreviation && abbreviation !== (old.abbreviation || '')) {
-        const result = await clanSettingsService.updateAbbreviation(
-          interaction.client,
-          guildId,
-          clantag,
-          abbreviation,
-        );
+        const result = await clanSettingsService.updateAbbreviation(interaction.client, guildId, clantag, abbreviation);
 
         if (!result.success) {
           await interaction.followUp({
@@ -261,12 +250,7 @@ export class ClanSettingsHandler {
 
       // Update clan role if changed
       if (roleId !== (old.clan_role_id || '')) {
-        const result = await clanSettingsService.updateClanRole(
-          interaction.client,
-          guildId,
-          clantag,
-          roleId,
-        );
+        const result = await clanSettingsService.updateClanRole(interaction.client, guildId, clantag, roleId);
 
         if (!result.success) {
           await interaction.followUp({
