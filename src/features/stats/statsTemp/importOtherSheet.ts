@@ -2,7 +2,7 @@ import { getAuthenticatedSheetsClient } from '../statsUtil.js';
 const sourceSheets = await getAuthenticatedSheetsClient();
 const sourceData = await sourceSheets.spreadsheets.values.get({
   spreadsheetId: '1b8BgwkPZ2cUgUvy_2r5zISCSxG207qtIf7re3sVL8x0',
-  range: '5k Averages!A1:LF1600',
+  range: '5k Averages!A1:LP2000',
 });
 const rows = sourceData.data.values || [];
 const headerRow = rows[0]; // ['Tag', 'Player', 'Last Clan', 'Fame / Atk.', '132-3', '', '132-2', '', ...]
@@ -11,7 +11,7 @@ const headerRow = rows[0]; // ['Tag', 'Player', 'Last Clan', 'Fame / Atk.', '132
 // They come in pairs: '132-3', '', '132-2', '', etc.
 // So filter every other one (the non-empty ones)
 const seasonWeekHeaders: string[] = [];
-const headerValues = [['Discord', 'Tag', 'Player', 'Last Clan', 'Fame / Atk.']];
+const headerValues = [['Discord Id', 'Tag', 'Player', 'Last Clan', 'Fame / Atk.']];
 for (let i = 4; i < headerRow.length; i += 2) {
   const label = headerRow[i];
   if (label) seasonWeekHeaders.push(label); // ['132-3', '132-2', '132-1', '131-4', ...]
@@ -60,7 +60,7 @@ const dataRows = rows.slice(1).map((row) => {
 
 await sheets.spreadsheets.values.update({
   spreadsheetId: targetSpreadsheetId,
-  range: 'Sheet1!A1',
+  range: '5k Averages!A1',
   valueInputOption: 'USER_ENTERED',
   requestBody: {
     values: [headerValues[0], ...dataRows],
