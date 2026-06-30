@@ -45,5 +45,5 @@ BETA_READINESS_CHECKLIST.md
 BETA_TESTING_GUIDE.md
 git-workflow.txt
 .nvmrc
-Supercell-Magic.ttf
 google-service-account.json
+DEPLOY.md
