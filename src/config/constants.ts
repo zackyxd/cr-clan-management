@@ -37,7 +37,7 @@ export function getLeagueFromTrophies(trophies: number): '5k' | '4k' | null {
 }
 
 // How many completed war weeks to look back when building the Available sheet
-export const AVAILABLE_SHEET_WEEKS_LOOKBACK = 6;
+export const AVAILABLE_SHEET_WEEKS_LOOKBACK = 8;
 
 // Google accounts (besides the bot's service account) that can edit or remove
 // the protected ranges the bot adds to stats sheets (Lineups, Kicks, Available,

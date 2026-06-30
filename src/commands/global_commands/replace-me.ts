@@ -21,7 +21,7 @@ const command: Command = {
       return;
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     // Get user's linked player tags
     const userLinkedTags = await pool.query(

@@ -189,9 +189,9 @@ export async function repostInviteMessage(options: RepostInviteMessageOptions): 
       // delete the system pin message
       const recent = await channel.messages.fetch({ limit: 5 });
       const systemMessage = recent.find((msg) => msg.type === 6);
-      if (systemMessage) await systemMessage.delete().catch(console.error);
+      if (systemMessage) await systemMessage.delete().catch((err) => logger.warn('Failed to delete system pin message:', err));
     } catch (err) {
-      console.warn('Failed to pin or remove system message:', err);
+      logger.warn('Failed to pin or remove system message:', err);
     }
   }
   return editableMessage;

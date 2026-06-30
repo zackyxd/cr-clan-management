@@ -27,6 +27,15 @@ function getRoleDisplayName(role: string) {
   return roleMap[role] || 'Unknown Role'; // Default to "Unknown Role" if the role is not found
 }
 
+function getClanTypeDisplayName(type: string) {
+  const typeMap: Record<string, string> = {
+    closed: 'Closed',
+    inviteOnly: 'Invite Only',
+    open: 'Open',
+  };
+  return typeMap[type] || 'Unknown type';
+}
+
 function isPromotion(oldRole: string, newRole: string) {
   const roles = ['member', 'elder', 'coLeader', 'leader'];
   const oldRoleIndex = roles.indexOf(oldRole);
@@ -199,7 +208,7 @@ function formatPropertyChange(
   if (property === 'type') {
     const oldIcon = getTypeIcon(String(oldValue));
     const newIcon = getTypeIcon(String(newValue));
-    return `${oldIcon} **${oldValue}** → ${newIcon} **${newValue}**`;
+    return `${oldIcon} **${getClanTypeDisplayName(oldValue as string)}** → ${newIcon} **${getClanTypeDisplayName(newValue as string)}**`;
   }
 
   // Handle location changes with globe icon

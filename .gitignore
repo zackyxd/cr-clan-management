@@ -21,6 +21,7 @@ pm2.log
 
 # Local documentation/notes
 migrate-cheatsheet.txt
+logs/
 src/logs
 one-off-scripts/
 performance.ts

@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction } from 'discord.js';
+import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
 import { StatsTracker } from '../../services/statsTracker.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { Command } from '../../types/Command.js';
@@ -7,7 +7,7 @@ const command: Command = {
   data: new SlashCommandBuilder().setName('stats').setDescription('View bot activity statistics for this server'),
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const guildId = interaction.guildId;
 

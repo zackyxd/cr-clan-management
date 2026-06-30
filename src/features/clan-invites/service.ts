@@ -99,9 +99,10 @@ export class ClanInviteService {
    */
   async getActiveInviteWithClan(guildId: string, clantag: string): Promise<InviteLink | null> {
     const result = await pool.query(
-      `SELECT 
+      `SELECT
          cil.*,
-         c.clan_name
+         c.clan_name,
+         c.last_activity_snapshot
        FROM clan_invite_links cil
        JOIN clans c ON c.guild_id = cil.guild_id AND c.clantag = cil.clantag
        WHERE cil.guild_id = $1 AND cil.clantag = $2
@@ -131,13 +132,7 @@ export class ClanInviteService {
   /**
    * Mark an invite link as expired
    */
-  async markInviteAsExpired(
-    client: Client,
-    inviteLinkId: number,
-    guildId: string,
-    clantag: string,
-    clanName?: string,
-  ): Promise<void> {
+  async markInviteAsExpired(client: Client, inviteLinkId: number, guildId: string, clantag: string): Promise<void> {
     await pool.query(
       `UPDATE clan_invite_links
        SET is_expired = TRUE
@@ -226,7 +221,11 @@ export class ClanInviteService {
     }
 
     // Create and send embed
-    const embed = createInviteEmbed(invite.clan_name, invite.invite_link, invite.expires_at);
+    const snapshot =
+      typeof invite.last_activity_snapshot === 'string'
+        ? (JSON.parse(invite.last_activity_snapshot) as { members?: number })
+        : (invite.last_activity_snapshot as { members?: number } | null);
+    const embed = createInviteEmbed(invite.clan_name, invite.invite_link, invite.expires_at, snapshot?.members);
     const message = await channel.send({
       content: content || undefined,
       embeds: [embed],
@@ -274,7 +273,64 @@ export class ClanInviteService {
       [inviteLinkId, guildId, channelId, messageId, sourceType, sentByUserId],
     );
 
-    logger.info(`Tracked invite message ${messageId} in channel ${channelId} for link ${inviteLinkId}`);
+    // logger.info(`Tracked invite message ${messageId} in channel ${channelId} for link ${inviteLinkId}`);
+  }
+
+  /**
+   * Refresh all tracked invite message embeds for a clan with the current member count
+   * from last_activity_snapshot. Skips silently if the invite is expired or snapshot is missing.
+   */
+  async refreshInviteMessageCounts(client: Client, guildId: string, clantag: string): Promise<void> {
+    try {
+      const result = await pool.query(
+        `SELECT cil.id, cil.invite_link, cil.expires_at, c.clan_name, c.last_activity_snapshot
+         FROM clan_invite_links cil
+         JOIN clans c ON c.guild_id = cil.guild_id AND c.clantag = cil.clantag
+         WHERE cil.guild_id = $1 AND cil.clantag = $2
+           AND cil.expires_at > NOW() AND cil.is_expired = FALSE
+         ORDER BY cil.created_at DESC
+         LIMIT 1`,
+        [guildId, clantag],
+      );
+
+      if (result.rowCount === 0) return;
+
+      const { id: inviteLinkId, invite_link, expires_at, clan_name, last_activity_snapshot } = result.rows[0];
+
+      const snapshot =
+        typeof last_activity_snapshot === 'string'
+          ? (JSON.parse(last_activity_snapshot) as { members?: number })
+          : (last_activity_snapshot as { members?: number } | null);
+
+      const members = snapshot?.members;
+
+      const messages = await this.getInviteLinkMessages(inviteLinkId);
+      if (messages.length === 0) return;
+
+      const embed = createInviteEmbed(clan_name, invite_link, new Date(expires_at), members);
+
+      for (const msg of messages) {
+        try {
+          const channel = await client.channels.fetch(msg.channel_id);
+          if (!channel || !(channel instanceof TextChannel || channel instanceof NewsChannel)) continue;
+
+          const discordMessage = await channel.messages.fetch(msg.message_id);
+          await discordMessage.edit({ embeds: [embed] });
+        } catch (err: unknown) {
+          const code = (err as { code?: number }).code;
+          if (code === 10008 || code === 10003) {
+            await pool.query(`DELETE FROM invite_link_messages WHERE channel_id = $1 AND message_id = $2`, [
+              msg.channel_id,
+              msg.message_id,
+            ]);
+          } else {
+            logger.warn(`[refreshInviteMessageCounts] Failed to edit message ${msg.message_id}: ${err}`);
+          }
+        }
+      }
+    } catch (error) {
+      logger.error('[refreshInviteMessageCounts] Error:', error);
+    }
   }
 }
 

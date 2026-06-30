@@ -11,7 +11,7 @@ const headerRow = rows[0]; // ['Tag', 'Player', 'Last Clan', 'Fame / Atk.', '132
 // They come in pairs: '132-3', '', '132-2', '', etc.
 // So filter every other one (the non-empty ones)
 const seasonWeekHeaders: string[] = [];
-const headerValues = [['Discord', 'Tag', 'Player', 'Last Clan', 'Fame Avg.']];
+const headerValues = [['Discord', 'Tag', 'Player', 'Last Clan', 'Fame / Atk.']];
 for (let i = 4; i < headerRow.length; i += 2) {
   const label = headerRow[i];
   if (label) seasonWeekHeaders.push(label); // ['132-3', '132-2', '132-1', '131-4', ...]

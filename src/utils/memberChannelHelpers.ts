@@ -124,12 +124,10 @@ export async function buildPermissionOverwrites(
           type: ow.type, // 0 = Role, 1 = Member
         });
       });
-      console.log(`Inherited ${permissionOverwrites.length} permission overwrites from category`);
     }
   }
 
   // Add permissions for each selected user
-  console.log(`Discord ids: ${discordIds}`);
   for (const discordId of discordIds) {
     permissionOverwrites.push({
       id: discordId,

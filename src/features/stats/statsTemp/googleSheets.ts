@@ -1,5 +1,6 @@
 import 'dotenv-flow/config';
 import { getAuthenticatedSheetsClient } from '../statsUtil.js';
+import logger from '../../../logger.js';
 // Only for formatting Averages page
 // Function to format header row (call this after any data update)
 async function formatHeaders(spreadsheetId: string, sheetId: number = 0) {
@@ -123,7 +124,7 @@ async function formatHeaders(spreadsheetId: string, sheetId: number = 0) {
       },
     },
     {
-      // Fame Avg.
+      // Fame / Atk.
       updateDimensionProperties: {
         range: { sheetId, dimension: 'COLUMNS', startIndex: 4, endIndex: 5 },
         properties: { pixelSize: 120 },
@@ -240,7 +241,7 @@ async function testWriteAndFormat() {
 
     // Step 1: Write headers and data
     let header = [
-      ['Discord', 'Tag', 'Player', 'Last Clan', 'Fame Avg.'], // Header row
+      ['Discord', 'Tag', 'Player', 'Last Clan', 'Fame / Atk.'], // Header row
     ];
 
     const resource = { values: header };
@@ -259,7 +260,7 @@ async function testWriteAndFormat() {
 
     console.log('✅ Data written and headers formatted!');
   } catch (error) {
-    console.log(error);
+    logger.error('Error in writing to sheet', error);
   }
 }
 

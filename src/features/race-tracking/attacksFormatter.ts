@@ -115,8 +115,17 @@ export async function enrichParticipantsWithLinks(
 export function formatParticipantLine(participant: FormattedParticipant, options: FormatOptions): string {
   let line = '* ';
 
-  // Determine if we should ping this user
-  let shouldMention = options.mentionUsers && participant.discordUserId && participant.pingUser;
+  // Determine if we should ping this user based on ping preference
+  const pingPref = participant.pingUser ?? 'regular';
+  let shouldMention = false;
+  if (options.mentionUsers && participant.discordUserId) {
+    if (pingPref === 'all') {
+      shouldMention = true;
+    } else if (pingPref === 'regular') {
+      shouldMention = participant.clanRole !== 'leader' && participant.clanRole !== 'coLeader';
+    }
+    // 'none' stays false
+  }
 
   // Ping replacement players if they have attacks used in the clan (1-3 remaining)
   if (participant.isReplacementPlayer) {
@@ -148,10 +157,16 @@ export function formatParticipantLine(participant: FormattedParticipant, options
 
     // Add different emoji if they don't have channel access
     if (participant.hasChannelAccess === false) {
-      line += ' 🔒'; // Locked - can't see this channel
+      line += ' 🔒';
     }
   } else {
-    line += participant.playerName;
+    line += pingPref === 'none' ? `*${participant.playerName}*` : participant.playerName;
+  }
+
+  if (pingPref === 'all') {
+    line += ' 📢';
+  } else if (pingPref === 'none') {
+    line += ' 🔇';
   }
 
   // Add emojis for special statuses

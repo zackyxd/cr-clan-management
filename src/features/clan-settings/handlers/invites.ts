@@ -86,8 +86,6 @@ export class InvitesHandler {
 
       // Success - update the settings view
       await updateClanSettingsView(interaction, guildId, clantag, clanName);
-
-      logger.info(`[Invites] ${interaction.user.tag} toggled invites for ${clanName} (${clantag}) in guild ${guildId}`);
     } catch (error) {
       logger.error('[Invites] Error toggling invites:', error);
 
@@ -162,7 +160,6 @@ export class InvitesHandler {
             const message = await channel.messages.fetch(msg.message_id);
             await message.delete();
             deletedCount++;
-            logger.info(`[Invites] Deleted message ${msg.message_id} in channel ${msg.channel_id}`);
           } catch (deleteErr: unknown) {
             const error = deleteErr as { code?: number; message?: string };
 
@@ -202,7 +199,7 @@ export class InvitesHandler {
 
       const message = await interaction.followUp({
         content: replyContent,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
 
       // Send audit log if successful
@@ -223,7 +220,7 @@ export class InvitesHandler {
 
       await interaction.followUp({
         content: '❌ An unexpected error occurred while purging invites.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }

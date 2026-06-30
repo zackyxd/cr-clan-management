@@ -20,9 +20,7 @@ export class DailyResetScheduler {
   private readonly RESET_HOUR = 9; // 9:00 AM UTC (war day end/start time)
   private readonly RESET_MINUTE = 0;
 
-  constructor(private client: Client) {
-    logger.info('Daily reset scheduler initialized');
-  }
+  constructor(private client: Client) {}
 
   async start() {
     if (this.task) return;
@@ -54,9 +52,7 @@ export class DailyResetScheduler {
     try {
       const now = new Date();
 
-      const guildsResult = await pool.query(
-        `SELECT guild_id, last_daily_reset FROM server_settings`,
-      );
+      const guildsResult = await pool.query(`SELECT guild_id, last_daily_reset FROM server_settings`);
 
       for (const row of guildsResult.rows) {
         const { guild_id, last_daily_reset } = row;
@@ -64,15 +60,11 @@ export class DailyResetScheduler {
         const timeSinceReset = lastReset ? now.getTime() - lastReset.getTime() : Infinity;
 
         if (timeSinceReset >= RESET_THRESHOLD_MS) {
-          logger.warn(
-            `[Daily Reset] Guild ${guild_id}: last reset ${lastReset ? lastReset.toISOString() : 'never'} ` +
-              `(${lastReset ? Math.round(timeSinceReset / 3600000) + 'h ago' : 'N/A'}). Resetting now...`,
-          );
+          // logger.warn(
+          //   `[Daily Reset] Guild ${guild_id}: last reset ${lastReset ? lastReset.toISOString() : 'never'} ` +
+          //     `(${lastReset ? Math.round(timeSinceReset / 3600000) + 'h ago' : 'N/A'}). Resetting now...`,
+          // );
           await this.resetGuild(guild_id);
-        } else {
-          logger.info(
-            `[Daily Reset] Guild ${guild_id}: last reset ${Math.round(timeSinceReset / 3600000)}h ago, no action needed`,
-          );
         }
       }
     } catch (error) {
@@ -110,10 +102,7 @@ export class DailyResetScheduler {
 
     const resetCount = result.rowCount || 0;
 
-    await pool.query(
-      `UPDATE server_settings SET last_daily_reset = NOW() WHERE guild_id = $1`,
-      [guildId],
-    );
+    await pool.query(`UPDATE server_settings SET last_daily_reset = NOW() WHERE guild_id = $1`, [guildId]);
 
     if (resetCount > 0) {
       logger.info(`[Daily Reset] Guild ${guildId}: reset ${resetCount} user flag(s)`);
@@ -127,11 +116,7 @@ export class DailyResetScheduler {
    */
   private async performDailyReset() {
     try {
-      logger.info('[Daily Reset] Starting daily user flag reset...');
-
-      const guildsResult = await pool.query(
-        `SELECT guild_id FROM server_settings`,
-      );
+      const guildsResult = await pool.query(`SELECT guild_id FROM server_settings`);
 
       let totalReset = 0;
       for (const row of guildsResult.rows) {
@@ -139,9 +124,7 @@ export class DailyResetScheduler {
       }
 
       if (totalReset > 0) {
-        logger.info(`[Daily Reset] ✅ Reset ${totalReset} user flag(s) across ${guildsResult.rows.length} guild(s)`);
-      } else {
-        logger.info('[Daily Reset] ✅ No user flags needed resetting');
+        logger.info(`[Daily Reset] Reset ${totalReset} user flag(s) across ${guildsResult.rows.length} guild(s)`);
       }
     } catch (error) {
       logger.error('[Daily Reset] ❌ Error during daily reset:', error);
@@ -154,9 +137,7 @@ export class DailyResetScheduler {
   async manualReset(): Promise<number> {
     logger.info('[Daily Reset] Manual reset triggered');
 
-    const guildsResult = await pool.query(
-      `SELECT guild_id FROM server_settings`,
-    );
+    const guildsResult = await pool.query(`SELECT guild_id FROM server_settings`);
 
     let totalReset = 0;
     for (const row of guildsResult.rows) {

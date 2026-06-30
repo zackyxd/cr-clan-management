@@ -1,6 +1,6 @@
 /**
  * Clan Role Handler
- * 
+ *
  * Handles clan role modal (show + submission)
  */
 
@@ -51,7 +51,7 @@ export class ClanRoleHandler {
     if (!clantag) {
       await interaction.reply({
         content: 'Missing clan tag. Please try again.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -74,17 +74,11 @@ export class ClanRoleHandler {
     }
 
     // Check permissions
-    const allowed = await checkPerms(interaction, guildId, 'modal', 'either', { hideNoPerms: true });
+    const allowed = await checkPerms(interaction, 'modal', 'either', { hideNoPerms: true });
     if (!allowed) return;
 
     // Update clan role using service
-    const result = await clanSettingsService.updateClanRole(
-      interaction.client,
-      guildId,
-      clantag,
-      role.id,
-      interaction.user.id,
-    );
+    const result = await clanSettingsService.updateClanRole(interaction.client, guildId, clantag, role.id);
 
     if (!result.success) {
       await interaction.followUp({
@@ -118,13 +112,12 @@ export class ClanRoleHandler {
 
     // Update the original message
     try {
-      await interaction.message.edit({
+      await interaction.editReply({
         embeds: [embed],
         components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
       });
     } catch (error) {
       logger.error('[ClanRole] Failed to edit message:', error);
-      // Continue anyway to send confirmation
     }
 
     logger.info(

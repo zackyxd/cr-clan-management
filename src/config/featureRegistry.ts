@@ -1,7 +1,6 @@
 import { pool } from '../db.js';
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
-import { EmbedColor, BOTCOLOR } from '../types/EmbedUtil.js';
-import { makeCustomId } from '../utils/customId.js';
+import { EmbedBuilder } from 'discord.js';
+import { EmbedColor } from '../types/EmbedUtil.js';
 import {
   MAX_CLANS_PER_GUILD,
   MAX_PLAYER_LINKS_PER_USER,
@@ -12,7 +11,17 @@ import {
 } from './constants.js';
 
 // Define all possible setting types in one place
-export type SettingType = 'toggle' | 'modal' | 'swap' | 'channel' | 'number' | 'role' | 'text' | 'action' | 'info';
+export type SettingType =
+  | 'toggle'
+  | 'modal'
+  | 'swap'
+  | 'channel'
+  | 'number'
+  | 'role'
+  | 'multi_role'
+  | 'text'
+  | 'action'
+  | 'info';
 
 // Define the structure of a feature setting
 export interface FeatureSetting {
@@ -76,6 +85,12 @@ export const FeatureRegistry: Record<string, Feature> = {
         label: 'Linked Players',
         description: 'Number of players currently linked to this server.',
         type: 'info',
+      },
+      {
+        key: 'staff_roles',
+        label: 'Leadership Roles',
+        description: 'Roles that can use bot management and staff commands.',
+        type: 'multi_role',
       },
       {
         key: 'replace_me_role_id',
@@ -156,6 +171,14 @@ export const FeatureRegistry: Record<string, Feature> = {
         description: 'Allow the bot to send log information about tickets.',
         type: 'toggle',
         defaultValue: false,
+      },
+      {
+        key: 'welcome_message',
+        label: 'Welcome Message',
+        description:
+          'The message shown when a user is welcomed to a clan. Supports newlines and Discord formatting. Use {user} to mention them.',
+        type: 'modal',
+        defaultValue: '',
       },
     ],
   },

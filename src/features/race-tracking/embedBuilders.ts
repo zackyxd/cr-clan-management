@@ -143,7 +143,6 @@ export function buildRaceEmbed(
     });
 
   let description = '';
-  // console.log(stats);
   if (stats.type === 'training') {
     embed.setTitle('Training Day');
     stats.clans.forEach((clan, index) => {

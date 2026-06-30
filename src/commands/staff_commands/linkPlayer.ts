@@ -1,7 +1,6 @@
 import {
   ChatInputCommandInteraction,
   EmbedBuilder,
-  GuildMember,
   MessageFlags,
   SlashCommandBuilder,
   User,
@@ -43,7 +42,7 @@ const command: Command = {
     }
 
     // TODO figure out if possible to not ephemeral if successful link, but still show
-    const allowed = await checkPerms(interaction, guild.id, 'command', 'either', {
+    const allowed = await checkPerms(interaction, 'command', 'either', {
       hideNoPerms: true,
       deferEphemeral: true,
     });
@@ -101,7 +100,7 @@ const command: Command = {
       }
     } catch (error) {
       await client.query('ROLLBACK');
-      console.log(`error from link.ts`, error);
+      logger.error(`Error from link.ts`, error);
       await interaction.editReply({ content: `There was an error with linking: ${error}` });
       return;
     } finally {

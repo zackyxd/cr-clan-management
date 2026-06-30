@@ -6,6 +6,7 @@ import {
   ButtonStyle,
   ActionRowBuilder,
   TextChannel,
+  MessageFlags,
 } from 'discord.js';
 import { ticketService } from '../../features/tickets/service.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
@@ -17,7 +18,7 @@ const command: Command = {
   data: new SlashCommandBuilder().setName('ticket').setDescription('View information about the current ticket'),
 
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const guildId = interaction.guildId;
     const channelId = interaction.channelId;

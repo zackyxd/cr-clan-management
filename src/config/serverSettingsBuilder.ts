@@ -2,7 +2,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'disc
 import { pool } from '../db.js';
 import { BOTCOLOR } from '../types/EmbedUtil.js';
 import { makeCustomId } from '../utils/customId.js';
-import { Feature, FeatureRegistry, isFeatureEnabled, fetchInfoValue } from './featureRegistry.js';
+import { FeatureRegistry, isFeatureEnabled, fetchInfoValue } from './featureRegistry.js';
 import { storeServerSettingsData } from '../cache/serverSettingsDataCache.js';
 
 /**
@@ -69,7 +69,9 @@ export async function buildFeatureEmbedAndComponents(
     let displayValue = '';
 
     // Format display value based on setting type
-    if (setting.type === 'text' || setting.type === 'modal' || setting.type === 'swap') {
+    if (setting.key === 'welcome_message') {
+      displayValue = value ? '*Click the button to view*' : '*None*';
+    } else if (setting.type === 'text' || setting.type === 'modal' || setting.type === 'swap') {
       displayValue = `__${value || '*None*'}__`;
     } else if (setting.type === 'toggle') {
       displayValue = value ? '✅ Enabled' : '❌ Disabled';
@@ -77,6 +79,14 @@ export async function buildFeatureEmbedAndComponents(
       displayValue = value ? `<#${value}>` : '*None*';
     } else if (setting.type === 'number') {
       displayValue = String(value || setting.defaultValue || '*None*');
+    } else if (setting.type === 'multi_role') {
+      if (setting.key === 'staff_roles') {
+        const higher: string[] = settings['higher_leader_role_id'] || [];
+        const lower: string[] = settings['lower_leader_role_id'] || [];
+        const higherDisplay = higher.length > 0 ? higher.map((id: string) => `<@&${id}>`).join(', ') : '*None*';
+        const lowerDisplay = lower.length > 0 ? lower.map((id: string) => `<@&${id}>`).join(', ') : '*None*';
+        displayValue = `   * Higher: ${higherDisplay}\n   * Lower: ${lowerDisplay}`;
+      }
     } else if (setting.type === 'role') {
       displayValue = value ? `<@&${value}>` : '*None*';
     } else if (setting.type === 'info') {
@@ -92,8 +102,14 @@ export async function buildFeatureEmbedAndComponents(
     }
 
     // Add setting to description
-    description += `* **${setting.label}: ${displayValue}**\n`;
-    description += `  * ${setting.description}\n\n`;
+    if (setting.type === 'multi_role') {
+      description += `* **${setting.label}:**\n`;
+      description += `  * ${setting.description}\n`;
+      description += `${displayValue}\n\n`;
+    } else {
+      description += `* **${setting.label}: ${displayValue}**\n`;
+      description += `  * ${setting.description}\n\n`;
+    }
 
     // Create button based on setting type (skip for 'info' type)
     let button: ButtonBuilder | null = null;
@@ -115,7 +131,26 @@ export async function buildFeatureEmbedAndComponents(
         .setLabel(`${value ? 'Disable' : 'Enable'} ${setting.label}`)
         .setCustomId(makeCustomId('b', 'serverSettingToggle', guildId, { cooldown: 1, extra: [cacheKey] }))
         .setStyle(ButtonStyle.Primary);
-    } else if (setting.type === 'modal' || setting.type === 'channel' || setting.type === 'number' || setting.type === 'role') {
+    } else if (setting.type === 'multi_role') {
+      const cacheKey = storeServerSettingsData({
+        settingKey: setting.key,
+        featureName: featureName,
+        tableName: feature.tableName,
+        guildId: guildId,
+        ownerId: ownerId,
+        settingType: 'multi_role',
+      });
+
+      button = new ButtonBuilder()
+        .setLabel(`Change ${setting.label}`)
+        .setCustomId(makeCustomId('b', 'serverSettingOpenModal', guildId, { cooldown: 1, extra: [cacheKey] }))
+        .setStyle(ButtonStyle.Primary);
+    } else if (
+      setting.type === 'modal' ||
+      setting.type === 'channel' ||
+      setting.type === 'number' ||
+      setting.type === 'role'
+    ) {
       const cacheKey = storeServerSettingsData({
         settingKey: setting.key,
         featureName: featureName,

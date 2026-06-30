@@ -7,6 +7,7 @@ export const up = (pgm) => {
     closed_identifier: { type: 'varchar(30)', default: 'closed' },
     allow_append: { type: 'boolean', default: false },
     send_logs: { type: 'boolean', default: false },
+    welcome_message: { type: 'text', default: null },
   });
 
   pgm.createTable(

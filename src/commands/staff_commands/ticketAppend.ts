@@ -5,6 +5,7 @@ import { checkPerms } from '../../utils/checkPermissions.js';
 import { checkFeature } from '../../utils/checkFeatureEnabled.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { checkFeatureSetting } from '../../config/featureRegistry.js';
+import logger from '../../logger.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -33,7 +34,7 @@ const command: Command = {
       return;
     }
 
-    const allowed = await checkPerms(interaction, guild.id, 'command', 'either', {
+    const allowed = await checkPerms(interaction, 'command', 'either', {
       hideNoPerms: true,
       deferEphemeral: true,
     });
@@ -105,7 +106,7 @@ const command: Command = {
         .setColor(EmbedColor.SUCCESS);
       await interaction.editReply({ embeds: [embed] });
     } catch (error) {
-      console.log(error);
+      logger.error('Error appending to ticket', error);
     }
   },
 };

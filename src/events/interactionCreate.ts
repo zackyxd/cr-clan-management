@@ -3,6 +3,7 @@ import type { Interaction } from 'discord.js';
 import { Command } from '../types/Command.js';
 import { InteractionDispatcher } from '../infrastructure/handlers/interaction-dispatcher.js';
 import { StatsTracker } from '../services/statsTracker.js';
+import logger, { commandLogger } from '../logger.js';
 
 // import buttonHandler from "../interactions/buttonHandler";
 // import modalHandler from "../interactions/modalHandler";
@@ -12,11 +13,10 @@ import { StatsTracker } from '../services/statsTracker.js';
 export const event = {
   name: Events.InteractionCreate,
   async execute(interaction: Interaction) {
-    // console.log(interaction);
     if (interaction.isChatInputCommand()) {
       const command = interaction.client.commands.get(interaction.commandName) as Command | undefined;
       if (!command) {
-        return console.error(`❌ Command "${interaction.commandName}" not found.`);
+        return logger.error(`Command "${interaction.commandName}" not found.`);
       }
 
       const { cooldowns } = interaction.client;
@@ -48,18 +48,22 @@ export const event = {
       timestamps.set(interaction.user.id, now);
       setTimeout(() => timestamps.delete(interaction.user.id), cooldownAmount);
 
+      const options = interaction.options.data.map((o) => `${o.name}:${o.value ?? ''}`).join(' ');
+      commandLogger.info(
+        `/${interaction.commandName}${options ? ' ' + options : ''} | user:${interaction.user.id} guild:${interaction.guildId}`,
+      );
+
       try {
         await command.execute(interaction);
-        // Track command usage statistics
         if (interaction.guildId) {
           StatsTracker.increment(interaction.guildId, 'total_commands_used').catch(() => {});
         }
       } catch (err: unknown) {
-        console.error(`💥 Error in command "${interaction.commandName}":`, err);
+        logger.error(`Error in command "${interaction.commandName}":`, err);
 
         const reply = {
           content: 'There was an error while executing this command.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral as const,
         };
 
         // Check if error is a timeout
@@ -72,8 +76,7 @@ export const event = {
 
         if (interaction.replied || interaction.deferred) {
           await interaction.followUp(reply).catch(() => {
-            // Interaction may have expired, just log it
-            console.error(`Failed to send error follow-up for "${interaction.commandName}" - interaction expired`);
+            logger.warn(`Failed to send error follow-up for "${interaction.commandName}" - interaction expired`);
           });
         } else if (
           typeof err === 'object' &&
@@ -82,15 +85,24 @@ export const event = {
           (err as { code?: number }).code !== 10062
         ) {
           await interaction.reply(reply).catch(() => {
-            console.error(`Failed to reply with error for "${interaction.commandName}" - interaction may have expired`);
+            logger.warn(`Failed to reply with error for "${interaction.commandName}" - interaction may have expired`);
           });
+        }
+      }
+    } else if (interaction.isAutocomplete()) {
+      const command = interaction.client.commands.get(interaction.commandName) as Command | undefined;
+      if (command?.autocomplete) {
+        try {
+          await command.autocomplete(interaction);
+        } catch (err) {
+          logger.error(`Error in autocomplete for "${interaction.commandName}":`, err);
         }
       }
     } else if (interaction.isButton() || interaction.isModalSubmit() || interaction.isStringSelectMenu()) {
       // NEW: Route all interactions through the feature-based dispatcher
       try {
         await InteractionDispatcher.dispatch(interaction);
-        
+
         // Track interaction statistics
         if (interaction.guildId) {
           if (interaction.isButton()) {
@@ -100,12 +112,12 @@ export const event = {
           }
         }
       } catch (err: unknown) {
-        console.error('💥 Error in interaction dispatcher:', err);
+        logger.error('Error in interaction dispatcher:', err);
 
         // Try to respond if we haven't already
         const errorReply = {
           content: 'There was an error while processing this interaction.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral as const,
         };
 
         try {
@@ -117,7 +129,7 @@ export const event = {
             }
           }
         } catch (replyError) {
-          console.error('Failed to send error reply:', replyError);
+          logger.warn('Failed to send error reply:', replyError);
         }
       }
       // } else if (interaction.isStringSelectMenu()) {

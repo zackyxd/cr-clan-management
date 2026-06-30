@@ -68,7 +68,7 @@ for (const file of commandFiles) {
   if (command && command.data && typeof command.execute === 'function') {
     client.commands.set(command.data.name, command);
   } else {
-    console.warn(`Skipping invalid command file: ${file}`);
+    logger.warn(`Skipping invalid command file: ${file}`);
   }
 }
 

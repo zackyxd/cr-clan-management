@@ -21,7 +21,7 @@ const command: Command = {
 
     let playertag = interaction.options.getString('playertag') as string;
     playertag = normalizeTag(playertag);
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const playerRes = await pool.query(buildFindMember(guild.id, playertag));
     const foundDiscordUserId = playerRes?.rows[0]?.discord_id ?? null;
     if (!foundDiscordUserId) {

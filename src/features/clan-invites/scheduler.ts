@@ -23,16 +23,17 @@ interface ExpiredInvite {
 
 export class InviteScheduler {
   private intervalId: NodeJS.Timeout | null = null;
+  private memberCountIntervalId: NodeJS.Timeout | null = null;
   // TODO check if interval should be higher/lower?
-  private readonly CHECK_INTERVAL = 10 * 1000; // Check every 10 seconds
-
+  private readonly CHECK_INTERVAL_INVITES = 10 * 1000; // Check every 10 seconds
+  private readonly UPDATE_MEMBER_COUNTS = 60 * 1000;
   constructor(private client: Client) {}
 
   start() {
     if (this.intervalId) return;
     logger.info('Starting invite scheduler');
-    this.intervalId = setInterval(() => this.checkExpiredInvites(), this.CHECK_INTERVAL);
-
+    this.intervalId = setInterval(() => this.checkExpiredInvites(), this.CHECK_INTERVAL_INVITES);
+    this.memberCountIntervalId = setInterval(() => this.updateAllMemberCounts(), this.UPDATE_MEMBER_COUNTS);
     // Run on startup
     this.checkExpiredInvites();
   }
@@ -41,7 +42,26 @@ export class InviteScheduler {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
-      logger.info('Stopped invite scheduler');
+    }
+    if (this.memberCountIntervalId) {
+      clearInterval(this.memberCountIntervalId);
+      this.memberCountIntervalId = null;
+    }
+    logger.info('Stopped invite scheduler');
+  }
+
+  private async updateAllMemberCounts() {
+    try {
+      const result = await pool.query<{ guild_id: string; clantag: string }>(
+        `SELECT DISTINCT guild_id, clantag FROM clan_invite_links
+         WHERE expires_at > NOW() AND is_expired = FALSE`,
+      );
+
+      for (const { guild_id, clantag } of result.rows) {
+        await clanInviteService.refreshInviteMessageCounts(this.client, guild_id, clantag);
+      }
+    } catch (error) {
+      logger.error('Error updating invite member counts:', error);
     }
   }
 
@@ -83,7 +103,7 @@ export class InviteScheduler {
   }
 
   private async handleExpiredInvite(expiredInvite: ExpiredInvite) {
-    const { id, guild_id, clantag, clan_name, messages } = expiredInvite;
+    const { id, guild_id, clantag, messages } = expiredInvite;
 
     try {
       // 1. Get clan and settings info
@@ -210,7 +230,7 @@ export class InviteScheduler {
       }
 
       // 4. Mark invite as expired (only after all processing succeeds)
-      await clanInviteService.markInviteAsExpired(this.client, id, guild_id, clantag, clan_name);
+      await clanInviteService.markInviteAsExpired(this.client, id, guild_id, clantag);
       logger.info(`Successfully processed and marked invite ${id} as expired for clan ${clantag} in guild ${guild_id}`);
     } catch (error) {
       logger.error(`Error handling expired invite ${id}:`, error);

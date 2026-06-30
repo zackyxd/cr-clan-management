@@ -76,7 +76,7 @@ async function sendActivityLog(
   try {
     const channel = await client.channels.fetch(channelId).catch(() => null);
     if (!channel || !(channel instanceof TextChannel)) {
-      logger.warn(`[ClanActivityService] Channel ${channelId} not found or not a text channel`);
+      // logger.warn(`[ClanActivityService] Channel ${channelId} not found or not a text channel`);
       return;
     }
 

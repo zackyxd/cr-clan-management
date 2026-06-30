@@ -37,7 +37,7 @@ export class NudgesHandler {
     const { guildId, clantag, clanName } = settingsData;
 
     // Defer to allow time for DB operations
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const result = await clanSettingsService.toggleNudgeEnabled(
       interaction.client,
@@ -175,7 +175,7 @@ export class NudgesHandler {
       logger.error('[Nudges] Error showing modal:', error);
       await interaction.reply({
         content: '❌ Failed to show nudge settings modal.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }
@@ -193,7 +193,7 @@ export class NudgesHandler {
     if (!guildId) {
       await interaction.reply({
         content: 'This command can only be used in a server.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -201,7 +201,7 @@ export class NudgesHandler {
     if (!clantag) {
       await interaction.reply({
         content: 'Missing clan tag. Please try again.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -216,7 +216,7 @@ export class NudgesHandler {
       const customMessage = interaction.fields.getTextInputValue('nudge_custom_message').trim();
 
       // Check permissions (defers interaction if hideNoPerms is true)
-      const allowed = await checkPerms(interaction, guildId, 'modal', 'either', { hideNoPerms: true });
+      const allowed = await checkPerms(interaction, 'modal', 'either', { hideNoPerms: true });
       if (!allowed) return;
 
       const client = await pool.connect();
@@ -468,23 +468,21 @@ export class NudgesHandler {
         });
 
         // Update the original clan settings message
-        const messageId = interaction.message?.id;
-        if (messageId && interaction.channel) {
+        if (interaction.message) {
           try {
-            const message = await interaction.channel.messages.fetch(messageId);
             const { embed, components: newButtonRows } = await (
               await import('../config.js')
             ).buildClanSettingsView(guildId, clanName, clantag, interaction.user.id);
-            const selectMenuRowBuilder = (await import('../config.js')).getSelectMenuRowBuilder(message.components);
+            const selectMenuRowBuilder = (await import('../config.js')).getSelectMenuRowBuilder(
+              interaction.message.components,
+            );
 
-            await message.edit({
+            await interaction.editReply({
               embeds: [embed],
               components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
             });
-            logger.debug(`[Nudges] Updated clan settings message for ${clanName}`);
           } catch (error) {
             logger.warn('[Nudges] Could not update clan settings message:', error);
-            // Non-critical - user can refresh manually
           }
         }
 
@@ -501,7 +499,7 @@ export class NudgesHandler {
       // Use followUp if already deferred, reply otherwise
       const response = {
         content: '❌ Failed to update nudge settings.',
-        flags: MessageFlags.Ephemeral,
+        flags: MessageFlags.Ephemeral as const,
       };
 
       if (interaction.deferred || interaction.replied) {

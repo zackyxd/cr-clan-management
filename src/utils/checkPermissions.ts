@@ -37,7 +37,6 @@ export function checkPermissions(item: string, member: GuildMember, requiredRole
     PermissionsBitField.Flags.ManageGuild,
   ]);
   const flatRoles = requiredRoles.flat().filter(Boolean); // remove empty strings/undefined
-  // console.log(hasElevatedPerms);
   if (hasRole || hasElevatedPerms) return;
   let rolesNeeded: string;
   if (flatRoles.length === 0) {
@@ -75,7 +74,6 @@ function deferInteraction(interaction: InteractionTypes, ephemeral = false) {
  */
 export async function checkPerms(
   interaction: InteractionTypes,
-  guildId: string,
   interactionType: 'command' | 'button' | 'modal' | 'select menu',
   level: RoleLevel,
   opts: {
@@ -84,12 +82,19 @@ export async function checkPerms(
     skipDefer?: boolean; // for modal buttons
   },
 ): Promise<boolean> {
-  const { hideNoPerms = false, deferEphemeral = false, skipDefer = false } = opts;
-  // 1️⃣ Fetch member & required roles FIRST (don't defer yet)
-  const member = await interaction.guild?.members.fetch(interaction.user.id);
+  if (!interaction.guild) {
+    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ This can only be used in a server.', flags: MessageFlags.Ephemeral });
+    }
+    return false;
+  }
 
-  // 1️⃣ Check implicit permissions first (owner, admin, manage guild)
-  const isOwner = interaction.guild?.ownerId === interaction.user.id;
+  const guildId = interaction.guild.id;
+  const { hideNoPerms = false, deferEphemeral = false, skipDefer = false } = opts;
+
+  const member = await interaction.guild.members.fetch(interaction.user.id);
+
+  const isOwner = interaction.guild.ownerId === interaction.user.id;
   const hasAdmin = member?.permissions.has([
     PermissionsBitField.Flags.Administrator,
     PermissionsBitField.Flags.ManageGuild,
@@ -106,13 +111,11 @@ export async function checkPerms(
   const { lower_leader_role_id, higher_leader_role_id } = getRoles.rows[0] ?? {};
 
   let requiredRoleIds: string[] = [];
-  if (level === 'lower') requiredRoleIds = lower_leader_role_id ? [lower_leader_role_id] : [];
-  else if (level === 'higher') requiredRoleIds = higher_leader_role_id ? [higher_leader_role_id] : [];
-  else if (level === 'either')
-    requiredRoleIds = [lower_leader_role_id, higher_leader_role_id].filter(Boolean) as string[];
+  if (level === 'lower') requiredRoleIds = lower_leader_role_id || [];
+  else if (level === 'higher') requiredRoleIds = higher_leader_role_id || [];
+  else if (level === 'either') requiredRoleIds = [...(lower_leader_role_id || []), ...(higher_leader_role_id || [])];
 
-  console.log(requiredRoleIds.flat().filter(Boolean));
-  if (requiredRoleIds.flat().filter(Boolean).length === 0) {
+  if (requiredRoleIds.filter(Boolean).length === 0) {
     const embed = new EmbedBuilder().setColor(EmbedColor.WARNING);
 
     if (level === 'either') {

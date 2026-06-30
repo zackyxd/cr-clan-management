@@ -3,6 +3,7 @@ import { Command } from '../../types/Command.js';
 import { pool } from '../../db.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { unlinkUser } from '../../services/users.js';
+import logger from '../../logger.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -20,7 +21,7 @@ const command: Command = {
       return;
     }
 
-    const allowed = await checkPerms(interaction, guild.id, 'command', 'either', {
+    const allowed = await checkPerms(interaction, 'command', 'either', {
       hideNoPerms: true,
       deferEphemeral: true,
     });
@@ -36,7 +37,7 @@ const command: Command = {
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
-      console.log(error);
+      logger.error('Error in unlinkPlayer.ts', error);
       await interaction.editReply({ content: `There was an error with unlinking: ${error}` });
     } finally {
       client.release();

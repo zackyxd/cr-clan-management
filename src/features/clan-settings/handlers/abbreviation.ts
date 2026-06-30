@@ -1,6 +1,6 @@
 /**
  * Abbreviation Handler
- * 
+ *
  * Handles clan abbreviation modal (show + submission)
  */
 
@@ -23,11 +23,7 @@ export class AbbreviationHandler {
   /**
    * Show abbreviation modal
    */
-  static async showModal(
-    interaction: ButtonInteraction,
-    guildId: string,
-    clantag: string,
-  ): Promise<void> {
+  static async showModal(interaction: ButtonInteraction, guildId: string, clantag: string): Promise<void> {
     const modal = new ModalBuilder()
       .setTitle('Change Abbreviation')
       .setCustomId(makeCustomId('m', 'clanSettings_abbreviation', guildId, { extra: [clantag] }))
@@ -54,7 +50,7 @@ export class AbbreviationHandler {
     if (!clantag) {
       await interaction.reply({
         content: 'Missing clan tag. Please try again.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -71,17 +67,11 @@ export class AbbreviationHandler {
     }
 
     // Check permissions
-    const allowed = await checkPerms(interaction, guildId, 'modal', 'either', { hideNoPerms: true });
+    const allowed = await checkPerms(interaction, 'modal', 'either', { hideNoPerms: true });
     if (!allowed) return;
 
     // Update abbreviation using service
-    const result = await clanSettingsService.updateAbbreviation(
-      interaction.client,
-      guildId,
-      clantag,
-      abbreviation,
-      interaction.user.id,
-    );
+    const result = await clanSettingsService.updateAbbreviation(interaction.client, guildId, clantag, abbreviation);
 
     if (!result.success) {
       await interaction.followUp({
@@ -115,13 +105,12 @@ export class AbbreviationHandler {
 
     // Update the original message
     try {
-      await interaction.message.edit({
+      await interaction.editReply({
         embeds: [embed],
         components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
       });
     } catch (error) {
       logger.error('[Abbreviation] Failed to edit message:', error);
-      // Continue anyway to send confirmation
     }
 
     logger.info(

@@ -29,7 +29,7 @@ const command: Command = {
       return;
     }
 
-    const allowed = await checkPerms(interaction, guild.id, 'command', 'upper', {
+    const allowed = await checkPerms(interaction, 'command', 'higher', {
       hideNoPerms: true,
       deferEphemeral: true,
     });

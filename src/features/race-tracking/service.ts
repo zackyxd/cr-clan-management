@@ -157,17 +157,18 @@ export async function getRaceAttacks(
 ): Promise<RaceAttacksData | null> {
   const clanData = await CR_API.getClan(raceData.clan.tag);
   if (isFetchError(clanData)) {
-    console.error(`[getRaceAttacks] Failed to fetch clan data for ${raceData.clan.tag}:`, clanData.reason);
+    logger.error(`[getRaceAttacks] Failed to fetch clan data for ${raceData.clan.tag}: ${clanData.reason}`);
     return null;
   }
 
   const members = clanData.memberList;
   if (!members || members.length === 0) {
-    console.log(`[getRaceAttacks] No members found for clan ${raceData.clan.tag}`);
+    logger.warn(`[getRaceAttacks] No members found for clan ${raceData.clan.tag}`);
     return null;
   }
 
   const memberTags = new Set(members.map((m) => m.tag));
+  const memberRoles = new Map(members.map((m) => [m.tag, (m as Record<string, unknown>).role as string | undefined]));
   const activeMembers = raceData.clan.participants.filter((p) => memberTags.has(p.tag) || p.decksUsedToday > 0);
 
   if (activeMembers.length === 0) {
@@ -181,7 +182,6 @@ export async function getRaceAttacks(
   const playertags = activeMembers.map((m) => m.tag);
 
   const currentDay = getWarDay(raceData);
-
   const attacksQuery = await pool.query(
     `
     SELECT 
@@ -220,7 +220,7 @@ export async function getRaceAttacks(
       totalDecks: number;
       clansAttackedIn: string[];
       clanNamesAttackedIn: string[];
-      pingUser: boolean;
+      pingUser: string;
       isReplacementPlayer: boolean;
       isAttackingLate: boolean;
       discordId: string | null;
@@ -231,7 +231,7 @@ export async function getRaceAttacks(
       totalDecks: row.total_attacks,
       clansAttackedIn: row.clans_attacked_in || [],
       clanNamesAttackedIn: row.clan_names_attacked_in || [],
-      pingUser: row.ping_user ?? true,
+      pingUser: row.ping_user ?? 'regular',
       isReplacementPlayer: row.is_replace_me || false,
       isAttackingLate: row.is_attacking_late || false,
       discordId: row.discord_id || null,
@@ -264,7 +264,8 @@ export async function getRaceAttacks(
         isSplitAttacker: clantagsAttacked.length > 1,
         isInClan,
         hasAttackedElsewhere,
-        pingUser: attackData?.pingUser ?? true,
+        pingUser: attackData?.pingUser ?? 'regular',
+        clanRole: memberRoles.get(member.tag),
         isReplacementPlayer: attackData?.isReplacementPlayer || false,
         isAttackingLate: attackData?.isAttackingLate || false,
         discordUserId: attackData?.discordId || undefined,
@@ -505,7 +506,7 @@ export async function createDaySnapshot(
 ): Promise<boolean> {
   try {
     if (!raceData) {
-      console.log(`[Snapshot] No race data available to create snapshot for race ${raceId} day ${day}`);
+      logger.warn(`[Snapshot] No race data available to create snapshot for race ${raceId} day ${day}`);
       return false;
     }
 
@@ -516,14 +517,14 @@ export async function createDaySnapshot(
       // Get the attacks data (what /attacks would show)
       const attacksData = await getRaceAttacks(guildId, raceId, raceData, seasonId, warWeek);
       if (!attacksData) {
-        console.error(`[Snapshot] Failed to get race attacks data for race ${raceId} day ${day}`);
+        logger.error(`[Snapshot] Failed to get race attacks data for race ${raceId} day ${day}`);
         await client.query('ROLLBACK');
         return false;
       }
 
       const raceStatsData = await getRaceStats(guildId, raceData);
       if (!raceStatsData) {
-        console.error(`[Snapshot] Failed to get race stats data for race ${raceId} day ${day}`);
+        logger.error(`[Snapshot] Failed to get race stats data for race ${raceId} day ${day}`);
         await client.query('ROLLBACK');
         return false;
       }
@@ -572,7 +573,6 @@ export async function createDaySnapshot(
       if (attacksData.participants.some((p) => p.isAttackingLate)) legend.push('⏰ Attacking Late');
       if (attacksData.participants.some((p) => !p.isInClan)) legend.push('❌ Left Clan');
 
-      // console.log(raceStatsData);
       // Build complete snapshot data (raw + computed)
       const snapshotData = {
         rawApiData: raceData, // Store raw API response
@@ -623,7 +623,7 @@ export async function createDaySnapshot(
       client.release();
     }
   } catch (error) {
-    console.error(`[Snapshot] Error creating snapshot:`, error);
+    logger.error(`[Snapshot] Error creating snapshot:`, error);
     return false;
   }
 }
@@ -691,13 +691,13 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
   // 6. Return race_id
   const raceData = await CR_API.getCurrentRiverRace(clantag);
   if (isFetchError(raceData)) {
-    console.error(`[Race Init] Failed to fetch current race for ${clantag}:`, raceData.reason);
+    logger.error(`[Race Init] Failed to fetch current race for ${clantag}: ${raceData.reason}`);
     return null;
   }
 
   const rrLog = await CR_API.getRiverRaceLog(clantag);
   if (isFetchError(rrLog)) {
-    console.error(`[Race Init] Failed to fetch river race log for ${clantag}:`, rrLog.reason);
+    logger.error(`[Race Init] Failed to fetch river race log for ${clantag}: ${rrLog.reason}`);
     return null;
   }
   const seasonId: number | null = detectSeasonId(rrLog, raceData);
@@ -705,6 +705,15 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
   const warWeek: number = getWarWeek(raceData);
   const periodType = raceData.periodType;
   const clanName = raceData.clan.name;
+
+  // Update clan war trophies if changed
+  const clanScore = raceData.clan.clanScore;
+  if (clanScore != null) {
+    await pool.query(`UPDATE clans SET clan_trophies = $1 WHERE clantag = $2 AND clan_trophies IS DISTINCT FROM $1`, [
+      clanScore,
+      clantag,
+    ]);
+  }
 
   // Get existing race data in one query (including fields needed for rollover detection)
   const existingRace = await pool.query(
@@ -818,7 +827,6 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
         // scheduleAvailableSheetRefresh(guildId);
       }
     }
-    // console.log('Updated race record for', clantag, raceId);
   } else {
     // No existing race for this week/season - finalize previous race if needed
     logger.info(
@@ -921,7 +929,7 @@ async function performRaceUpdate(clantag: string): Promise<RaceUpdateResult | nu
     );
     raceId = result.rows[0].race_id;
     endTime = result.rows[0].end_time;
-    console.log('Created new race record for', clantag, raceId);
+    logger.info(`Created new race record for ${clantag} (race_id=${raceId})`);
   }
 
   // Update participant tracking with fresh data
@@ -967,7 +975,7 @@ export async function updateParticipantTracking(
   // 2. Handle players who left clan (remove from tracking or mark inactive)
 
   if (!participants || participants.length === 0) {
-    console.log('No participants to track for', clantag);
+    logger.warn(`No participants to track for ${clantag}`);
     return;
   }
 
@@ -1071,10 +1079,9 @@ export async function updateParticipantTracking(
       );
     }
     await client.query('COMMIT');
-    // console.log(`Updated participant tracking for ${participants.length} participants in clan ${clantag}`);
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error updating participant tracking:', error);
+    logger.error('Error updating participant tracking:', error);
     throw error;
   } finally {
     client.release();
@@ -1231,7 +1238,7 @@ async function postRolloverToStaffChannels(
   guildIds: string[],
 ): Promise<void> {
   if (!discordClient) {
-    console.error('[Rollover] Discord client not set, cannot post to staff channels');
+    logger.error('[Rollover] Discord client not set, cannot post to staff channels');
     return;
   }
 
@@ -1262,7 +1269,7 @@ async function postRolloverToStaffChannels(
       try {
         const channel = await discordClient.channels.fetch(staffChannelId);
         if (!channel || !channel.isTextBased()) {
-          console.error(`[Rollover] Channel ${staffChannelId} not found or not text-based`);
+          logger.warn(`[Rollover] Channel ${staffChannelId} not found or not text-based`);
           continue;
         }
 
@@ -1291,11 +1298,11 @@ async function postRolloverToStaffChannels(
           });
         }
       } catch (error) {
-        console.error(`[Rollover] Failed to post to channel ${staffChannelId}:`, error);
+        logger.error(`[Rollover] Failed to post to channel ${staffChannelId}:`, error);
       }
     }
   } catch (error) {
-    console.error(`[Rollover] Failed to post rollover summaries for ${clantag}:`, error);
+    logger.error(`[Rollover] Failed to post rollover summaries for ${clantag}:`, error);
   }
 }
 
@@ -1317,12 +1324,12 @@ export async function postRacePingsToChannels(
   messages?: Map<string, string>, // Optional map of playertag -> message
 ): Promise<void> {
   if (!playertags || playertags.length === 0) {
-    console.log('No playertags provided');
+    logger.warn('[Race Pings] No playertags provided');
     return;
   }
 
   if (!discordClient) {
-    console.error('[Race Pings] Discord client not set');
+    logger.error('[Race Pings] Discord client not set');
     return;
   }
 
@@ -1419,7 +1426,7 @@ export async function postRacePingsToChannels(
     try {
       const channel = await discordClient.channels.fetch(channelId);
       if (!channel || !channel.isTextBased()) {
-        console.error(`[Race Pings] Channel ${channelId} not found or not text-based`);
+        logger.warn(`[Race Pings] Channel ${channelId} not found or not text-based`);
         continue;
       }
 
@@ -1445,7 +1452,7 @@ export async function postRacePingsToChannels(
         content: data.rolePing,
       });
     } catch (error) {
-      console.error(`[Race Pings] Failed to send message to channel ${channelId}:`, error);
+      logger.error(`[Race Pings] Failed to send message to channel ${channelId}:`, error);
     }
   }
 }

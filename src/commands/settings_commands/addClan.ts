@@ -1,8 +1,9 @@
-import { ChatInputCommandInteraction, GuildMember, MessageFlags, SlashCommandBuilder } from 'discord.js';
+import { ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { pool } from '../../db.js';
 import { Command } from '../../types/Command.js';
-import { buildCheckHasRoleQuery, checkPermissions } from '../../utils/checkPermissions.js';
+import { checkPerms } from '../../utils/checkPermissions.js';
 import { linkClan } from '../../services/clans.js';
+import logger from '../../logger.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -14,11 +15,10 @@ const command: Command = {
         .setName('abbreviation')
         .setDescription('10 character max abbreviation for this clan')
         .setRequired(true)
-        .setMaxLength(10)
+        .setMaxLength(10),
     ),
   async execute(interaction: ChatInputCommandInteraction): Promise<void> {
     const guild = interaction.guild;
-    const userId = interaction.user.id;
 
     if (!guild) {
       await interaction.reply({ content: '❌ This command must be used in a server.', flags: MessageFlags.Ephemeral });
@@ -27,16 +27,12 @@ const command: Command = {
 
     // TODO think about if i need a checkFeatureEnbabled() check here
 
-    const member = interaction.member instanceof GuildMember ? interaction.member : await guild.members.fetch(userId);
-    const getRoles = await pool.query(buildCheckHasRoleQuery(guild.id));
-    const { higher_leader_role_id } = getRoles.rows[0] ?? [];
-    const requiredRoleIds = [higher_leader_role_id].filter(Boolean) as string[];
-    const hasPerms = await checkPermissions('command', member, requiredRoleIds);
-    if (hasPerms && hasPerms.data) {
-      await interaction.reply({ embeds: [hasPerms], flags: MessageFlags.Ephemeral });
-      return;
-    }
-    await interaction.deferReply();
+    const allowed = await checkPerms(interaction, 'command', 'higher', {
+      hideNoPerms: true,
+      deferEphemeral: true,
+    });
+    if (!allowed) return;
+    // await interaction.deferReply();
 
     const clantag = interaction.options.getString('clantag') as string;
     const abbreviation = interaction.options.getString('abbreviation') as string;
@@ -49,7 +45,7 @@ const command: Command = {
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
-      console.log(`error from addClan.ts`, error);
+      logger.error(`Error from addClan.ts`, error);
       await interaction.editReply({ content: `There was an error with linking: ${error}` });
     } finally {
       client.release();

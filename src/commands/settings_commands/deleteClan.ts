@@ -3,6 +3,7 @@ import { checkPerms } from '../../utils/checkPermissions.js';
 import { pool } from '../../db.js';
 import { normalizeTag } from '../../api/CR_API.js';
 import { Command } from '../../types/Command.js';
+import logger from '../../logger.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -19,7 +20,7 @@ const command: Command = {
       return;
     }
 
-    const allowed = await checkPerms(interaction, guild.id, 'command', 'either', {
+    const allowed = await checkPerms(interaction, 'command', 'either', {
       hideNoPerms: true,
       deferEphemeral: true,
     });
@@ -43,6 +44,7 @@ const command: Command = {
         return;
       }
       await client.query('COMMIT');
+      logger.info(`[Clan Remove] ${clantag} removed from guild:${guild.id} by user:${interaction.user.id}`);
       await interaction.editReply({
         content: `✅ Clan with tag or abbreviation **${clantag}** has been unlinked.`,
       });

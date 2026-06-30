@@ -3,6 +3,7 @@ import 'dotenv-flow/config';
 import z from 'zod';
 import { EmbedBuilder } from 'discord.js';
 import { limitedGet } from './crApiClient.js';
+import logger from '../logger.js';
 
 export function normalizeTag(rawTag: string): string {
   const tag = rawTag.trim().toUpperCase().replace(/O/gi, '0').replace(/\s+/g, '');
@@ -37,7 +38,6 @@ export async function fetchData<T>(
   endpoint?: string,
   identifier?: string,
 ): Promise<T | FetchError> {
-  // console.log('api call');
   try {
     const data = await limitedGet<T>(url, endpoint, identifier);
     if (!data) {
@@ -54,6 +54,7 @@ export async function fetchData<T>(
   } catch (error: unknown) {
     if (isAxiosError(error)) {
       const status = error.response?.status ?? 500;
+      // logger.warn(`[CR API] ${kind} ${tag} failed: HTTP ${status} (${endpoint || url})`);
       if (status === 503) {
         return {
           error: true,
@@ -91,6 +92,7 @@ export async function fetchData<T>(
       };
     }
 
+    logger.error(`[CR API] ${kind} ${tag} failed with non-Axios error:`, error);
     return {
       error: true,
       statusCode: 500,

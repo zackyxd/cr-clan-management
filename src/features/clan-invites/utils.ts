@@ -32,17 +32,23 @@ export function parseInviteLink(inviteLink: string): ParsedInviteLink | null {
 /**
  * Format a clan invite link for display in Discord
  */
-export function formatInviteLink(clanName: string, inviteLink: string, expiresAt: Date): string {
+export function formatInviteLink(clanName: string, inviteLink: string, expiresAt: Date, members?: number): string {
   const expiryUnix = Math.floor(expiresAt.getTime() / 1000);
-  return `## **[Click here to join ${clanName}](<${inviteLink}>)**\n-# Expires: <t:${expiryUnix}:R>`;
+  const memberLine = members !== undefined ? ` | ${members}/50` : '';
+  return `## **[Click here to join ${clanName}](<${inviteLink}>)**\n-# Expires: <t:${expiryUnix}:R>${memberLine}`;
 }
 
 /**
  * Create an invite embed for sending/displaying
  */
-export function createInviteEmbed(clanName: string, inviteLink: string, expiresAt: Date): EmbedBuilder {
+export function createInviteEmbed(
+  clanName: string,
+  inviteLink: string,
+  expiresAt: Date,
+  members?: number,
+): EmbedBuilder {
   return new EmbedBuilder()
-    .setDescription(formatInviteLink(clanName, inviteLink, expiresAt))
+    .setDescription(formatInviteLink(clanName, inviteLink, expiresAt, members))
     .setColor(EmbedColor.SUCCESS);
 }
 

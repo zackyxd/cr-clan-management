@@ -28,62 +28,7 @@ import { MemberData } from '../../utils/memberChannelHelpers.js';
 import { buildMemberChannelCheckUI } from '../../utils/memberChannelCheckHelpers.js';
 import logger from '../../logger.js';
 import { MAX_MEMBER_CHANNEL_ACCOUNTS } from '../../config/constants.js';
-
-// ====== DEV TESTING: Remove after verification ======
-const DEV_FAKE_DATA = true;
-const FAKE_MEMBERS: MemberData[] = [
-  { discordId: '111111111111111101', players: [{ tag: '#FKY8QJ2C', name: 'DarkPrince' }] },
-  { discordId: '111111111111111102', players: [{ tag: '#FKP2QRJV', name: 'StormBreaker' }] },
-  { discordId: '111111111111111103', players: [{ tag: '#FKL9CG2Y', name: 'IceMaster99' }] },
-  { discordId: '111111111111111104', players: [{ tag: '#FKR4VJ8Q', name: 'GoblinKing' }] },
-  { discordId: '111111111111111105', players: [{ tag: '#FKU7WK3N', name: 'RoyalGhost' }] },
-  { discordId: '111111111111111106', players: [{ tag: '#FKJ2QP8V', name: 'ElectroDragon' }] },
-  { discordId: '111111111111111107', players: [{ tag: '#FKK3LM9N', name: 'ShadowHunter' }] },
-  { discordId: '111111111111111108', players: [{ tag: '#FKT8RV2W', name: 'BlazeFury' }] },
-  { discordId: '111111111111111109', players: [{ tag: '#FKM5NP7Q', name: 'ThunderStrike' }] },
-  { discordId: '111111111111111110', players: [{ tag: '#FKG2HJ4K', name: 'FrostBite' }] },
-  { discordId: '111111111111111111', players: [{ tag: '#FKW9XY1Z', name: 'WarriorX' }] },
-  { discordId: '111111111111111112', players: [{ tag: '#FKA3BC4D', name: 'MegaKnight' }] },
-  { discordId: '111111111111111113', players: [{ tag: '#FKE5FG6H', name: 'DragonSlayer' }] },
-  { discordId: '111111111111111114', players: [{ tag: '#FKI7JK8L', name: 'WizardPro' }] },
-  { discordId: '111111111111111115', players: [{ tag: '#FKM9NO0P', name: 'KnightRider' }] },
-  { discordId: '111111111111111116', players: [{ tag: '#FKQ1RS2T', name: 'GolemMaster' }] },
-  { discordId: '111111111111111117', players: [{ tag: '#FKU3VW4X', name: 'BanditQueen' }] },
-  { discordId: '111111111111111118', players: [{ tag: '#FKY5ZA6B', name: 'ClanWarrior' }] },
-  { discordId: '111111111111111119', players: [{ tag: '#FKC7DE8F', name: 'BattleChamp' }] },
-  { discordId: '111111111111111120', players: [{ tag: '#FKG9HI0J', name: 'TrophyHunter' }] },
-  { discordId: '111111111111111121', players: [{ tag: '#FKK1LM2N', name: 'ArenaKing' }] },
-  { discordId: '111111111111111122', players: [{ tag: '#FKO3PQ4R', name: 'LavaHound' }] },
-  { discordId: '111111111111111123', players: [{ tag: '#FKS5TU6V', name: 'SparkyGod' }] },
-  { discordId: '111111111111111124', players: [{ tag: '#FKW7XY8Z', name: 'BowlerBoss' }] },
-  { discordId: '111111111111111125', players: [{ tag: '#FKA9BC0D', name: 'EliteBarbs' }] },
-  { discordId: '111111111111111126', players: [{ tag: '#FKE1FG2H', name: 'MinerKing' }] },
-  { discordId: '111111111111111127', players: [{ tag: '#FKI3JK4L', name: 'PoisonMaster' }] },
-  { discordId: '111111111111111128', players: [{ tag: '#FKM5NO6P', name: 'RamRider' }] },
-  { discordId: '111111111111111129', players: [{ tag: '#FKQ7RS8T', name: 'RocketQueen' }] },
-  { discordId: '111111111111111130', players: [{ tag: '#FKU9VW0X', name: 'HogCycle' }] },
-  { discordId: '111111111111111131', players: [{ tag: '#FKY1ZA2B', name: 'XbowGod' }] },
-  { discordId: '111111111111111132', players: [{ tag: '#FKC3DE4F', name: 'MortarKing' }] },
-  { discordId: '111111111111111133', players: [{ tag: '#FKG5HI6J', name: 'GraveyardPro' }] },
-  { discordId: '111111111111111134', players: [{ tag: '#FKK7LM8N', name: 'LumberjackX' }] },
-  { discordId: '111111111111111135', players: [{ tag: '#FKO9PQ0R', name: 'NightWitch' }] },
-  { discordId: '111111111111111136', players: [{ tag: '#FKS1TU2V', name: 'InfernoDragon' }] },
-  { discordId: '111111111111111137', players: [{ tag: '#FKW3XY4Z', name: 'BabyDragon' }] },
-  { discordId: '111111111111111138', players: [{ tag: '#FKA5BC6D', name: 'MagicArcher' }] },
-  { discordId: '111111111111111139', players: [{ tag: '#FKE7FG8H', name: 'Executioner' }] },
-  { discordId: '111111111111111140', players: [{ tag: '#FKI9JK0L', name: 'PekkaSmash' }] },
-  { discordId: '111111111111111141', players: [{ tag: '#FKM1NO2P', name: 'RoyaleGiant' }] },
-  { discordId: '111111111111111142', players: [{ tag: '#FKQ3RS4T', name: 'ElectroGiant' }] },
-  { discordId: '111111111111111143', players: [{ tag: '#FKU5VW6X', name: 'WallBreaker' }] },
-  { discordId: '111111111111111144', players: [{ tag: '#FKY7ZA8B', name: 'RoyalHogs' }] },
-  { discordId: '111111111111111145', players: [{ tag: '#FKC9DE0F', name: 'FlyingMachine' }] },
-  { discordId: '111111111111111146', players: [{ tag: '#FKG1HI2J', name: 'ZappyBoi' }] },
-  { discordId: '111111111111111147', players: [{ tag: '#FKK3LX4N', name: 'CannonCart' }] },
-  { discordId: '111111111111111148', players: [{ tag: '#FKO5PX6R', name: 'DarkKnight' }] },
-  { discordId: '111111111111111149', players: [{ tag: '#FKS7TX8V', name: 'TornadoKing' }] },
-  { discordId: '111111111111111150', players: [{ tag: '#FKW8YZ9A', name: 'FireballPro' }] },
-];
-// ====== END DEV TESTING ======
+import { checkPerms } from '../../utils/checkPermissions.js';
 
 /**
  * Router for member channel interactions
@@ -173,8 +118,6 @@ export class MemberChannelInteractionRouter {
       return;
     }
 
-    console.log(`data received for account selection`, data);
-
     // Extract short ID (timestamp) from full sessionId for use in customIds
     const shortSessionId = sessionId.split('_')[2]; // guildId_userId_TIMESTAMP
 
@@ -195,7 +138,6 @@ export class MemberChannelInteractionRouter {
       `memberChannel_accounts_${shortSessionId}_${userIndex}`,
       interaction.guildId!,
     );
-    console.log(`[Select Menu] Custom ID length: ${selectCustomId.length}, ID: ${selectCustomId}`);
 
     const select = new StringSelectMenuBuilder()
       .setCustomId(selectCustomId)
@@ -214,8 +156,6 @@ export class MemberChannelInteractionRouter {
 
     // Create "Any X accounts" button to open modal
     const buttonCustomId = makeCustomId('b', `memberChannel_any_${shortSessionId}_${userIndex}`, interaction.guildId!);
-    console.log(`[Button] Custom ID length: ${buttonCustomId.length}, ID: ${buttonCustomId}`);
-
     const anyButton = new ButtonBuilder()
       .setCustomId(buttonCustomId)
       .setLabel('Any X Accounts')
@@ -242,7 +182,7 @@ export class MemberChannelInteractionRouter {
         await interaction.update(updateData);
       }
     } catch (error) {
-      console.error('[showAccountSelection] Error updating interaction:', error);
+      logger.error('[showAccountSelection] Error updating interaction:', error);
       throw error;
     }
   }
@@ -253,7 +193,6 @@ export class MemberChannelInteractionRouter {
    */
   static async handleAccountSelection(interaction: StringSelectMenuInteraction, parsed: ParsedCustomId) {
     await interaction.deferUpdate();
-    console.log('handleaccountselection');
     // Extract short sessionId and userIndex from action: 'memberChannel_accounts_<shortId>_<userIndex>'
     const parts = parsed.action.replace('memberChannel_accounts_', '').split('_');
     const userIndex = parseInt(parts.pop()!, 10);
@@ -261,8 +200,6 @@ export class MemberChannelInteractionRouter {
 
     // Reconstruct full sessionId (handle both regular and add mode)
     let sessionId = `${parsed.guildId}_${interaction.user.id}_${shortSessionId}`;
-    console.log(`[handleAccountSelection] Short ID: ${shortSessionId}, Full sessionId: ${sessionId}`);
-
     let session = memberChannelService.getSession(sessionId);
     if (!session) {
       // Try with '_add' suffix
@@ -297,10 +234,6 @@ export class MemberChannelInteractionRouter {
       return;
     }
 
-    console.log(
-      `[handleAccountSelection] After save - currentUserIndex: ${updatedSession.currentUserIndex}, total users: ${updatedSession.multipleAccountUserIds.length}`,
-    );
-
     // Check if more users need selection, or show final confirmation
     if (updatedSession.currentUserIndex < updatedSession.multipleAccountUserIds.length) {
       await this.showAccountSelection(interaction, sessionId, updatedSession.currentUserIndex);
@@ -331,7 +264,7 @@ export class MemberChannelInteractionRouter {
     }
 
     if (!session) {
-      await interaction.reply({ content: '❌ Session expired', ephemeral: true });
+      await interaction.reply({ content: '❌ Session expired', flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -429,10 +362,6 @@ export class MemberChannelInteractionRouter {
       return;
     }
 
-    console.log(
-      `[handleAnyAccountsModal] After save - currentUserIndex: ${updatedSession.currentUserIndex}, total users: ${updatedSession.multipleAccountUserIds.length}`,
-    );
-
     // Continue to next user or final confirmation
     if (updatedSession.currentUserIndex < updatedSession.multipleAccountUserIds.length) {
       await this.showAccountSelection(interaction, sessionId, updatedSession.currentUserIndex);
@@ -462,39 +391,6 @@ export class MemberChannelInteractionRouter {
       });
       return;
     }
-
-    // DEV TESTING: Remove after verification
-    if (DEV_FAKE_DATA) {
-      for (const member of FAKE_MEMBERS) {
-        if (Array.isArray(member.players)) {
-          finalData.accounts.set(member.discordId, member.players);
-        } else if ('type' in member.players && member.players.type === 'any') {
-          finalData.accounts.set(member.discordId, member.players);
-        }
-      }
-    }
-
-    console.log('=== Final Confirmation Data ===');
-    console.log('Channel Name:', finalData.channelName);
-    console.log('Accounts (Map):', finalData.accounts);
-    console.log('Accounts (Array):', Array.from(finalData.accounts.entries()));
-    console.log('Clan Info:', finalData.clanInfo);
-    console.log(
-      'Full Data JSON:',
-      JSON.stringify(
-        {
-          channelName: finalData.channelName,
-          accounts: Array.from(finalData.accounts.entries()).map(([discordId, players]) => ({
-            discordId,
-            players,
-          })),
-          clanInfo: finalData.clanInfo,
-        },
-        null,
-        2,
-      ),
-    );
-    console.log(finalData);
 
     // Build description with all accounts
     const isAddMode = session.mode === 'add_member';
@@ -543,7 +439,6 @@ export class MemberChannelInteractionRouter {
     description += invalidPeople + '\n';
     description += `**Total:** ${totalAccountCount} account${totalAccountCount !== 1 ? 's' : ''} • ${finalData.accounts.size} member${finalData.accounts.size !== 1 ? 's' : ''}`;
     const embedTitle = isAddMode ? 'Confirm Adding Members' : 'Confirm Member Channel Creation';
-    console.log(`[DEBUG] Description length: ${description.length}/4096, accounts: ${totalAccountCount}`);
 
     if (description.length > 4096) {
       await interaction.editReply({
@@ -556,8 +451,6 @@ export class MemberChannelInteractionRouter {
 
     const embed = new EmbedBuilder().setTitle(embedTitle).setDescription(description).setColor('Green');
 
-    console.log(`[Embed Character Count] ${description.length}/4096`);
-
     // Extract short ID (timestamp) from full sessionId
     const shortSessionId = sessionId.split('_')[2];
 
@@ -565,8 +458,6 @@ export class MemberChannelInteractionRouter {
     const confirmCustomId = makeCustomId('b', `memberChannel_confirm_${shortSessionId}`, interaction.guildId!, {
       cooldown: 5,
     });
-    console.log(`[Confirm Button] Custom ID length: ${confirmCustomId.length}, ID: ${confirmCustomId}`);
-
     const confirmButtonLabel = isAddMode ? 'Add Members' : 'Create Channel';
     const confirmButton = new ButtonBuilder()
       .setCustomId(confirmCustomId)
@@ -576,8 +467,6 @@ export class MemberChannelInteractionRouter {
     const cancelCustomId = makeCustomId('b', `memberChannel_cancel_${shortSessionId}`, interaction.guildId!, {
       cooldown: 5,
     });
-    console.log(`[Cancel Button] Custom ID length: ${cancelCustomId.length}, ID: ${cancelCustomId}`);
-
     const cancelButton = new ButtonBuilder()
       .setCustomId(cancelCustomId)
       .setLabel('Cancel')
@@ -620,8 +509,6 @@ export class MemberChannelInteractionRouter {
       sessionId = `${parsed.guildId}_${interaction.user.id}_${shortSessionId}_add`;
       session = memberChannelService.getSession(sessionId);
     }
-
-    console.log(`[handleConfirmButton] Short ID: ${shortSessionId}, Full sessionId: ${sessionId}`);
 
     if (!interaction.guild) {
       await interaction.editReply({
@@ -697,8 +584,6 @@ export class MemberChannelInteractionRouter {
 
     // Reconstruct full sessionId (handle both regular and add mode)
     let sessionId = `${parsed.guildId}_${interaction.user.id}_${shortSessionId}`;
-    console.log(`[handleCancelButton] Short ID: ${shortSessionId}, Full sessionId: ${sessionId}`);
-
     // Clean up the session
     let session = memberChannelService.getSession(sessionId);
     if (!session) {
@@ -734,8 +619,6 @@ export class MemberChannelInteractionRouter {
 
     // Reconstruct full sessionId (handle both regular and add mode)
     let sessionId = `${parsed.guildId}_${interaction.user.id}_${shortSessionId}`;
-    console.log(`[handleContinueButton] Short ID: ${shortSessionId}, Full sessionId: ${sessionId}`);
-
     let session = memberChannelService.getSession(sessionId);
     if (!session) {
       // Try with '_add' suffix
@@ -765,10 +648,6 @@ export class MemberChannelInteractionRouter {
       await interaction.editReply({ content: '❌ Session expired', components: [] });
       return;
     }
-
-    console.log(
-      `[handleContinueButton] After skip - currentUserIndex: ${updatedSession.currentUserIndex}, total users: ${updatedSession.multipleAccountUserIds.length}`,
-    );
 
     // Continue to next user or final confirmation
     if (updatedSession.currentUserIndex < updatedSession.multipleAccountUserIds.length) {
@@ -998,7 +877,7 @@ export class MemberChannelInteractionRouter {
             try {
               await interaction.channel.permissionOverwrites.delete(discordId);
             } catch (error) {
-              console.warn(`[removeMember] Could not remove permissions for user ${discordId}:`, error);
+              logger.warn(`[removeMember] Could not remove permissions for user ${discordId}:`, error);
             }
           }
         }
@@ -1011,7 +890,7 @@ export class MemberChannelInteractionRouter {
         content: `✅ Successfully removed ${removedMembers.length} member(s)/account(s):\n${removedList}${moreCount}`,
       });
     } catch (error) {
-      console.error('[handleRemoveMemberModal] Error:', error);
+      logger.error('[handleRemoveMemberModal] Error:', error);
       await interaction.editReply({
         content: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
@@ -1022,7 +901,7 @@ export class MemberChannelInteractionRouter {
    * Handle modal submission for adding members
    */
   static async handleAddMemberModal(interaction: ModalSubmitInteraction, parsed: ParsedCustomId) {
-    // await interaction.deferReply({ ephemeral: true });
+    // await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const playertags = interaction.fields.getTextInputValue('addMemberPlayertagsInput');
     const discordIds = interaction.fields.getTextInputValue('addMemberDiscordIdsInput');
@@ -1105,7 +984,7 @@ export class MemberChannelInteractionRouter {
         await this.showFinalConfirmation(interaction, sessionId);
       }
     } catch (error) {
-      console.error('[handleAddMemberModal] Error:', error);
+      logger.error('[handleAddMemberModal] Error:', error);
       await interaction.editReply({
         content: `❌ Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
       });
@@ -1188,7 +1067,16 @@ export class MemberChannelInteractionRouter {
   // ============================================================================
 
   static async handleCheckMembersButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
-    await interaction.deferReply({ ephemeral: true });
+    if (!interaction.guild) {
+      interaction.reply('Invalid somehow, dm @Zackyxd');
+      return;
+    }
+
+    const allowed = await checkPerms(interaction, 'button', 'either', {
+      deferEphemeral: true,
+      hideNoPerms: true,
+    });
+    if (!allowed) return;
 
     const members = await pool.query(
       `
@@ -1214,8 +1102,6 @@ export class MemberChannelInteractionRouter {
     }
 
     const memberList = members.rows[0].members;
-    // DEV TESTING: Remove after verification
-    if (DEV_FAKE_DATA) memberList.push(...FAKE_MEMBERS);
 
     // Fetch clan info to check members against
     const clanInfo = await CR_API.getClan(members.rows[0].clantag_focus);
@@ -1273,7 +1159,6 @@ export class MemberChannelInteractionRouter {
     }
 
     const checkDesc = statusLines.join('\n') || 'No members to check';
-    console.log(`[Check Members] Description length: ${checkDesc.length}/4096`);
 
     const embed = new EmbedBuilder()
       .setTitle(`Member Status - ${members.rows[0].clan_name_focus}`)
@@ -1411,7 +1296,7 @@ export class MemberChannelInteractionRouter {
         });
       }
     } catch (error) {
-      console.error('Error updating clan focus:', error);
+      logger.error('Error updating clan focus:', error);
       await interaction.editReply({
         content: '❌ Failed to update clan focus.',
         embeds: [],
@@ -1421,9 +1306,7 @@ export class MemberChannelInteractionRouter {
   }
 
   static async handlePingMembersButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
-    await interaction.deferReply({ ephemeral: true });
-    console.log(parsed);
-
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const membersRes = await pool.query(
       `
       SELECT mc.clantag_focus, mc.clan_name_focus, mc.members, c.invites_enabled
@@ -1472,8 +1355,6 @@ export class MemberChannelInteractionRouter {
     }
 
     const memberList = membersRes.rows[0].members;
-    // DEV TESTING: Remove after verification
-    if (DEV_FAKE_DATA) memberList.push(...FAKE_MEMBERS);
 
     // Fetch clan info
     const clanInfo = await CR_API.getClan(clantagFocus);
@@ -1574,8 +1455,6 @@ export class MemberChannelInteractionRouter {
     }
 
     const pingDesc = embedLines.join('\n');
-    console.log(`[Ping Members] Description length: ${pingDesc.length}/4096`);
-
     const embed = new EmbedBuilder()
       .setTitle(`Missing Members - ${clanNameFocus}`)
       .setDescription(pingDesc)
@@ -1600,7 +1479,11 @@ export class MemberChannelInteractionRouter {
     }
 
     // Send to the channel (not ephemeral)
-    await interaction.channel?.send({
+    if (!interaction.channel?.isSendable()) {
+      await interaction.editReply({ content: '❌ Unable to send messages in this channel.' });
+      return;
+    }
+    await interaction.channel.send({
       content,
       embeds: [embed],
       components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joiningLateButton)],
@@ -1636,7 +1519,7 @@ export class MemberChannelInteractionRouter {
   }
 
   static async handleJoiningLateButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     // Fetch current members
 
@@ -1709,8 +1592,6 @@ export class MemberChannelInteractionRouter {
       if (membersRes.rowCount === 0) return;
 
       const memberList = membersRes.rows[0].members;
-      // DEV TESTING: Remove after verification
-      if (DEV_FAKE_DATA) memberList.push(...FAKE_MEMBERS);
 
       const clanNameFocus = membersRes.rows[0].clan_name_focus;
       const clantagFocus = membersRes.rows[0].clantag_focus;
@@ -1727,6 +1608,7 @@ export class MemberChannelInteractionRouter {
 
       // If there's no clan focus, just ping everyone
       if (!clanNameFocus || !clantagFocus) {
+        if (!channel.isSendable()) return;
         await channel.send({
           content: `${allPings} - Attention`,
           components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joiningLateButton)],
@@ -1738,6 +1620,7 @@ export class MemberChannelInteractionRouter {
       const clanInfo = await CR_API.getClan(clantagFocus);
       if ('error' in clanInfo || !clanInfo) {
         // If can't fetch clan info, just ping everyone
+        if (!channel.isSendable()) return;
         await channel.send({
           content: `${allPings}\n\n⚠️ Unable to check clan status for **${clanNameFocus}** at this time.`,
         });
@@ -1817,14 +1700,15 @@ export class MemberChannelInteractionRouter {
           allMembersDescription += '\n';
         }
 
-        console.log(`[Initial Status - All In Clan] Description length: ${allMembersDescription.trim().length}/4096`);
-
         const allInClanEmbed = new EmbedBuilder()
           .setTitle(`Member Channel Created - ${clanNameFocus}`)
           .setDescription(allMembersDescription.trim())
           .setColor(EmbedColor.SUCCESS)
           .setTimestamp();
 
+        if (!channel.isSendable()) {
+          return;
+        }
         await channel.send({
           content: allPings,
           embeds: [allInClanEmbed],
@@ -1856,8 +1740,6 @@ export class MemberChannelInteractionRouter {
       }
 
       const initialMissingDesc = embedLines.join('\n');
-      console.log(`[Initial Status - Missing] Description length: ${initialMissingDesc.length}/4096`);
-
       const embed = new EmbedBuilder()
         .setTitle(`Missing Members - ${clanNameFocus}`)
         .setDescription(initialMissingDesc)
@@ -1870,6 +1752,7 @@ export class MemberChannelInteractionRouter {
       const content = `Attention - Clan Movements for **${clanNameFocus}**: ${pings}.`;
 
       // Send to the channel
+      if (!channel.isSendable()) return;
       await channel.send({
         content,
         embeds: [embed],
@@ -1877,7 +1760,6 @@ export class MemberChannelInteractionRouter {
       });
 
       const invitesEnabled = membersRes.rows[0].invites_enabled;
-      console.log(invitesEnabled);
       if (!invitesEnabled) {
         const embed = new EmbedBuilder()
           .setDescription(`⚠️ Invites are currently disabled for **${clanNameFocus}**.`)
@@ -1898,7 +1780,7 @@ export class MemberChannelInteractionRouter {
         );
 
         if (!message) {
-          console.error('[sendInitialMemberStatus] Failed to send invite link');
+          logger.error('[sendInitialMemberStatus] Failed to send invite link');
         }
       } else {
         const embed = new EmbedBuilder()
@@ -1909,7 +1791,7 @@ export class MemberChannelInteractionRouter {
         await channel.send({ embeds: [embed] });
       }
     } catch (error) {
-      console.error('[sendInitialMemberStatus] Error:', error);
+      logger.error('[sendInitialMemberStatus] Error:', error);
       // Don't throw - this is a nice-to-have feature
     }
   }
@@ -1963,13 +1845,13 @@ export class MemberChannelInteractionRouter {
 
       await channel.send({ content: pings, embeds: [embed] });
     } catch (error) {
-      console.error('[notifyAddedMembers] Error:', error);
+      logger.error('[notifyAddedMembers] Error:', error);
       // Don't throw - this is a nice-to-have feature
     }
   }
 
   static async handleDeleteChannelButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const result = await pool.query(
       `
       SELECT mc.channel_id, mc.current_delete_count, mc.delete_confirmed_by, mc.members, mc.clantag_focus, mc.clan_name_focus, mc.last_ping,
@@ -2083,12 +1965,12 @@ export class MemberChannelInteractionRouter {
             try {
               await channel.delete();
             } catch (error) {
-              console.error('[handleDeleteChannelButton] Error deleting channel:', error);
+              logger.error('[handleDeleteChannelButton] Error deleting channel:', error);
             }
           }, 5000);
         }
       } catch (error) {
-        console.error('[handleDeleteChannelButton] Error:', error);
+        logger.error('[handleDeleteChannelButton] Error:', error);
         await interaction.editReply({ content: '❌ Failed to delete channel.' });
       }
       return;
@@ -2142,6 +2024,7 @@ export class MemberChannelInteractionRouter {
 
     await interaction.editReply({
       content: `⚠️ Delete confirmation ${newDeleteCount}/${deleteConfirmCount} recorded. ${remainingConfirmations} more confirmation(s) needed from other members.`,
+      embeds: [updatedEmbed],
     });
   }
 
@@ -2208,8 +2091,8 @@ export class MemberChannelInteractionRouter {
       // Don't await this - let it happen in the background
       // Note: Discord rate limits channel renames to 2 per 10 minutes
       if (currentName !== newChannelName) {
-        interaction.channel.setName(newChannelName).catch(() => {
-          // Silently fail - rate limits are expected
+        interaction.channel.setName(newChannelName).catch((err) => {
+          logger.warn(`[handleLockChannelButton] Failed to rename channel (likely rate limited):`, err);
         });
       }
     }
@@ -2222,8 +2105,7 @@ export class MemberChannelInteractionRouter {
   }
 
   static async handleRenameChannelButton(interaction: ButtonInteraction, parsed: ParsedCustomId) {
-    let defaultName =
-      interaction.channel && 'name' in interaction.channel ? (interaction.channel.name ?? '') : '';
+    let defaultName = interaction.channel && 'name' in interaction.channel ? (interaction.channel.name ?? '') : '';
     defaultName = defaultName.replace(/^🔒\s*/, '');
 
     const modal = new ModalBuilder()
@@ -2253,7 +2135,6 @@ export class MemberChannelInteractionRouter {
    */
   static async handleButton(interaction: ButtonInteraction, parsed: ParsedCustomId): Promise<void> {
     const { action } = parsed;
-    logger.info(`Button interaction: ${action}`);
     if (action === 'memberChannel_create') {
       return this.handleConfirmButton(interaction, parsed);
     } else if (action.startsWith('memberChannel_any_')) {
@@ -2292,7 +2173,7 @@ export class MemberChannelInteractionRouter {
     logger.warn(`Unhandled member channel button action: ${action}`);
     await interaction.reply({
       content: '❌ This action is not recognized. Please try again or contact an administrator.',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   }
   /**

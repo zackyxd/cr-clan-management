@@ -27,7 +27,6 @@ export async function handleTicketChannelCreate(channel: TextChannel, guildId: s
     // Check if feature is enabled
     const featureCheck = await ticketService.isFeatureEnabled(guildId);
     if (!featureCheck.enabled || !featureCheck.settings) {
-      logger.debug(`Tickets feature not enabled for guild ${guildId}`);
       return false;
     }
 

@@ -9,6 +9,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
   ActionRowBuilder,
+  MessageFlags,
 } from 'discord.js';
 import { ParsedCustomId } from '../../types/ParsedCustomId.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
@@ -26,7 +27,7 @@ export class ServerSettingsInteractionRouter {
     const { action, extra, guildId } = parsed;
 
     const isModalAction = action === 'serverSettingOpenModal';
-    const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {
+    const allowed = await checkPerms(interaction, 'button', 'higher', {
       hideNoPerms: true,
       skipDefer: isModalAction,
     });
@@ -114,10 +115,10 @@ export class ServerSettingsInteractionRouter {
   static async handleModal(interaction: ModalSubmitInteraction, parsed: ParsedCustomId): Promise<void> {
     const { action, extra, guildId } = parsed;
 
-    const allowed = await checkPerms(interaction, guildId, 'modal', 'higher', { skipDefer: true });
+    const allowed = await checkPerms(interaction, 'modal', 'higher', { skipDefer: true });
     if (!allowed) return;
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const [tableName, featureName] = extra;
     const settingKey = action.startsWith('serverSetting_') ? action.replace('serverSetting_', '') : action;
@@ -287,6 +288,35 @@ export class ServerSettingsInteractionRouter {
             ),
           );
 
+        case 'staff_roles':
+          return interaction.showModal(
+            new ModalBuilder()
+              .setTitle('Leadership Roles')
+              .setCustomId(customId)
+              .addLabelComponents(
+                new LabelBuilder()
+                  .setLabel('Higher Leadership Roles')
+                  .setDescription('Full access to all bot management commands')
+                  .setRoleSelectMenuComponent(
+                    new RoleSelectMenuBuilder()
+                      .setCustomId('higher_roles')
+                      .setMinValues(0)
+                      .setMaxValues(10)
+                      .setRequired(false),
+                  ),
+                new LabelBuilder()
+                  .setLabel('Lower Leadership Roles')
+                  .setDescription('Access to staff-level bot commands')
+                  .setRoleSelectMenuComponent(
+                    new RoleSelectMenuBuilder()
+                      .setCustomId('lower_roles')
+                      .setMinValues(0)
+                      .setMaxValues(10)
+                      .setRequired(false),
+                  ),
+              ),
+          );
+
         case 'delete_confirm_count':
           return interaction.showModal(
             this.buildTextInputModal(
@@ -334,6 +364,33 @@ export class ServerSettingsInteractionRouter {
               20,
             ),
           );
+
+        case 'welcome_message': {
+          const currentMsg = await pool.query(
+            `SELECT welcome_message FROM ${tableName} WHERE guild_id = $1`,
+            [guildId],
+          );
+          const textInput = new TextInputBuilder()
+            .setCustomId('input')
+            .setLabel('Welcome message (use {user} to mention them)')
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder('Enter the welcome message shown when a user clicks the info button... use {user} to mention them')
+            .setMinLength(1)
+            .setMaxLength(2000)
+            .setRequired(true);
+
+          const existing = currentMsg.rows[0]?.welcome_message;
+          if (existing) {
+            textInput.setValue(existing);
+          }
+
+          return interaction.showModal(
+            new ModalBuilder()
+              .setTitle('Set Welcome Message')
+              .setCustomId(customId)
+              .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(textInput)),
+          );
+        }
       }
     } catch (error) {
       logger.error(`Error opening modal for ${settingKey}:`, error);
@@ -453,7 +510,7 @@ export class ServerSettingsInteractionRouter {
         if (newConfirmationCount === 0) {
           await interaction.followUp({
             content: '❌ No unlocked channels found or all channels already confirmed by you.',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
           return;
         }
@@ -494,7 +551,7 @@ export class ServerSettingsInteractionRouter {
 
         await interaction.followUp({
           content: responseMessage || '✅ Bulk delete operation complete.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         break;
       }
@@ -566,6 +623,26 @@ export class ServerSettingsInteractionRouter {
       await interaction.editReply({
         content: `✅ ${settingKey === 'logs_channel_id' ? 'Logs channel' : 'Category'} updated successfully`,
       });
+      return;
+    }
+
+    if (settingKey === 'staff_roles') {
+      const higherRoles = interaction.fields.getSelectedRoles('higher_roles');
+      const lowerRoles = interaction.fields.getSelectedRoles('lower_roles');
+
+      const higherRoleIds = higherRoles ? Array.from(higherRoles.values()).map((r) => r!.id) : [];
+      const lowerRoleIds = lowerRoles ? Array.from(lowerRoles.values()).map((r) => r!.id) : [];
+
+      await pool.query(
+        `UPDATE server_settings SET higher_leader_role_id = $1, lower_leader_role_id = $2 WHERE guild_id = $3`,
+        [higherRoleIds, lowerRoleIds, guildId],
+      );
+
+      logger.info(`[Staff Roles] Updated for guild:${guildId} by user:${interaction.user.id}`);
+
+      const { embed, components } = await buildFeatureEmbedAndComponents(guildId, ownerId, featureName);
+      await message.edit({ embeds: [embed], components });
+      await interaction.editReply({ content: '✅ Leadership roles updated successfully' });
       return;
     }
 

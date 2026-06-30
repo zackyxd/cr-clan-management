@@ -131,7 +131,7 @@ export class RacePingsHandler {
       }
 
       // Check permissions (defers interaction if hideNoPerms is true)
-      const allowed = await checkPerms(interaction, guildId, 'modal', 'either', { hideNoPerms: true });
+      const allowed = await checkPerms(interaction, 'modal', 'either', { hideNoPerms: true });
       if (!allowed) return;
 
       const client = await pool.connect();
@@ -224,23 +224,21 @@ export class RacePingsHandler {
         });
 
         // Update the original clan settings message
-        const messageId = interaction.message?.id;
-        if (messageId && interaction.channel) {
+        if (interaction.message) {
           try {
-            const message = await interaction.channel.messages.fetch(messageId);
             const { embed, components: newButtonRows } = await (
               await import('../config.js')
             ).buildClanSettingsView(guildId, clanName, clantag, interaction.user.id);
-            const selectMenuRowBuilder = (await import('../config.js')).getSelectMenuRowBuilder(message.components);
+            const selectMenuRowBuilder = (await import('../config.js')).getSelectMenuRowBuilder(
+              interaction.message.components,
+            );
 
-            await message.edit({
+            await interaction.editReply({
               embeds: [embed],
               components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
             });
-            logger.debug(`[Race Pings] Updated clan settings message for ${clanName}`);
           } catch (error) {
             logger.warn('[Race Pings] Could not update clan settings message:', error);
-            // Non-critical - user can refresh manually
           }
         }
 
@@ -261,14 +259,14 @@ export class RacePingsHandler {
         await interaction
           .followUp({
             content: '❌ Failed to update race ping settings.',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           })
           .catch(() => {});
       } else {
         await interaction
           .reply({
             content: '❌ Failed to update race ping settings.',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           })
           .catch(() => {});
       }

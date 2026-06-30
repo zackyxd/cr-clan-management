@@ -31,7 +31,7 @@ const command: Command = {
       return;
     }
 
-    const allowed = await checkPerms(interaction, guild.id, 'command', 'either', {
+    const allowed = await checkPerms(interaction, 'command', 'either', {
       hideNoPerms: true,
       deferEphemeral: true,
     });
@@ -49,7 +49,6 @@ const command: Command = {
       [guild.id, interaction.channelId],
     );
     const res = validChannelSQL.rows[0];
-    console.log(res);
     if (!res) {
       await interaction.editReply({
         content: '❌ This command can only be used inside of a member channel.',

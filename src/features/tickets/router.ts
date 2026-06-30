@@ -37,7 +37,7 @@ export class TicketInteractionRouter {
         break;
       case 'ticketsRelinkUser': {
         // Staff only - check permissions
-        const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {
+        const allowed = await checkPerms(interaction, 'button', 'higher', {
           hideNoPerms: true,
           skipDefer: true,
         });
@@ -47,7 +47,7 @@ export class TicketInteractionRouter {
       }
       case 'ticket_openclose': {
         // Staff only - check permissions
-        const allowed = await checkPerms(interaction, guildId, 'button', 'either', {
+        const allowed = await checkPerms(interaction, 'button', 'either', {
           hideNoPerms: true,
           skipDefer: false,
         });
@@ -58,7 +58,7 @@ export class TicketInteractionRouter {
       }
       case 'ticket_append': {
         // Staff only - check permissions
-        const allowed = await checkPerms(interaction, guildId, 'button', 'either', {
+        const allowed = await checkPerms(interaction, 'button', 'either', {
           hideNoPerms: true,
           skipDefer: true,
         });
@@ -67,15 +67,19 @@ export class TicketInteractionRouter {
         await this.showAppendModal(interaction, guildId, channelId);
         break;
       }
+      case 'ticket_welcome_info': {
+        await this.showWelcomeInfo(interaction, guildId);
+        break;
+      }
       case 'ticket_resend_playertag_button': {
         if (interaction.channel instanceof TextChannel && interaction.guild) {
-          interaction.reply({ content: '✅ Playertag button resent.', ephemeral: true });
+          interaction.reply({ content: '✅ Playertag button resent.', flags: MessageFlags.Ephemeral });
           await sendTicketButton(interaction.channel, guildId);
         } else {
           await interaction.reply({
             content:
               '❌ This resend playertag button can only be used in a text channel. If a mistake, contact @Zacky.',
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
         }
         break;
@@ -84,7 +88,7 @@ export class TicketInteractionRouter {
       default:
         await interaction.reply({
           content: 'Unknown ticket action.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
     }
   }
@@ -106,20 +110,20 @@ export class TicketInteractionRouter {
         const existingOwner = ticketData?.created_by;
 
         if (existingOwner && existingOwner !== interaction.user.id) {
-          await interaction.deferReply({ ephemeral: true });
+          await interaction.deferReply({ flags: MessageFlags.Ephemeral });
           await interaction.editReply({
             content: 'Someone has already uploaded their playertags to this ticket. Please make your own ticket.',
           });
           return;
         }
 
-        await interaction.deferReply({ ephemeral: isClosed });
+        await interaction.deferReply({ flags: isClosed ? MessageFlags.Ephemeral : undefined });
         await this.handlePlayertagsSubmit(interaction, guildId, Boolean(existingOwner));
         break;
       }
 
       case 'ticketAppendModal': {
-        const allowed = await checkPerms(interaction, guildId, 'modal', 'either', {
+        const allowed = await checkPerms(interaction, 'modal', 'either', {
           hideNoPerms: true,
           deferEphemeral: true,
         });
@@ -129,7 +133,7 @@ export class TicketInteractionRouter {
       }
 
       default:
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await interaction.editReply({ content: 'Unknown ticket modal action.' });
     }
   }
@@ -137,9 +141,7 @@ export class TicketInteractionRouter {
   /**
    * Handle select menu interactions
    */
-  static async handleSelectMenu(_interaction: StringSelectMenuInteraction, parsed: ParsedCustomId): Promise<void> {
-    const { action } = parsed;
-    logger.info('Ticket select menu action:', action);
+  static async handleSelectMenu(_interaction: StringSelectMenuInteraction, _parsed: ParsedCustomId): Promise<void> {
     // No select menus for tickets yet
   }
 
@@ -195,7 +197,7 @@ export class TicketInteractionRouter {
     if (!originalDiscordId || !playertag) {
       await interaction.reply({
         content: 'Invalid relink data.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -275,7 +277,7 @@ export class TicketInteractionRouter {
             content: `Could not rename this player.`,
             flags: MessageFlags.Ephemeral,
           });
-          logger.info(error);
+          logger.warn('Failed to rename player:', error);
         }
 
         await client.query('COMMIT');
@@ -303,7 +305,11 @@ export class TicketInteractionRouter {
     }
   }
 
-  private static async handlePlayertagsSubmit(interaction: ModalSubmitInteraction, guildId: string, isUpdate: boolean): Promise<void> {
+  private static async handlePlayertagsSubmit(
+    interaction: ModalSubmitInteraction,
+    guildId: string,
+    isUpdate: boolean,
+  ): Promise<void> {
     const rawInput = interaction.fields.getTextInputValue('input');
 
     const res = await pool.query(
@@ -590,7 +596,6 @@ export class TicketInteractionRouter {
   static async changeTicketStatus(interaction: ButtonInteraction, guildId: string, channelId: string): Promise<void> {
     // Get current ticket status
     const ticketData = await ticketService.getTicketData(guildId, channelId);
-    console.log(ticketData);
     if (!ticketData) {
       await interaction.editReply({
         content: 'Ticket not found.',
@@ -646,5 +651,28 @@ export class TicketInteractionRouter {
         });
       }
     }
+  }
+
+  private static async showWelcomeInfo(interaction: ButtonInteraction, guildId: string): Promise<void> {
+    const result = await pool.query(
+      `SELECT welcome_message FROM ticket_settings WHERE guild_id = $1`,
+      [guildId],
+    );
+
+    const welcomeMessage = result.rows[0]?.welcome_message;
+    if (!welcomeMessage) {
+      await interaction.reply({
+        content: 'No welcome info configured for this server.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const formatted = welcomeMessage.replace(/{user}/g, `<@${interaction.user.id}>`);
+
+    await interaction.reply({
+      content: formatted,
+      flags: MessageFlags.Ephemeral,
+    });
   }
 }

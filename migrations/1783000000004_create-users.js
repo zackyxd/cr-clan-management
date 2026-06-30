@@ -1,12 +1,14 @@
 export const shorthands = undefined;
 
 export const up = (pgm) => {
+  pgm.createType('ping_preference', ['none', 'regular', 'all']);
+
   pgm.createTable(
     'users',
     {
       guild_id: { type: 'varchar(30)', notNull: true, references: 'guilds(guild_id)', onDelete: 'CASCADE' },
       discord_id: { type: 'varchar(30)', notNull: true },
-      ping_user: { type: 'boolean', default: true },
+      ping_user: { type: 'ping_preference', default: 'regular', notNull: true },
       is_replace_me: { type: 'boolean', default: false },
       is_replace_me_message_id: { type: 'varchar(30)', default: null, unique: true },
       is_attacking_late: { type: 'boolean', default: false },
@@ -56,4 +58,5 @@ export const up = (pgm) => {
 export const down = (pgm) => {
   pgm.dropTable('user_playertags');
   pgm.dropTable('users');
+  pgm.dropType('ping_preference');
 };

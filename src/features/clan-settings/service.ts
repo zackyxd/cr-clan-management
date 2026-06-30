@@ -10,7 +10,7 @@ import type {
   ClanInviteSettings,
   ButtonInteraction,
 } from './types.js';
-import { Client, EmbedBuilder, NewsChannel, TextChannel } from 'discord.js';
+import { Client, EmbedBuilder, MessageFlags, NewsChannel, TextChannel } from 'discord.js';
 import { BOTCOLOR } from '../../types/EmbedUtil.js';
 
 /**
@@ -45,7 +45,7 @@ export class ClanSettingsService {
 
       const channel = await client.channels.fetch(logs_channel_id);
       if (!channel || !(channel instanceof TextChannel || channel instanceof NewsChannel)) {
-        console.log(`Couldn't find valid logs channel for guild ${guildId} for server settings.`);
+        logger.warn(`Couldn't find valid logs channel for guild ${guildId} for server settings.`);
         return;
       }
       const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor(BOTCOLOR);
@@ -438,7 +438,7 @@ export class ClanSettingsService {
         await interaction.followUp({
           content:
             '⚠️ No staff channel configured for this clan. Make sure you set one or else races will not get auto-posted.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
       return { success: true, settings };

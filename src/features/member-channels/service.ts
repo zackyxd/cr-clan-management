@@ -101,7 +101,6 @@ export class MemberChannelService {
     };
 
     this.sessions.set(sessionId, session);
-    // console.log(`Session created!:`, session);
     return sessionId;
   }
 
@@ -138,8 +137,6 @@ export class MemberChannelService {
           .filter((id) => id.length > 0),
       ),
     );
-
-    console.log(playertagArray, discordIdArray);
 
     return {
       channelName: input.channelName.trim(),
@@ -236,30 +233,17 @@ export class MemberChannelService {
 
           if (remainingTags.length === 0) {
             // All tags already selected, no need for selection
-            console.log(`[categorizeAccounts] User ${discordId} - all tags already selected`);
           } else if (remainingTags.length === 1) {
-            // Only one tag left, auto-add it
             if (!finalAccounts.has(discordId)) {
               finalAccounts.set(discordId, []);
             }
             finalAccounts.get(discordId)!.push(remainingTags[0]);
-            console.log(
-              `[categorizeAccounts] User ${discordId} - auto-selected last remaining tag: ${remainingTags[0]}`,
-            );
           } else {
-            // Multiple remaining tags, need user selection
             multipleAccountUsers.set(discordId, remainingTags);
-            console.log(
-              `[categorizeAccounts] User ${discordId} - needs selection for ${remainingTags.length} remaining tags`,
-            );
           }
         }
       });
     }
-
-    console.log(
-      `[categorizeAccounts] Final: ${finalAccounts.size}, Single: ${singleAccountUsers.size}, Multiple: ${multipleAccountUsers.size}`,
-    );
 
     return {
       finalAccounts,
@@ -326,18 +310,11 @@ export class MemberChannelService {
 
     // Store the selection in session.selections Map
     session.selections.set(selection.discordId, selection);
-    console.log(`[saveAccountSelection] Saved selection for ${selection.discordId}, type: ${selection.type}`);
 
-    // Move to next user (currentUserIndex++)
     session.currentUserIndex++;
-    console.log(
-      `[saveAccountSelection] Moved to user index ${session.currentUserIndex} of ${session.multipleAccountUserIds.length}`,
-    );
 
-    // If all users done, change step to 'confirmation'
     if (session.currentUserIndex >= session.multipleAccountUserIds.length) {
       session.step = 'confirmation';
-      console.log(`[saveAccountSelection] All users processed, moving to confirmation step`);
     }
 
     // Update last activity
@@ -356,12 +333,6 @@ export class MemberChannelService {
   async getFinalConfirmationData(sessionId: string): Promise<FinalChannelData | null> {
     const session = this.sessions.get(sessionId);
     if (!session) return null;
-
-    console.log('[getFinalConfirmationData] Session:', {
-      finalAccounts: Array.from(session.categorized.finalAccounts.entries()),
-      singleAccountUsers: Array.from(session.categorized.singleAccountUsers.entries()),
-      selections: Array.from(session.selections.entries()),
-    });
 
     // Combine all accounts:
     // 1. finalAccounts (from playertag input)
@@ -397,8 +368,6 @@ export class MemberChannelService {
       // We'll handle 'any' type during channel creation
     });
 
-    console.log('[getFinalConfirmationData] Combined playertags:', Array.from(allPlayertags.entries()));
-
     // Fetch player names for all playertags
     const accounts = new Map<string, PlayerInfo[] | { type: 'any'; count: number } | { type: 'invalid' }>();
 
@@ -424,8 +393,6 @@ export class MemberChannelService {
       }
     });
 
-    console.log('[getFinalConfirmationData] Final accounts with names:', Array.from(accounts.entries()));
-
     // Get clan info - either from matching channel name or from existing channel (for add mode)
     let clanInfo: ClanInfo | undefined;
 
@@ -448,7 +415,6 @@ export class MemberChannelService {
       clanInfo = await this.findMatchingClan(session.guildId, session.input.channelName);
     }
 
-    console.log(`find matching clan: ${clanInfo}`);
     return {
       channelName: session.input.channelName,
       accounts,
@@ -465,7 +431,6 @@ export class MemberChannelService {
     sessionId: string,
     guild: Guild,
   ): Promise<{ success: boolean; error?: string; channelId?: string }> {
-    console.log('Should be creating channel with:', sessionId);
     const session = this.sessions.get(sessionId);
     if (!session) return { success: false, error: 'Session not found' };
 
@@ -485,8 +450,6 @@ export class MemberChannelService {
 
       // Get Discord IDs from all accounts (including 'any' types)
       const discordIds = Array.from(finalData.accounts.keys());
-      console.log('Discord IDs for permission overwrites:', discordIds);
-
       // Build permission overwrites (inherits category permissions + adds user permissions)
       const permissionOverwrites = await buildPermissionOverwrites(guild, parentId, discordIds);
 
@@ -497,8 +460,6 @@ export class MemberChannelService {
         parent: parentId,
         permissionOverwrites,
       });
-
-      console.log(`✅ Channel created: ${channel.name} (${channel.id})`);
 
       // Convert accounts to MemberData format for database (keeping 'any' types as-is)
       const { members } = convertToMemberData(finalData.accounts);
@@ -546,12 +507,14 @@ export class MemberChannelService {
       );
 
       // Track statistics
-      StatsTracker.increment(session.guildId, 'total_member_channels_created').catch(() => {});
+      StatsTracker.increment(session.guildId, 'total_member_channels_created').catch((err) =>
+        logger.warn('Failed to track channel creation stat:', err),
+      );
 
       this.sessions.delete(sessionId);
       return { success: true, channelId: channel.id };
     } catch (error) {
-      console.error('Error creating channel:', error);
+      logger.error('Error creating channel:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
@@ -566,16 +529,11 @@ export class MemberChannelService {
     ]);
     const clans: { clan_name: string; clantag: string; abbreviation: string }[] = findClanRes.rows;
 
-    console.log('[findMatchingClan] Channel name:', channelName);
-    console.log('[findMatchingClan] Clans found:', clans);
-
     const matchingClan = clans.find(
       (clan) =>
         channelName.toLowerCase().includes(clan.clan_name.toLowerCase()) ||
         channelName.toLowerCase().includes(clan.abbreviation.toLowerCase()),
     );
-
-    console.log('[findMatchingClan] Matching clan:', matchingClan);
 
     if (matchingClan) {
       return {
@@ -690,7 +648,7 @@ export class MemberChannelService {
             });
           }
         } catch (error) {
-          console.warn(`[addMembersToChannel] Could not set permissions for user ${discordId}:`, error);
+          logger.warn(`[addMembersToChannel] Could not set permissions for user ${discordId}:`, error);
           // Continue with other members
         }
       }
@@ -782,7 +740,7 @@ export class MemberChannelService {
       this.sessions.delete(sessionId);
       return { success: true, addedCount, addedMembers };
     } catch (error) {
-      console.error('Error adding members:', error);
+      logger.error('Error adding members:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
@@ -894,7 +852,9 @@ export class MemberChannelService {
       logger.error('Failed to log channel deletion:', error);
     }
 
-    StatsTracker.increment(guildId, 'total_member_channels_deleted').catch(() => {});
+    StatsTracker.increment(guildId, 'total_member_channels_deleted').catch((err) =>
+      logger.warn('Failed to track channel deletion stat:', err),
+    );
   }
 
   /**

@@ -553,7 +553,6 @@ export class TicketService {
       ]);
 
       if (existing.rows.length > 0) {
-        logger.debug(`Ticket already exists for channel ${channelId}`);
         return { success: true };
       }
 

@@ -60,7 +60,10 @@ const command: Command = {
 
     const playertagData = userPlayertagsQuery.rows;
     const storedUsernames = new Map<string, string>(
-      playertagData.map((row: { playertag: string; current_username: string | null }) => [row.playertag, row.current_username ?? '']),
+      playertagData.map((row: { playertag: string; current_username: string | null }) => [
+        row.playertag,
+        row.current_username ?? '',
+      ]),
     );
     if (playertagData.length === 0) {
       const emptyTagsEmbed = new EmbedBuilder()
@@ -104,8 +107,6 @@ const command: Command = {
 
       return aName.localeCompare(bName);
     });
-
-    // console.log(results);
 
     const select = new StringSelectMenuBuilder()
       .setCustomId(makeCustomId(`s`, `players_select`, guild.id, { extra: [discordId] }))

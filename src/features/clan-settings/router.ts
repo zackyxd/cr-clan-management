@@ -3,7 +3,7 @@
  * Pure dispatcher - all business logic is in handlers
  */
 
-import { ButtonInteraction, ModalSubmitInteraction, StringSelectMenuInteraction } from 'discord.js';
+import { ButtonInteraction, MessageFlags, ModalSubmitInteraction, StringSelectMenuInteraction } from 'discord.js';
 import type { ParsedCustomId } from '../../types/ParsedCustomId.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { buildClanSettingsView, getSelectMenuRowBuilder } from './config.js';
@@ -16,6 +16,7 @@ import { ChannelsHandler } from './handlers/channels.js';
 import { RacePingsHandler } from './handlers/racePings.js';
 import { ClanLogsHandler } from './handlers/clanlogs.js';
 import { StatsColorsHandler } from './handlers/statsColors.js';
+import logger from '../../logger.js';
 
 export class ClanSettingsInteractionRouter {
   /**
@@ -39,7 +40,7 @@ export class ClanSettingsInteractionRouter {
       default:
         await interaction.reply({
           content: 'Unknown clan settings action.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
     }
   }
@@ -52,7 +53,7 @@ export class ClanSettingsInteractionRouter {
     if (!cacheKey) {
       await interaction.reply({
         content: 'Missing cache key. Please try again.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -62,7 +63,7 @@ export class ClanSettingsInteractionRouter {
     if (!settingsData) {
       await interaction.reply({
         content: 'Settings data not found. Please reselect the clan in the select menu, or run the command again.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -70,7 +71,7 @@ export class ClanSettingsInteractionRouter {
     const { settingKey: action, clantag, clanName, guildId } = settingsData;
 
     // Check permissions
-    const allowed = await checkPerms(interaction, guildId, 'button', 'either', {
+    const allowed = await checkPerms(interaction, 'button', 'either', {
       hideNoPerms: true,
       skipDefer: true,
     });
@@ -104,15 +105,15 @@ export class ClanSettingsInteractionRouter {
       case 'clan_logs':
         await ClanLogsHandler.showModal(interaction, settingsData);
         break;
-        
-        case 'stats_colors':
-          await StatsColorsHandler.showModal(interaction, settingsData);
-          break;
+
+      case 'stats_colors':
+        await StatsColorsHandler.showModal(interaction, settingsData);
+        break;
 
       default:
         await interaction.reply({
           content: `Unknown modal type: ${action}`,
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
     }
   }
@@ -144,14 +145,14 @@ export class ClanSettingsInteractionRouter {
         await ClanLogsHandler.handleModal(interaction);
         break;
 
-        case 'clanSettings_stats_colors':
-          await StatsColorsHandler.handleModal(interaction);
-          break;
+      case 'clanSettings_stats_colors':
+        await StatsColorsHandler.handleModal(interaction);
+        break;
 
       default:
         await interaction.reply({
           content: 'Unknown clan settings modal.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
     }
   }
@@ -170,7 +171,7 @@ export class ClanSettingsInteractionRouter {
       default:
         await interaction.reply({
           content: 'Unknown clan settings select menu.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
     }
   }
@@ -189,7 +190,7 @@ export class ClanSettingsInteractionRouter {
       if (!cacheKey) {
         await interaction.reply({
           content: 'Missing cache key. Please try again.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -199,7 +200,7 @@ export class ClanSettingsInteractionRouter {
       if (!settingsData) {
         await interaction.reply({
           content: 'Settings data not found. Please reselect the clan in the select menu, or run the command again.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -207,7 +208,7 @@ export class ClanSettingsInteractionRouter {
       const { settingKey: featureName, guildId } = settingsData;
 
       // Check permissions
-      const allowed = await checkPerms(interaction, guildId, 'button', 'higher', {
+      const allowed = await checkPerms(interaction, 'button', 'higher', {
         hideNoPerms: true,
         deferEphemeral: true,
       });
@@ -223,14 +224,14 @@ export class ClanSettingsInteractionRouter {
         default:
           await interaction.reply({
             content: `Unknown setting: ${featureName}`,
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
       }
     } catch (error) {
-      console.error('Error in clan settings action:', error);
+      logger.error('Error in clan settings action:', error);
       await interaction.reply({
         content: 'An error occurred while handling the action.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }
@@ -247,7 +248,7 @@ export class ClanSettingsInteractionRouter {
       if (!cacheKey) {
         await interaction.reply({
           content: 'Missing cache key. Please try again.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -257,7 +258,7 @@ export class ClanSettingsInteractionRouter {
       if (!settingsData) {
         await interaction.reply({
           content: 'Settings data not found. Please reselect the clan in the select menu, or run the command again.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -265,7 +266,7 @@ export class ClanSettingsInteractionRouter {
       const { settingKey: featureName, guildId } = settingsData;
 
       // Check permissions
-      const allowed = await checkPerms(interaction, guildId, 'button', 'either', { hideNoPerms: true });
+      const allowed = await checkPerms(interaction, 'button', 'either', { hideNoPerms: true });
       if (!allowed) return;
 
       // Handle different setting types
@@ -285,14 +286,14 @@ export class ClanSettingsInteractionRouter {
         default:
           await interaction.reply({
             content: `Unknown setting: ${featureName}`,
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           });
       }
     } catch (error) {
-      console.error('Error in clan settings toggle:', error);
+      logger.error('Error in clan settings toggle:', error);
       await interaction.reply({
         content: 'An error occurred while updating the setting.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }
@@ -309,7 +310,7 @@ export class ClanSettingsInteractionRouter {
       if (!selectedValue) {
         await interaction.followUp({
           content: '❌ No clan selected. Please try again.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -321,7 +322,7 @@ export class ClanSettingsInteractionRouter {
       } catch {
         await interaction.followUp({
           content: '❌ Invalid clan data. Please try again.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -330,7 +331,7 @@ export class ClanSettingsInteractionRouter {
       if (!clantag || !clanName) {
         await interaction.followUp({
           content: '❌ Missing clan information. Please try again.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -340,7 +341,7 @@ export class ClanSettingsInteractionRouter {
       if (!guildId) {
         await interaction.followUp({
           content: '❌ This command must be used in a server.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -364,10 +365,10 @@ export class ClanSettingsInteractionRouter {
           : newButtonRows,
       });
     } catch (error) {
-      console.error('Error in clan select menu:', error);
+      logger.error('Error in clan select menu:', error);
       await interaction.followUp({
         content: '❌ An error occurred while loading clan settings.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }

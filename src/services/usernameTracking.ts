@@ -46,7 +46,6 @@ export async function updateUsernameIfChanged(
          WHERE guild_id = $2 AND playertag = $3`,
         [currentUsername, guildId, playertag],
       );
-      logger.info(`Set initial username for ${playertag} in guild ${guildId}: ${currentUsername}`);
       return true;
     }
 

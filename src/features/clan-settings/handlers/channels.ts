@@ -1,6 +1,6 @@
 /**
  * Channels Handler
- * 
+ *
  * Handles channel selection modals for:
  * - staff_channel_id
  * - race_nudge_channel_id
@@ -64,7 +64,7 @@ export class ChannelsHandler {
     if (!clantag) {
       await interaction.reply({
         content: 'Missing clan tag. Please try again.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -87,7 +87,7 @@ export class ChannelsHandler {
     }
 
     // Check permissions
-    const allowed = await checkPerms(interaction, guildId, 'modal', 'either', { hideNoPerms: true });
+    const allowed = await checkPerms(interaction, 'modal', 'either', { hideNoPerms: true });
     if (!allowed) return;
 
     // Update channel using service
@@ -97,7 +97,6 @@ export class ChannelsHandler {
       clantag,
       settingKey,
       channel.id,
-      interaction.user.id,
     );
 
     if (!result.success) {
@@ -132,13 +131,12 @@ export class ChannelsHandler {
 
     // Update the original message
     try {
-      await interaction.message.edit({
+      await interaction.editReply({
         embeds: [embed],
         components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
       });
     } catch (error) {
       logger.error(`[Channels] Failed to edit message:`, error);
-      // Continue anyway to send confirmation
     }
 
     const settingLabel = settingKey === 'race_nudge_channel_id' ? 'nudge channel' : 'staff channel';

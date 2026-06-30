@@ -5,6 +5,7 @@ import { EmbedColor } from '../types/EmbedUtil.js';
 import { buildInsertClanLinkQuery } from '../sql_queries/clans.js';
 import { pool } from '../db.js';
 import { isPgUniqueViolation } from '../utils/postgresError.js';
+import logger from '../logger.js';
 
 export async function linkClan(
   client: PoolClient,
@@ -56,6 +57,8 @@ export async function linkClan(
       abbreviation.toLowerCase(),
     );
     await client.query(insertClanSQL);
+
+    logger.info(`[Clan Add] ${confirmClanExists.name} (${clantag}) added to guild:${guildId} abbr:${abbreviation}`);
 
     return {
       embed: new EmbedBuilder()

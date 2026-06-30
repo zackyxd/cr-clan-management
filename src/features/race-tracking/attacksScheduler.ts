@@ -83,8 +83,8 @@ export class AttacksTrackingScheduler {
       );
 
       const clans = result.rows;
-      let skippedCount = 0;
-      let updatedCount = 0;
+      // let skippedCount = 0;
+      // let updatedCount = 0;
 
       for (const clan of clans) {
         try {
@@ -94,33 +94,33 @@ export class AttacksTrackingScheduler {
             const minutesSinceLastCheck = (now.getTime() - lastCheck.getTime()) / (1000 * 60);
 
             if (minutesSinceLastCheck < this.TRAINING_DAY_INTERVAL_MINUTES) {
-              skippedCount++;
+              // skippedCount++;
               continue; // Skip this clan
             }
           }
 
           // Update race data once per clan (shared across guilds)
           const updateResult = await initializeOrUpdateRace(clan.clantag);
-          if (updateResult) {
-            updatedCount++;
+          if (!updateResult) {
+            logger.warn(`Failed to update race for ${clan.clan_name} (${clan.clantag})`);
+            // Switched the if statement
+            // updatedCount++;
             // const guildsTracking =
             //   clan.tracking_guilds.length > 1 ? ` (tracked by ${clan.tracking_guilds.length} guilds)` : '';
             // logger.info(
             //   `Updated race for ${clan.clan_name} (${clan.clantag}): Day ${updateResult.warDay}, Week ${updateResult.warWeek}${guildsTracking}`,
             // );
-          } else {
-            logger.warn(`Failed to update race for ${clan.clan_name} (${clan.clantag})`);
           }
         } catch (error) {
           logger.error(`Error updating race for ${clan.clan_name} (${clan.clantag}):`, error);
         }
       }
 
-      if (skippedCount > 0) {
-        logger.info(
-          `Race update: ${updatedCount} updated, ${skippedCount} training day clans skipped (checked <${this.TRAINING_DAY_INTERVAL_MINUTES}m ago)`,
-        );
-      }
+      // if (skippedCount > 0) {
+      //   logger.info(
+      //     `Race update: ${updatedCount} updated, ${skippedCount} training day clans skipped (checked <${this.TRAINING_DAY_INTERVAL_MINUTES}m ago)`,
+      //   );
+      // }
     } catch (error) {
       logger.error('Error while checking all clans attacks', error);
     } finally {

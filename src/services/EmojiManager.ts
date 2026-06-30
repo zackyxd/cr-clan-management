@@ -146,7 +146,6 @@ class EmojiManagerClass {
     const emoji = this.emojis.get(name);
 
     if (!emoji) {
-      logger.debug(`Emoji "${name}" not found, returning fallback`);
       return `:${name}:`;
     }
 

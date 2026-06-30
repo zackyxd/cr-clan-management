@@ -112,6 +112,7 @@ export async function linkUser(
   }
   if (wasPlayertagInserted) {
     player_embed?.setFooter({ text: `${playertag} | New Link!` });
+    logger.info(`[Link] ${playertag} (${playerUsername}) linked to user:${originalDiscordId} guild:${guildId}`);
   }
   return { embed: player_embed, player_name: confirmPlayerExists.name };
 }
@@ -124,6 +125,7 @@ export async function unlinkUser(client: PoolClient, guildId: string, playertag:
   if (unlinkRes && unlinkRes.rowCount !== null && unlinkRes.rowCount > 0) {
     const confirmUnlink = await client.query(buildFindLinkedDiscordId(guildId, playertag));
     if (confirmUnlink && confirmUnlink.rows.length === 0) {
+      logger.info(`[Unlink] ${playertag} unlinked from user:${unlinkRes.rows[0].discord_id} guild:${guildId}`);
       return new EmbedBuilder()
         .setDescription(`**Successfully unlinked \`${playertag}\` from** <@${unlinkRes.rows[0].discord_id}>`)
         .setColor(EmbedColor.SUCCESS);

@@ -3,7 +3,13 @@
  * Routes Discord interactions to appropriate feature handlers
  */
 
-import { Interaction, ButtonInteraction, ModalSubmitInteraction, StringSelectMenuInteraction } from 'discord.js';
+import {
+  Interaction,
+  ButtonInteraction,
+  ModalSubmitInteraction,
+  StringSelectMenuInteraction,
+  MessageFlags,
+} from 'discord.js';
 import { parseCustomId } from '../../utils/customId.js';
 import type { ParsedCustomId } from '../../types/ParsedCustomId.js';
 import { MemberChannelInteractionRouter } from '../../features/member-channels/router.js';
@@ -72,14 +78,19 @@ export class InteractionDispatcher {
         await this.handleSelectMenuInteraction(interaction);
       }
     } catch (error) {
-      logger.error('Error in interaction dispatcher:', error, interaction);
+      if ((error as { code?: number }).code === 10062) {
+        logger.warn('[InteractionDispatcher] Stale interaction (10062) — token already expired, ignoring.');
+        return;
+      }
+
+      logger.error('Error in interaction dispatcher:', error);
 
       // Try to respond to the user if we haven't already - but only if the interaction hasn't been handled
       const errorMessage = 'An unexpected error occurred while processing your interaction.';
 
       try {
         if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-          await interaction.reply({ content: errorMessage, ephemeral: true });
+          await interaction.reply({ content: errorMessage, flags: MessageFlags.Ephemeral });
         }
       } catch (replyError) {
         logger.error('Failed to send error message to user:', replyError);
@@ -96,7 +107,7 @@ export class InteractionDispatcher {
     if (parsed.category !== 'b') {
       await interaction.reply({
         content: 'Invalid interaction type for button.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -109,7 +120,7 @@ export class InteractionDispatcher {
       logger.warn(`No router found for button action: ${parsed.action}`);
       await interaction.reply({
         content: 'This feature is not yet implemented for buttons.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }
@@ -120,18 +131,15 @@ export class InteractionDispatcher {
   private static async handleModalInteraction(interaction: ModalSubmitInteraction): Promise<void> {
     const parsed = parseCustomId(interaction.customId);
 
-    console.log('🎯 Dispatcher - Modal Custom ID:', interaction.customId, 'Parsed:', parsed); // Debug logging
-
     if (parsed.category !== 'm') {
       await interaction.reply({
         content: 'Invalid interaction type for modal.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     const router = this.getRouterForAction(parsed.action);
-    console.log('📍 Found router:', !!router, 'for action:', parsed.action); // Debug logging
 
     if (router) {
       // Support both new naming (handleModalSubmit) and legacy (handleModal)
@@ -144,14 +152,14 @@ export class InteractionDispatcher {
         logger.warn(`Router found but no modal handler for action: ${parsed.action}`);
         await interaction.reply({
           content: 'This feature is not yet implemented for modals.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
       }
     } else {
       logger.warn(`No router found for modal action: ${parsed.action}`);
       await interaction.reply({
         content: 'This feature is not yet implemented for modals.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }
@@ -161,11 +169,10 @@ export class InteractionDispatcher {
    */
   private static async handleSelectMenuInteraction(interaction: StringSelectMenuInteraction): Promise<void> {
     const parsed = parseCustomId(interaction.customId);
-    console.log(parsed);
     if (parsed.category !== 's') {
       await interaction.reply({
         content: 'Invalid interaction type for select menu.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -178,7 +185,7 @@ export class InteractionDispatcher {
       logger.warn(`No router found for select menu action: ${parsed.action}`);
       await interaction.reply({
         content: 'This feature is not yet implemented for select menus.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }

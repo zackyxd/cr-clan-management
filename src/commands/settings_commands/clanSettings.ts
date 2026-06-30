@@ -1,6 +1,5 @@
 import {
   SlashCommandBuilder,
-  PermissionFlagsBits,
   InteractionContextType,
   ChatInputCommandInteraction,
   MessageFlags,
@@ -14,12 +13,12 @@ import { Command } from '../../types/Command.js';
 import { makeCustomId } from '../../utils/customId.js';
 import { BOTCOLOR, EmbedColor } from '../../types/EmbedUtil.js';
 import { buildClanSettingsView } from '../../features/clan-settings/config.js';
+import { checkPerms } from '../../utils/checkPermissions.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('clan-settings')
     .setDescription('Change clan settings for linked clans')
-    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setContexts(InteractionContextType.Guild)
     .addStringOption((option) =>
       option.setName('clan-abbreviation').setDescription('Quickly go to a specific clan.').setRequired(false),
@@ -33,8 +32,11 @@ const command: Command = {
       return;
     }
 
-    await interaction.deferReply();
-
+    const allowed = await checkPerms(interaction, 'command', 'either', {
+      hideNoPerms: true,
+      deferEphemeral: true,
+    });
+    if (!allowed) return;
     const clanArg = interaction.options.getString('clan-abbreviation');
 
     let components;

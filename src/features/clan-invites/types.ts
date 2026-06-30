@@ -8,6 +8,7 @@ export interface InviteLink {
   created_at: Date;
   expires_at: Date;
   is_expired: boolean;
+  last_activity_snapshot?: { members?: number } | string | null;
 }
 
 export interface InviteLinkMessage {

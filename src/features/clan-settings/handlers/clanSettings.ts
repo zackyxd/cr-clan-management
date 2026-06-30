@@ -50,7 +50,7 @@ export class ClanSettingsHandler {
       if (result.rows.length === 0) {
         await interaction.reply({
           content: '❌ Clan not found.',
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -133,7 +133,7 @@ export class ClanSettingsHandler {
       logger.error('[ClanSettings] Error showing modal:', error);
       await interaction.reply({
         content: '❌ Failed to load clan settings modal.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }
@@ -149,13 +149,13 @@ export class ClanSettingsHandler {
     if (!clantag) {
       await interaction.reply({
         content: 'Missing clan tag. Please try again.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
 
     // Check permissions
-    const allowed = await checkPerms(interaction, guildId, 'modal', 'either', { hideNoPerms: true });
+    const allowed = await checkPerms(interaction, 'modal', 'either', { hideNoPerms: true });
     if (!allowed) return;
 
     try {
@@ -322,26 +322,22 @@ export class ClanSettingsHandler {
       );
 
       // Update the original clan settings message
-      const messageId = interaction.message?.id;
-      if (messageId && interaction.channel) {
+      if (interaction.message) {
         try {
-          const message = await interaction.channel.messages.fetch(messageId);
           const { embed, components: newButtonRows } = await buildClanSettingsView(
             guildId,
             clanName,
             clantag,
             interaction.user.id,
           );
-          const selectMenuRowBuilder = getSelectMenuRowBuilder(message.components);
+          const selectMenuRowBuilder = getSelectMenuRowBuilder(interaction.message.components);
 
-          await message.edit({
+          await interaction.editReply({
             embeds: [embed],
             components: selectMenuRowBuilder ? [...newButtonRows, selectMenuRowBuilder] : newButtonRows,
           });
-          logger.debug(`[ClanSettings] Updated clan settings message for ${clanName}`);
         } catch (error) {
           logger.warn('[ClanSettings] Could not update clan settings message:', error);
-          // Non-critical - user can refresh manually
         }
       }
 

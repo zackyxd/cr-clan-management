@@ -49,7 +49,7 @@ export class ServerSettingsService {
 
       const channel = await client.channels.fetch(logs_channel_id);
       if (!channel || !(channel instanceof TextChannel || channel instanceof NewsChannel)) {
-        console.log(`Couldn't find valid logs channel for guild ${guildId} for server settings.`);
+        logger.warn(`Couldn't find valid logs channel for guild ${guildId} for server settings.`);
         return;
       }
 
@@ -194,8 +194,6 @@ export class ServerSettingsService {
 
       const { show_inactive, channel_id, message_id, pin_message } = result.rows[0];
 
-      logger.info(`show_inactive toggled to ${show_inactive} for guild ${guildId}`);
-
       // Return data needed to update invite message (only if channel is configured)
       return {
         success: true,
@@ -258,7 +256,8 @@ export class ServerSettingsService {
             // Optionally delete the system pin message
             const recent = await channel.messages.fetch({ limit: 5 });
             const systemMessage = recent.find((msg) => msg.type === 6);
-            if (systemMessage) await systemMessage.delete().catch(console.error);
+            if (systemMessage)
+              await systemMessage.delete().catch((err) => logger.error('Failed to delete system pin message:', err));
           }
         } catch (err) {
           logger.error('Failed to pin/unpin message:', err);
@@ -419,8 +418,6 @@ export class ServerSettingsService {
     try {
       await pool.query(`UPDATE ${tableName} SET ${settingKey} = $1 WHERE guild_id = $2`, [channelId, guildId]);
 
-      logger.info(`${settingKey} updated to ${channelId} for guild ${guildId}`);
-
       // Get feature display name and setting label from registry
       const featureDisplayName = FeatureRegistry[featureName]?.displayName || featureName;
       const settingLabel =
@@ -456,8 +453,6 @@ export class ServerSettingsService {
     try {
       await pool.query(`UPDATE ${tableName} SET ${settingKey} = $1 WHERE guild_id = $2`, [roleId, guildId]);
 
-      logger.info(`${settingKey} updated to ${roleId} for guild ${guildId}`);
-
       // Get feature display name and setting label from registry
       const featureDisplayName = FeatureRegistry[featureName]?.displayName || featureName;
       const settingLabel =
@@ -492,8 +487,6 @@ export class ServerSettingsService {
 
     try {
       await pool.query(`UPDATE ${tableName} SET ${settingKey} = $1 WHERE guild_id = $2`, [value, guildId]);
-
-      logger.info(`${settingKey} updated to '${value}' for guild ${guildId}`);
 
       // Get feature display name and setting label from registry
       const featureDisplayName = FeatureRegistry[featureName]?.displayName || featureName;

@@ -1,4 +1,4 @@
-import { ButtonInteraction, EmbedBuilder, GuildMember, StringSelectMenuInteraction } from 'discord.js';
+import { ButtonInteraction, EmbedBuilder, GuildMember, MessageFlags, StringSelectMenuInteraction } from 'discord.js';
 import { ParsedCustomId } from '../../types/ParsedCustomId.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import logger from '../../logger.js';
@@ -26,12 +26,15 @@ export class PlayerLinksInteractionRouter {
     const interactionId = metadata?.id;
     const embedMap = interactionId ? playerEmbedCache.get(interactionId) : undefined;
     if (!embedMap) {
-      await interaction.reply({ content: 'Session expired. Please run the command again.', ephemeral: true });
+      await interaction.reply({
+        content: 'Session expired. Please run the command again.',
+        flags: MessageFlags.Ephemeral,
+      });
       return;
     }
     const embed = embedMap.get(playertag);
     if (!embed) {
-      await interaction.reply({ content: 'Could not find player data.', ephemeral: true });
+      await interaction.reply({ content: 'Could not find player data.', flags: MessageFlags.Ephemeral });
       return;
     }
     // Update the original message with the selected embed
@@ -48,7 +51,7 @@ export class PlayerLinksInteractionRouter {
     if (!extra || extra.length < 2) {
       await interaction.followUp({
         content: '❌ Invalid button data.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -62,7 +65,7 @@ export class PlayerLinksInteractionRouter {
       if (!member) {
         await interaction.followUp({
           embeds: [new EmbedBuilder().setDescription('**This user is not in this server.**').setColor(EmbedColor.FAIL)],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         });
         return;
       }
@@ -76,13 +79,13 @@ export class PlayerLinksInteractionRouter {
             .setDescription(`✅ Successfully renamed <@${userId}> to **${playerName}**`)
             .setColor(EmbedColor.SUCCESS),
         ],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       logger.error('[handleRenameButton] Error renaming user:', error);
       await interaction.followUp({
         content: '❌ Could not rename this player. Likely missing permissions.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }

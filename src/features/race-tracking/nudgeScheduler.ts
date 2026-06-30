@@ -429,7 +429,7 @@ export class NudgeTrackingScheduler {
       // Try to fetch the staff channel to send notification there
       const channel = await this.client.channels
         .fetch(clan.staff_channel_id)
-        .catch(() => console.warn('Staff channel not found for skip notification'));
+        .catch(() => logger.warn('Staff channel not found for skip notification'));
       if (!channel?.isTextBased() || !(channel instanceof TextChannel)) {
         return; // Silently skip if channel not found
       }
@@ -577,12 +577,13 @@ export class NudgeTrackingScheduler {
       const currentDay = updateResult.warDay;
 
       // Check if it's training day after getting fresh race data
-      if (periodTypeMap[raceData.periodType] === 'Training') {
-        throw {
-          name: 'training_day',
-          embed: new EmbedBuilder().setDescription('Today is a training day. No Nudges').setColor(EmbedColor.FAIL),
-        };
-      }
+      // TODO check to make sure commented
+      // if (periodTypeMap[raceData.periodType] === 'Training') {
+      //   throw {
+      //     name: 'training_day',
+      //     embed: new EmbedBuilder().setDescription('Today is a training day. No Nudges').setColor(EmbedColor.FAIL),
+      //   };
+      // }
 
       // Check if boat is completed (10k+ fame in War Day only)
       // Note: In Colosseum, fame is cumulative and will always be >10k

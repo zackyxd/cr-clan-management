@@ -6,6 +6,7 @@ import {
   ActionRowBuilder,
   ModalSubmitInteraction,
   EmbedBuilder,
+  MessageFlags,
 } from 'discord.js';
 import { ParsedCustomId } from '../../types/ParsedCustomId.js';
 import { makeCustomId } from '../../utils/customId.js';
@@ -13,6 +14,7 @@ import { EmbedColor } from '../../types/EmbedUtil.js';
 import { parseInviteLink } from './utils.js';
 import { processInviteLinkUpdate } from './messageManager.js';
 import logger from '../../logger.js';
+import { checkPerms } from '../../utils/checkPermissions.js';
 
 export class ClanInvitesInteractionRouter {
   /**
@@ -20,7 +22,8 @@ export class ClanInvitesInteractionRouter {
    */
   static async handleClanInviteRefresh(interaction: ButtonInteraction, parsed: ParsedCustomId) {
     const { guildId } = parsed;
-
+    const allowed = await checkPerms(interaction, 'button', 'either', { hideNoPerms: true, skipDefer: true });
+    if (!allowed) return;
     // Show modal for user to input invite link
     const modal = new ModalBuilder()
       .setCustomId(makeCustomId('m', 'clanInviteUpdate', guildId, { cooldown: 5 }))
@@ -46,7 +49,7 @@ export class ClanInvitesInteractionRouter {
     } else {
       await interaction.reply({
         content: 'Unknown action for clan invites.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }
@@ -62,7 +65,7 @@ export class ClanInvitesInteractionRouter {
     } else {
       await interaction.reply({
         content: 'Unknown modal action for clan invites.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   }
@@ -71,7 +74,7 @@ export class ClanInvitesInteractionRouter {
    * Handle the update invite modal submission
    */
   private static async handleUpdateInviteModal(interaction: ModalSubmitInteraction, guildId: string): Promise<void> {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const inviteLink = interaction.fields.getTextInputValue('input');
 

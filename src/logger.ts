@@ -25,16 +25,16 @@ const fileFormat = combine(
 );
 
 const dailyRotateTransport = new DailyRotateFile({
-  filename: path.resolve('src/logs/application-%DATE%.log'),
+  filename: path.resolve('logs/application-%DATE%.log'),
   datePattern: 'YYYY-MM-DD',
   zippedArchive: true, // compress rotated files
   maxSize: '20m', // max size per file
-  maxFiles: '14d', // keep logs for 14 days
+  maxFiles: '30d', // keep logs for 30 days
   format: fileFormat,
 });
 
 const errorRotateTransport = new DailyRotateFile({
-  filename: path.resolve('src/logs/error-%DATE%.log'),
+  filename: path.resolve('logs/error-%DATE%.log'),
   datePattern: 'YYYY-MM-DD',
   zippedArchive: true,
   maxSize: '20m',
@@ -43,13 +43,27 @@ const errorRotateTransport = new DailyRotateFile({
   format: fileFormat,
 });
 
+const commandsRotateTransport = new DailyRotateFile({
+  filename: path.resolve('logs/commands-%DATE%.log'),
+  datePattern: 'YYYY-MM-DD',
+  zippedArchive: true,
+  maxSize: '20m',
+  maxFiles: '30d',
+  format: fileFormat,
+});
+
 const logger = createLogger({
   level: isTest ? 'error' : process.env.LOG_LEVEL || 'info',
   transports: [
     new transports.Console({ format: consoleFormat }),
-    dailyRotateTransport, // application logs rotate daily
-    errorRotateTransport, // error logs rotate daily too
+    dailyRotateTransport,
+    errorRotateTransport,
   ],
+});
+
+export const commandLogger = createLogger({
+  level: 'info',
+  transports: [commandsRotateTransport],
 });
 
 export default logger;

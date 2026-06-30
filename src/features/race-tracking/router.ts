@@ -4,6 +4,7 @@ import { pool } from '../../db.js';
 import { Timer } from '../../utils/timing.js';
 import { NudgeTrackingScheduler } from './nudgeScheduler.js';
 import { postRacePingsToChannels } from './service.js';
+import logger from '../../logger.js';
 
 export class RaceTrackingInteractionRouter {
   static async handleButton(interaction: ButtonInteraction, parsed: ParsedCustomId): Promise<void> {
@@ -80,7 +81,7 @@ export class RaceTrackingInteractionRouter {
         });
       }
     } catch (error) {
-      console.log('Error toggling replace_me:', error);
+      logger.error('Error toggling replace_me:', error);
       await interaction.editReply({
         content: '❌ An error occurred while updating your Replace Me status.',
       });

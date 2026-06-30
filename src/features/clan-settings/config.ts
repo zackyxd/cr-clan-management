@@ -274,7 +274,6 @@ export async function buildClanSettingsView(guildId: string, clanName: string, c
 
         displayValue = '\n' + lines.join('\n');
       } else if (settingConfig.key === 'ping_settings') {
-        console.log(settings);
         const lines: string[] = [];
         const pingAttackingLate = settings['ping_attacking_late'] ? '✅ Ping' : '❌ No Ping';
         const pingReplaceMe = settings['ping_replace_me'] ? '✅ Ping' : '❌ No Ping';

@@ -117,7 +117,7 @@ type ClanThemeRow = {
   l2w_clan?: boolean | null;
 };
 
-const AVERAGES_FIXED_HEADERS = ['Discord', 'Tag', 'Player', 'Last Clan', 'Fame Avg.'];
+const AVERAGES_FIXED_HEADERS = ['Discord', 'Tag', 'Player', 'Last Clan', 'Fame / Atk.'];
 const AVERAGES_WEEK_START_COL = 5;
 
 function buildAveragesFameFormula(rowNumber: number, lastWeekColLetter: string): string {
@@ -207,9 +207,9 @@ function buildAveragesFormattingRequests(
         },
         cell: {
           userEnteredFormat: {
-            backgroundColor: { red: 0.471, green: 0.471, blue: 0.471 },
+            backgroundColor: { red: 0.8, green: 0.8, blue: 0.8 },
             textFormat: {
-              foregroundColor: { red: 1, green: 1, blue: 1 },
+              foregroundColor: { red: 0, green: 0, blue: 0 },
               fontSize: 11,
               bold: true,
             },
@@ -360,8 +360,7 @@ function buildAveragesFormattingRequests(
           },
           cell: {
             userEnteredFormat: {
-              // backgroundColor: headerBg,
-              // Colosseum marker: italic header text so future code can detect this week type.
+              backgroundColor: { red: 0.8, green: 0.8, blue: 0.8 },
               textFormat: {
                 foregroundColor: { red: 0, green: 0, blue: 0 },
                 fontSize: 11,
@@ -411,6 +410,18 @@ function buildAveragesFormattingRequests(
     );
   }
 
+  requests.push({
+    addBanding: {
+      bandedRange: {
+        range: { sheetId, startRowIndex: 1, endRowIndex: 2000, startColumnIndex: 0 },
+        rowProperties: {
+          firstBandColor: { red: 1, green: 1, blue: 1 },
+          secondBandColor: { red: 0.95, green: 0.95, blue: 0.95 },
+        },
+      },
+    },
+  });
+
   return requests;
 }
 
@@ -453,6 +464,22 @@ async function fillMissingDiscordIdsInSheet(
   return updates.length;
 }
 
+function buildFameAtkGradientRule(sheetId: number): object {
+  return {
+    addConditionalFormatRule: {
+      rule: {
+        ranges: [{ sheetId, startRowIndex: 1, endRowIndex: 2000, startColumnIndex: 4, endColumnIndex: 5 }],
+        gradientRule: {
+          minpoint: { color: { red: 0.902, green: 0.486, blue: 0.451 }, type: 'MIN' },
+          midpoint: { color: { red: 1, green: 0.839, blue: 0.4 }, type: 'PERCENTILE', value: '50' },
+          maxpoint: { color: { red: 0.341, green: 0.733, blue: 0.541 }, type: 'MAX' },
+        },
+      },
+      index: 0,
+    },
+  };
+}
+
 async function applyAveragesLastClanColorRules(
   sheets: Awaited<ReturnType<typeof getAuthenticatedSheetsClient>>,
   spreadsheetId: string,
@@ -466,7 +493,7 @@ async function applyAveragesLastClanColorRules(
 
   const resolvedThemes = resolveClanHeaderThemes(resolvedOrder, clanRows);
 
-  // Clear old color rules on Last Clan column (D) for both 4k/5k averages, then add fresh ones.
+  // Clear old color rules on Player (C), Last Clan (D), and Fame/Atk (E) columns for both 4k/5k averages, then add fresh ones.
   const meta = await sheets.spreadsheets.get({
     spreadsheetId,
     fields: 'sheets(properties(sheetId),conditionalFormats)',
@@ -480,7 +507,7 @@ async function applyAveragesLastClanColorRules(
     const toDelete = rules
       .map((rule, index) => ({ rule, index }))
       .filter(({ rule }) =>
-        rule.ranges?.some((range) => (range.startColumnIndex ?? 0) <= 3 && (range.endColumnIndex ?? 26) > 3),
+        rule.ranges?.some((range) => (range.startColumnIndex ?? 0) <= 4 && (range.endColumnIndex ?? 26) > 2),
       )
       .map(({ index }) => index)
       .reverse();
@@ -493,6 +520,7 @@ async function applyAveragesLastClanColorRules(
   const addRequests: object[] = [];
   for (const sheetId of avgSheetIds) {
     addRequests.push(
+      buildFameAtkGradientRule(sheetId),
       ...resolvedOrder.map((clan, idx) => {
         const row = clanRows.find((r) => r.abbreviation.toUpperCase() === clan);
         const isL2W = Boolean(row?.l2w_clan);
@@ -504,12 +532,12 @@ async function applyAveragesLastClanColorRules(
                   sheetId,
                   startRowIndex: 1,
                   endRowIndex: 2000,
-                  startColumnIndex: 3,
-                  endColumnIndex: 4,
+                  startColumnIndex: 2,
+                  endColumnIndex: 3,
                 },
               ],
               booleanRule: {
-                condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: clan }] },
+                condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: `=$D2="${clan}"` }] },
                 format: {
                   backgroundColor: isL2W ? L2W_ACCENT_BG : resolvedThemes[idx].backgroundColor,
                   textFormat: {
@@ -1350,7 +1378,7 @@ const command: Command = {
     }
 
     const subcommand = interaction.options.getSubcommand();
-    const allowed = await checkPerms(interaction, guild.id, 'command', 'either', {
+    const allowed = await checkPerms(interaction, 'command', 'either', {
       hideNoPerms: true,
       deferEphemeral: true,
     });
@@ -1566,9 +1594,23 @@ const command: Command = {
               },
             });
 
+            const bandingMeta = await sheets.spreadsheets.get({
+              spreadsheetId,
+              fields: 'sheets(properties(sheetId),bandedRanges(bandedRangeId))',
+            });
+            const bandingSheet = bandingMeta.data.sheets?.find((s) => s.properties?.sheetId === sheetId);
+            const deleteBandingRequests: object[] = (bandingSheet?.bandedRanges ?? [])
+              .filter((b) => b.bandedRangeId !== undefined)
+              .map((b) => ({ deleteBanding: { bandedRangeId: b.bandedRangeId } }));
+
             await sheets.spreadsheets.batchUpdate({
               spreadsheetId,
-              requestBody: { requests: buildAveragesFormattingRequests(sheetId, allWeekHeaders, colosseumWeekHeaders) },
+              requestBody: {
+                requests: [
+                  ...deleteBandingRequests,
+                  ...buildAveragesFormattingRequests(sheetId, allWeekHeaders, colosseumWeekHeaders),
+                ],
+              },
             });
           }
 
@@ -1935,7 +1977,11 @@ const command: Command = {
             ),
             buildProtectedRangeRequest(
               lineupsSheetId,
-              { ...lineupRowRange, startColumnIndex: lineupStartCol + 2, endColumnIndex: lineupStartCol + LINEUP_BLOCK_WIDTH },
+              {
+                ...lineupRowRange,
+                startColumnIndex: lineupStartCol + 2,
+                endColumnIndex: lineupStartCol + LINEUP_BLOCK_WIDTH,
+              },
               LINEUPS_PROTECTION_NOTE,
               protectedRangeEditors,
             ),
@@ -2036,8 +2082,8 @@ const command: Command = {
           buildClearProtectedRangeRequests(getProtectedRangeIds(targetSheetId)),
         );
 
-        // Clear only the Last Clan (col D = index 3) color rules on the averages sheet so
-        // reruns don't accumulate stale per-clan color rules there.
+        // Clear Player (col C), Last Clan (col D), and Fame/Atk (col E) color rules on the averages sheet so
+        // reruns don't accumulate stale rules there.
         const avgSheetId = getSheetIdFromMeta(`${league} Averages`);
         const clearAvgColorRules: object[] =
           avgSheetId !== null
@@ -2047,7 +2093,7 @@ const command: Command = {
                 const toDelete = rules
                   .map((r, i) => ({ r, i }))
                   .filter(({ r }) =>
-                    r.ranges?.some((range) => (range.startColumnIndex ?? 0) <= 3 && (range.endColumnIndex ?? 26) > 3),
+                    r.ranges?.some((range) => (range.startColumnIndex ?? 0) <= 4 && (range.endColumnIndex ?? 26) > 2),
                   )
                   .map(({ i }) => i)
                   .reverse();
@@ -2137,39 +2183,42 @@ const command: Command = {
           requestBody: { requests: kicksRequests },
         });
 
-        // Apply per-clan background colors to the "Last Clan" column (D) on the averages sheet.
+        // Apply per-clan background colors to the "Last Clan" column (D) and Fame/Atk gradient (E) on the averages sheet.
         // TODO move to place where it runs elsewhere too.
         if (avgSheetId !== null) {
-          const avgColorRules: object[] = allClanOrder.map((clan) => {
-            const meta = allClanThemeMap.get(clan);
-            const isL2W = Boolean(meta?.isL2W);
-            const theme = meta?.theme;
-            return {
-              addConditionalFormatRule: {
-                rule: {
-                  ranges: [
-                    {
-                      sheetId: avgSheetId,
-                      startRowIndex: 1,
-                      endRowIndex: 2000,
-                      startColumnIndex: 3,
-                      endColumnIndex: 4,
-                    },
-                  ],
-                  booleanRule: {
-                    condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: clan }] },
-                    format: {
-                      backgroundColor: isL2W ? L2W_ACCENT_BG : (theme?.backgroundColor ?? LINEUP_HEADER_BG),
-                      textFormat: {
-                        foregroundColor: isL2W ? L2W_ACCENT_TEXT : (theme?.textColor ?? { red: 0, green: 0, blue: 0 }),
+          const avgColorRules: object[] = [
+            buildFameAtkGradientRule(avgSheetId),
+            ...allClanOrder.map((clan) => {
+              const meta = allClanThemeMap.get(clan);
+              const isL2W = Boolean(meta?.isL2W);
+              const theme = meta?.theme;
+              return {
+                addConditionalFormatRule: {
+                  rule: {
+                    ranges: [
+                      {
+                        sheetId: avgSheetId,
+                        startRowIndex: 1,
+                        endRowIndex: 2000,
+                        startColumnIndex: 2,
+                        endColumnIndex: 3,
+                      },
+                    ],
+                    booleanRule: {
+                      condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: `=$D2="${clan}"` }] },
+                      format: {
+                        backgroundColor: isL2W ? L2W_ACCENT_BG : (theme?.backgroundColor ?? LINEUP_HEADER_BG),
+                        textFormat: {
+                          foregroundColor: isL2W ? L2W_ACCENT_TEXT : (theme?.textColor ?? { red: 0, green: 0, blue: 0 }),
+                        },
                       },
                     },
                   },
+                  index: 0,
                 },
-                index: 0,
-              },
-            };
-          });
+              };
+            }),
+          ];
 
           if (avgColorRules.length > 0) {
             await sheets.spreadsheets.batchUpdate({
