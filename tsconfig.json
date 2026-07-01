@@ -6,7 +6,7 @@
     "target": "ES2020",
     "sourceMap": true,
     "outDir": "dist",
-    "noEmitOnError": false,
+    "noEmitOnError": truess,
     "strict": true,
     "types": ["node", "discord.js"],
     "noUnusedLocals": true,
