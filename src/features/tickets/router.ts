@@ -68,7 +68,7 @@ export class TicketInteractionRouter {
         break;
       }
       case 'ticket_welcome_info': {
-        await this.showWelcomeInfo(interaction, guildId);
+        await this.showWelcomeInfo(interaction, guildId, parsed.ownerId);
         break;
       }
       case 'ticket_resend_playertag_button': {
@@ -653,11 +653,12 @@ export class TicketInteractionRouter {
     }
   }
 
-  private static async showWelcomeInfo(interaction: ButtonInteraction, guildId: string): Promise<void> {
-    const result = await pool.query(
-      `SELECT welcome_message FROM ticket_settings WHERE guild_id = $1`,
-      [guildId],
-    );
+  private static async showWelcomeInfo(
+    interaction: ButtonInteraction,
+    guildId: string,
+    ownerId: string,
+  ): Promise<void> {
+    const result = await pool.query(`SELECT welcome_message FROM ticket_settings WHERE guild_id = $1`, [guildId]);
 
     const welcomeMessage = result.rows[0]?.welcome_message;
     if (!welcomeMessage) {
@@ -670,9 +671,13 @@ export class TicketInteractionRouter {
 
     const formatted = welcomeMessage.replace(/{user}/g, `<@${interaction.user.id}>`);
 
-    await interaction.reply({
-      content: formatted,
-      flags: MessageFlags.Ephemeral,
-    });
+    if (interaction.user.id === ownerId) {
+      await interaction.update({
+        content: interaction.message.content + '\nThank you!',
+      });
+      await interaction.followUp({ content: formatted, flags: MessageFlags.Ephemeral });
+    } else {
+      await interaction.reply({ content: formatted, flags: MessageFlags.Ephemeral });
+    }
   }
 }

@@ -177,13 +177,15 @@ const command: Command = {
     }
 
     const channelMention = clan.race_nudge_channel_id ? `<#${clan.race_nudge_channel_id}>` : 'N/A';
+    const channelLine = clan.race_nudge_channel_id
+      ? `Sending the welcome message to: ${channelMention}`
+      : `No nudge channel configured for ${clan.clan_name} — skipping welcome message`;
+    const descriptionLine =
+      roleLines.length === 0
+        ? `**There are no roles configured to add to <@${targetUser.id}>.**\n${channelLine}`
+        : `**The user <@${targetUser.id}> should now have ${roleLines.join(' and ')} roles.**\n${channelLine}`;
     const confirmEmbed = new EmbedBuilder()
-      .setDescription(
-        `**The user <@${targetUser.id}> should now have ${roleLines.join(' and ')} roles.**\n` +
-          (clan.race_nudge_channel_id
-            ? `Sending the welcome message to: ${channelMention}`
-            : `No nudge channel configured for ${clan.clan_name} — skipping welcome message`),
-      )
+      .setDescription(descriptionLine)
       .setColor(rolesFailed.length > 0 ? EmbedColor.WARNING : EmbedColor.SUCCESS);
 
     await interaction.editReply({ embeds: [confirmEmbed] });
@@ -200,14 +202,14 @@ const command: Command = {
         if (!channel || !(channel instanceof TextChannel)) return;
 
         const infoButton = new ButtonBuilder()
-          .setCustomId(makeCustomId('b', 'ticket_welcome_info', guild.id))
+          .setCustomId(makeCustomId('b', 'ticket_welcome_info', guild.id, { cooldown: 3, ownerId: targetUser.id }))
           .setLabel('Click Me!')
           .setStyle(ButtonStyle.Primary);
 
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(infoButton);
 
         await channel.send({
-          content: `Welcome to **${clan.clan_name}**, <@${targetUser!.id}> ${hasEmoji('omgpepe') ? getEmoji('omgpepe') : '🎉'}\n${welcomeTemplate ? `Please click the button below to view important information.` : ''}`,
+          content: `Welcome to **${clan.clan_name}**, <@${targetUser!.id}> ${hasEmoji('omgpepe') ? getEmoji('omgpepe') : '🎉'}\n${welcomeTemplate ? `Please click the button below to read any useful information.` : ''}`,
           components: welcomeTemplate ? [row] : [],
         });
       } catch (error) {
