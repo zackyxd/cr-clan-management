@@ -2,9 +2,11 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'disc
 import { makeCustomId } from './customId.js';
 import { CR_API } from '../api/CR_API.js';
 import { MemberData } from './memberChannelHelpers.js';
+import { isL2WChannelName, getL2WClans, getL2WClansWithActiveInvites } from '../features/member-channels/l2w.js';
 
 interface MemberChannelData {
   channel_id: string;
+  channel_name: string;
   clantag_focus: string | null;
   clan_name_focus: string | null;
   members: MemberData[];
@@ -42,7 +44,31 @@ export async function buildMemberChannelCheckUI(
   let embed: EmbedBuilder;
 
   // Build embed based on whether there's a clan focus
-  if (channelData.clantag_focus) {
+  if (isL2WChannelName(channelData.channel_name)) {
+    const [l2wClans, l2wActiveInvites] = await Promise.all([
+      getL2WClans(guildId),
+      getL2WClansWithActiveInvites(guildId),
+    ]);
+    const activeTags = new Set(l2wActiveInvites.map((c) => c.clantag));
+
+    const clanLines =
+      l2wClans.length > 0
+        ? l2wClans.map((c) => `${activeTags.has(c.clantag) ? '✅' : '❌'} ${c.clanName}`).join('\n')
+        : '⚠️ No clans are marked as L2W clans in this server.';
+
+    embed = new EmbedBuilder()
+      .setTitle('L2W Member Channel Info')
+      .setDescription(
+        `**Clan Focus:** L2W (checked against all active L2W clans)\n` +
+          `**Channel Members:** ${totalMembers}\n` +
+          `**Accounts Selected:** ${totalAccounts}\n` +
+          `**Last Ping:** ${channelData.last_ping ? `<t:${Math.floor(new Date(channelData.last_ping).getTime() / 1000)}:R>` : 'N/A'}\n\n` +
+          `**L2W Clans (✅ = active invite):**\n${clanLines}` +
+          pendingDeleteWarning +
+          (channelData.is_locked ? '\n\n🔒 Locked.' : ''),
+      )
+      .setColor(confirmedBy.length > 0 ? 'Orange' : 'Blue');
+  } else if (channelData.clantag_focus) {
     const clanData = await CR_API.getClan(channelData.clantag_focus);
 
     if ('error' in clanData) {

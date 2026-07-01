@@ -19,6 +19,7 @@ import type {
   ClanInfo,
 } from './types.js';
 import { SESSION_CLEANUP_INTERVAL_MINUTES, SESSION_EXPIRY_MINUTES } from '../../config/constants.js';
+import { isL2WChannelName } from './l2w.js';
 import logger from '../../logger.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { StatsTracker } from '../../services/statsTracker.js';
@@ -410,8 +411,9 @@ export class MemberChannelService {
           abbreviation: '', // Not needed for display
         };
       }
-    } else {
+    } else if (!isL2WChannelName(session.input.channelName)) {
       // For channel creation, try to match clan from channel name
+      // (L2W channels intentionally have no single clan focus - they're checked against all L2W clans)
       clanInfo = await this.findMatchingClan(session.guildId, session.input.channelName);
     }
 

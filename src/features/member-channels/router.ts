@@ -28,6 +28,7 @@ import { buildMemberChannelCheckUI } from '../../utils/memberChannelCheckHelpers
 import logger from '../../logger.js';
 import { MAX_MEMBER_CHANNEL_ACCOUNTS } from '../../config/constants.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
+import { isL2WChannelName, getL2WMemberTags, getL2WClansWithActiveInvites, type L2WClan } from './l2w.js';
 
 /**
  * Router for member channel interactions
@@ -401,7 +402,12 @@ export class MemberChannelInteractionRouter {
       description += `**Channel Name:** ${finalData.channelName}\n`;
     }
 
-    description += `**Clan Focus:** ${finalData.clanInfo ? `${finalData.clanInfo.clanName} (${finalData.clanInfo.clantag})` : 'None'}\n\n`;
+    const clanFocusText = finalData.clanInfo
+      ? `${finalData.clanInfo.clanName} (${finalData.clanInfo.clantag})`
+      : isL2WChannelName(finalData.channelName)
+        ? 'L2W (checked against all active L2W clans)'
+        : 'None';
+    description += `**Clan Focus:** ${clanFocusText}\n\n`;
     let totalAccountCount = 0;
 
     for (const [discordId, accountData] of finalData.accounts.entries()) {
@@ -1082,7 +1088,7 @@ export class MemberChannelInteractionRouter {
 
     const members = await pool.query(
       `
-      SELECT clantag_focus, clan_name_focus, members FROM member_channels WHERE guild_id = $1 AND channel_id = $2
+      SELECT channel_name, clantag_focus, clan_name_focus, members FROM member_channels WHERE guild_id = $1 AND channel_id = $2
       `,
       [parsed.guildId, interaction.channelId],
     );
@@ -1092,7 +1098,9 @@ export class MemberChannelInteractionRouter {
       return;
     }
 
-    if (!members.rows[0].clan_name_focus || !members.rows[0].clantag_focus) {
+    const isL2W = isL2WChannelName(members.rows[0].channel_name);
+
+    if (!isL2W && (!members.rows[0].clan_name_focus || !members.rows[0].clantag_focus)) {
       const embed = new EmbedBuilder()
         .setDescription(
           '❌ This member channel does not have a clan focus set. Please set a clan focus to use this command.',
@@ -1105,23 +1113,31 @@ export class MemberChannelInteractionRouter {
 
     const memberList = members.rows[0].members;
 
-    // Fetch clan info to check members against
-    const clanInfo = await CR_API.getClan(members.rows[0].clantag_focus);
-    if ('error' in clanInfo) {
-      await interaction.editReply({
-        embeds: [
-          clanInfo.embed ?? new EmbedBuilder().setDescription('❌ Failed to fetch clan information.').setColor('Red'),
-        ],
-      });
-      return;
-    }
-    if (!clanInfo) {
-      await interaction.editReply({ content: '❌ Failed to fetch clan info from API.' });
-      return;
-    }
+    // Create a Set of clan member tags for fast lookup - across all L2W clans, or just the single clan focus
+    let clanMemberTags: Set<string>;
+    let statusTitle: string;
 
-    // Create a Set of clan member tags for fast lookup
-    const clanMemberTags = new Set(clanInfo.memberList.map((m) => m.tag));
+    if (isL2W) {
+      clanMemberTags = await getL2WMemberTags(parsed.guildId);
+      statusTitle = 'L2W';
+    } else {
+      const clanInfo = await CR_API.getClan(members.rows[0].clantag_focus);
+      if ('error' in clanInfo) {
+        await interaction.editReply({
+          embeds: [
+            clanInfo.embed ?? new EmbedBuilder().setDescription('❌ Failed to fetch clan information.').setColor('Red'),
+          ],
+        });
+        return;
+      }
+      if (!clanInfo) {
+        await interaction.editReply({ content: '❌ Failed to fetch clan info from API.' });
+        return;
+      }
+
+      clanMemberTags = new Set(clanInfo.memberList.map((m) => m.tag));
+      statusTitle = members.rows[0].clan_name_focus;
+    }
 
     // Check each member's status
     const statusLines: string[] = [];
@@ -1162,10 +1178,7 @@ export class MemberChannelInteractionRouter {
 
     const checkDesc = statusLines.join('\n') || 'No members to check';
 
-    const embed = new EmbedBuilder()
-      .setTitle(`Member Status - ${members.rows[0].clan_name_focus}`)
-      .setDescription(checkDesc)
-      .setColor('Blue');
+    const embed = new EmbedBuilder().setTitle(`Member Status - ${statusTitle}`).setDescription(checkDesc).setColor('Blue');
 
     await interaction.editReply({ embeds: [embed] });
   }
@@ -1311,71 +1324,94 @@ export class MemberChannelInteractionRouter {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const membersRes = await pool.query(
       `
-      SELECT mc.clantag_focus, mc.clan_name_focus, mc.members, c.invites_enabled
+      SELECT mc.channel_name, mc.clantag_focus, mc.clan_name_focus, mc.members, c.invites_enabled
       FROM member_channels mc
-      JOIN clans c ON mc.clantag_focus = c.clantag AND mc.guild_id = c.guild_id
+      LEFT JOIN clans c ON mc.clantag_focus = c.clantag AND mc.guild_id = c.guild_id
       WHERE mc.guild_id = $1 AND mc.channel_id = $2
       `,
       [parsed.guildId, interaction.channelId],
     );
-
-    if (!membersRes.rows[0]?.clan_name_focus || !membersRes.rows[0]?.clantag_focus) {
-      await interaction.editReply({
-        content: '❌ This member channel does not have a clan focus set. Please set a clan focus first.',
-      });
-      return;
-    }
 
     if (membersRes.rowCount === 0) {
       await interaction.editReply({ content: '❌ No member channel found for this channel.' });
       return;
     }
 
-    const clanNameFocus = membersRes.rows[0].clan_name_focus;
-    const clantagFocus = membersRes.rows[0].clantag_focus;
+    const isL2W = isL2WChannelName(membersRes.rows[0].channel_name);
 
-    // Check if there's an active invite link
-    const activeInvite = await clanInviteService.getActiveInvite(parsed.guildId, clantagFocus);
-    if (!activeInvite) {
-      const embed = new EmbedBuilder()
-        .setDescription(
-          `❌ There is currently no active clan invite link for **${clanNameFocus}**.\nPlease generate one using \`/update-clan-invite\``,
-        )
-        .setColor(EmbedColor.FAIL);
-      await interaction.editReply({ embeds: [embed] });
-      return;
-    }
-
-    const invitesEnabled = membersRes.rows[0].invites_enabled;
-
-    if (!invitesEnabled) {
-      const embed = new EmbedBuilder()
-        .setDescription(`❌ Invites are currently disabled for **${clanNameFocus}**.`)
-        .setColor(EmbedColor.FAIL);
-      await interaction.editReply({ embeds: [embed] });
+    if (!isL2W && (!membersRes.rows[0].clan_name_focus || !membersRes.rows[0].clantag_focus)) {
+      await interaction.editReply({
+        content: '❌ This member channel does not have a clan focus set. Please set a clan focus first.',
+      });
       return;
     }
 
     const memberList = membersRes.rows[0].members;
 
-    // Fetch clan info
-    const clanInfo = await CR_API.getClan(clantagFocus);
-    if ('error' in clanInfo) {
-      const fetchError = clanInfo as FetchError;
-      const embed =
-        fetchError.embed ?? new EmbedBuilder().setDescription('❌ Failed to fetch clan information.').setColor('Red');
-      await interaction.editReply({
-        embeds: [embed],
-      });
-      return;
-    }
-    if (!clanInfo) {
-      await interaction.editReply({ content: '❌ Failed to fetch clan info from API.' });
-      return;
-    }
+    // Set of clan member tags to check against, and the L2W clans to send invites for (if applicable)
+    let clanMemberTags: Set<string>;
+    let focusName: string;
+    let l2wActiveInvites: L2WClan[] = [];
 
-    // Create a Set of clan member tags for fast lookup
-    const clanMemberTags = new Set(clanInfo.memberList.map((m) => m.tag));
+    if (isL2W) {
+      l2wActiveInvites = await getL2WClansWithActiveInvites(parsed.guildId);
+      if (l2wActiveInvites.length === 0) {
+        const embed = new EmbedBuilder()
+          .setDescription(
+            `❌ There are currently no active clan invite links for any L2W clan.\nPlease generate one using \`/update-clan-invite\``,
+          )
+          .setColor(EmbedColor.FAIL);
+        await interaction.editReply({ embeds: [embed] });
+        return;
+      }
+
+      clanMemberTags = await getL2WMemberTags(parsed.guildId);
+      focusName = 'L2W';
+    } else {
+      const clanNameFocus = membersRes.rows[0].clan_name_focus;
+      const clantagFocus = membersRes.rows[0].clantag_focus;
+
+      // Check if there's an active invite link
+      const activeInvite = await clanInviteService.getActiveInvite(parsed.guildId, clantagFocus);
+      if (!activeInvite) {
+        const embed = new EmbedBuilder()
+          .setDescription(
+            `❌ There is currently no active clan invite link for **${clanNameFocus}**.\nPlease generate one using \`/update-clan-invite\``,
+          )
+          .setColor(EmbedColor.FAIL);
+        await interaction.editReply({ embeds: [embed] });
+        return;
+      }
+
+      const invitesEnabled = membersRes.rows[0].invites_enabled;
+
+      if (!invitesEnabled) {
+        const embed = new EmbedBuilder()
+          .setDescription(`❌ Invites are currently disabled for **${clanNameFocus}**.`)
+          .setColor(EmbedColor.FAIL);
+        await interaction.editReply({ embeds: [embed] });
+        return;
+      }
+
+      // Fetch clan info
+      const clanInfo = await CR_API.getClan(clantagFocus);
+      if ('error' in clanInfo) {
+        const fetchError = clanInfo as FetchError;
+        const embed =
+          fetchError.embed ?? new EmbedBuilder().setDescription('❌ Failed to fetch clan information.').setColor('Red');
+        await interaction.editReply({
+          embeds: [embed],
+        });
+        return;
+      }
+      if (!clanInfo) {
+        await interaction.editReply({ content: '❌ Failed to fetch clan info from API.' });
+        return;
+      }
+
+      clanMemberTags = new Set(clanInfo.memberList.map((m) => m.tag));
+      focusName = clanNameFocus;
+    }
 
     // Track missing accounts and the Discord IDs that need to be pinged
     const missingAccounts: Array<{ name: string; tag: string; discordId: string; joiningLate: boolean }> = [];
@@ -1458,7 +1494,7 @@ export class MemberChannelInteractionRouter {
 
     const pingDesc = embedLines.join('\n');
     const embed = new EmbedBuilder()
-      .setTitle(`Missing Members - ${clanNameFocus}`)
+      .setTitle(`Missing Members - ${focusName}`)
       .setDescription(pingDesc)
       .setColor('Orange');
 
@@ -1474,10 +1510,10 @@ export class MemberChannelInteractionRouter {
       const pings = Array.from(discordIdsToPing)
         .map((id) => `<@${id}>`)
         .join(', ');
-      content = `Attention - Clan Movements for **${clanNameFocus}**: ${pings}.`;
+      content = `Attention - Clan Movements for **${focusName}**: ${pings}.`;
     } else {
       // There are missing members but they're all joining late during safe period
-      content = `**${clanNameFocus}** - Missing members`;
+      content = `**${focusName}** - Missing members`;
     }
 
     // Send to the channel (not ephemeral)
@@ -1491,24 +1527,61 @@ export class MemberChannelInteractionRouter {
       components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joiningLateButton)],
     });
 
+    if (isL2W) {
+      // Send an invite link for every L2W clan that currently has one active
+      const sentClans: string[] = [];
+      for (const clan of l2wActiveInvites) {
+        const message = await clanInviteService.sendInviteToChannel(
+          interaction.client,
+          interaction.guildId!,
+          interaction.channelId,
+          clan.clantag,
+          'Member Channel Ping',
+          interaction.user.id,
+        );
+        if (message) sentClans.push(clan.clanName);
+      }
+
+      if (sentClans.length > 0) {
+        const confirmEmbed = new EmbedBuilder()
+          .setDescription(`✅ Sent invite link${sentClans.length !== 1 ? 's' : ''} for **${sentClans.join(', ')}** below.`)
+          .setColor(EmbedColor.SUCCESS);
+        await interaction.editReply({ embeds: [confirmEmbed] });
+        await pool.query(
+          `
+          UPDATE member_channels
+          SET last_ping = NOW()
+          WHERE guild_id = $1 AND channel_id = $2
+          `,
+          [interaction.guildId, interaction.channelId],
+        );
+      } else {
+        const errorEmbed = new EmbedBuilder()
+          .setDescription(`❌ Failed to send invite links.`)
+          .setColor(EmbedColor.FAIL);
+        await interaction.editReply({ embeds: [errorEmbed] });
+      }
+      return;
+    }
+
     // Send invite to the current channel and track it
     const message = await clanInviteService.sendInviteToChannel(
       interaction.client,
       interaction.guildId!,
       interaction.channelId,
-      clantagFocus,
+      membersRes.rows[0].clantag_focus,
       'Member Channel Ping',
       interaction.user.id,
     );
 
     if (message) {
       const confirmEmbed = new EmbedBuilder()
-        .setDescription(`✅ Sent invite link for **${clanNameFocus}** below.`)
+        .setDescription(`✅ Sent invite link for **${focusName}** below.`)
         .setColor(EmbedColor.SUCCESS);
       await interaction.editReply({ embeds: [confirmEmbed] });
       await pool.query(
         `
-        UPDATE member_channels 
+        UPDATE member_channels
         SET last_ping = NOW()
         WHERE guild_id = $1 AND channel_id = $2
         `,
@@ -1582,9 +1655,9 @@ export class MemberChannelInteractionRouter {
       // Fetch member channel data
       const membersRes = await pool.query(
         `
-        SELECT mc.clantag_focus, mc.clan_name_focus, mc.members, c.invites_enabled
+        SELECT mc.channel_name, mc.clantag_focus, mc.clan_name_focus, mc.members, c.invites_enabled
         FROM member_channels mc
-        JOIN clans c ON mc.clantag_focus = c.clantag AND mc.guild_id = c.guild_id
+        LEFT JOIN clans c ON mc.clantag_focus = c.clantag AND mc.guild_id = c.guild_id
         WHERE mc.guild_id = $1 AND mc.channel_id = $2
         `,
         [guildId, channelId],
@@ -1594,6 +1667,7 @@ export class MemberChannelInteractionRouter {
       if (membersRes.rowCount === 0) return;
 
       const memberList = membersRes.rows[0].members;
+      const isL2W = isL2WChannelName(membersRes.rows[0].channel_name);
 
       const clanNameFocus = membersRes.rows[0].clan_name_focus;
       const clantagFocus = membersRes.rows[0].clantag_focus;
@@ -1608,8 +1682,8 @@ export class MemberChannelInteractionRouter {
         .setStyle(ButtonStyle.Secondary)
         .setEmoji('🕐');
 
-      // If there's no clan focus, just ping everyone
-      if (!clanNameFocus || !clantagFocus) {
+      // If there's no clan focus and it's not an L2W channel, just ping everyone
+      if (!isL2W && (!clanNameFocus || !clantagFocus)) {
         if (!channel.isSendable()) return;
         await channel.send({
           content: `${allPings} - Attention`,
@@ -1618,22 +1692,35 @@ export class MemberChannelInteractionRouter {
         return;
       }
 
-      // Fetch clan info to check member status
-      const clanInfo = await CR_API.getClan(clantagFocus);
-      if ('error' in clanInfo || !clanInfo) {
-        // If can't fetch clan info, just ping everyone
-        if (!channel.isSendable()) return;
-        await channel.send({
-          content: `${allPings}\n\n⚠️ Unable to check clan status for **${clanNameFocus}** at this time.`,
-        });
-        return;
+      let clanMemberTags: Set<string>;
+      let focusName: string;
+      let activeInvite: unknown;
+      let l2wActiveInvites: L2WClan[] = [];
+
+      if (isL2W) {
+        l2wActiveInvites = await getL2WClansWithActiveInvites(guildId);
+        clanMemberTags = await getL2WMemberTags(guildId);
+        focusName = 'L2W';
+        activeInvite = l2wActiveInvites.length > 0 ? l2wActiveInvites : null;
+      } else {
+        // Fetch clan info to check member status
+        const clanInfo = await CR_API.getClan(clantagFocus);
+        if ('error' in clanInfo || !clanInfo) {
+          // If can't fetch clan info, just ping everyone
+          if (!channel.isSendable()) return;
+          await channel.send({
+            content: `${allPings}\n\n⚠️ Unable to check clan status for **${clanNameFocus}** at this time.`,
+          });
+          return;
+        }
+
+        // Check if there's an active invite link
+        activeInvite = await clanInviteService.getActiveInvite(guildId, clantagFocus);
+
+        // Create a Set of clan member tags for fast lookup
+        clanMemberTags = new Set(clanInfo.memberList.map((m) => m.tag));
+        focusName = clanNameFocus;
       }
-
-      // Check if there's an active invite link
-      const activeInvite = await clanInviteService.getActiveInvite(guildId, clantagFocus);
-
-      // Create a Set of clan member tags for fast lookup
-      const clanMemberTags = new Set(clanInfo.memberList.map((m) => m.tag));
 
       // Track missing accounts and the Discord IDs that need to be pinged
       const missingAccounts: Array<{ name: string; tag: string; discordId: string }> = [];
@@ -1703,7 +1790,7 @@ export class MemberChannelInteractionRouter {
         }
 
         const allInClanEmbed = new EmbedBuilder()
-          .setTitle(`Member Channel Created - ${clanNameFocus}`)
+          .setTitle(`Member Channel Created - ${focusName}`)
           .setDescription(allMembersDescription.trim())
           .setColor(EmbedColor.SUCCESS)
           .setTimestamp();
@@ -1743,7 +1830,7 @@ export class MemberChannelInteractionRouter {
 
       const initialMissingDesc = embedLines.join('\n');
       const embed = new EmbedBuilder()
-        .setTitle(`Missing Members - ${clanNameFocus}`)
+        .setTitle(`Missing Members - ${focusName}`)
         .setDescription(initialMissingDesc)
         .setColor('Orange');
 
@@ -1751,7 +1838,7 @@ export class MemberChannelInteractionRouter {
       const pings = Array.from(discordIdsToPing)
         .map((id) => `<@${id}>`)
         .join(', ');
-      const content = `Attention - Clan Movements for **${clanNameFocus}**: ${pings}.`;
+      const content = `Attention - Clan Movements for **${focusName}**: ${pings}.`;
 
       // Send to the channel
       if (!channel.isSendable()) return;
@@ -1761,10 +1848,37 @@ export class MemberChannelInteractionRouter {
         components: [new ActionRowBuilder<ButtonBuilder>().addComponents(joiningLateButton)],
       });
 
+      if (isL2W) {
+        if (l2wActiveInvites.length === 0) {
+          const noInviteEmbed = new EmbedBuilder()
+            .setDescription(
+              `⚠️ There are currently no active clan invite links for any L2W clan.\nPlease generate one using \`/update-clan-invite\`.`,
+            )
+            .setColor(EmbedColor.WARNING);
+          await channel.send({ embeds: [noInviteEmbed] });
+          return;
+        }
+
+        for (const clan of l2wActiveInvites) {
+          const message = await clanInviteService.sendInviteToChannel(
+            interaction.client,
+            guildId,
+            channelId,
+            clan.clantag,
+            'Member Channel Ping',
+            interaction.user.id,
+          );
+          if (!message) {
+            logger.error(`[sendInitialMemberStatus] Failed to send invite link for L2W clan ${clan.clantag}`);
+          }
+        }
+        return;
+      }
+
       const invitesEnabled = membersRes.rows[0].invites_enabled;
       if (!invitesEnabled) {
         const embed = new EmbedBuilder()
-          .setDescription(`⚠️ Invites are currently disabled for **${clanNameFocus}**.`)
+          .setDescription(`⚠️ Invites are currently disabled for **${focusName}**.`)
           .setColor(EmbedColor.WARNING);
         await interaction.editReply({ embeds: [embed] });
         return;
@@ -1787,7 +1901,7 @@ export class MemberChannelInteractionRouter {
       } else {
         const embed = new EmbedBuilder()
           .setDescription(
-            `⚠️ There is currently no active clan invite link for **${clanNameFocus}**.\nPlease generate one using \`/update-clan-invite\``,
+            `⚠️ There is currently no active clan invite link for **${focusName}**.\nPlease generate one using \`/update-clan-invite\``,
           )
           .setColor(EmbedColor.WARNING);
         await channel.send({ embeds: [embed] });
@@ -2061,7 +2175,7 @@ export class MemberChannelInteractionRouter {
     // Re-fetch the channel data to rebuild the embed with updated lock status
     const validChannelSQL = await pool.query(
       `
-      SELECT mc.channel_id, mc.clantag_focus, mc.clan_name_focus, mc.members, mc.last_ping, mc.current_delete_count, mc.delete_confirmed_by,
+      SELECT mc.channel_id, mc.channel_name, mc.clantag_focus, mc.clan_name_focus, mc.members, mc.last_ping, mc.current_delete_count, mc.delete_confirmed_by,
              COALESCE(mcs.delete_confirm_count, 1) as delete_confirm_count, mc.is_locked
       FROM member_channels mc
       LEFT JOIN member_channel_settings mcs ON mc.guild_id = mcs.guild_id
