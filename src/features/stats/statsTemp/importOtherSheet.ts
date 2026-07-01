@@ -2,7 +2,7 @@ import { getAuthenticatedSheetsClient } from '../statsUtil.js';
 const sourceSheets = await getAuthenticatedSheetsClient();
 const sourceData = await sourceSheets.spreadsheets.values.get({
   spreadsheetId: '1b8BgwkPZ2cUgUvy_2r5zISCSxG207qtIf7re3sVL8x0',
-  range: '5k Averages!A1:LP2000',
+  range: '4k Averages!A1:LP2499',
 });
 const rows = sourceData.data.values || [];
 const headerRow = rows[0]; // ['Tag', 'Player', 'Last Clan', 'Fame / Atk.', '132-3', '', '132-2', '', ...]
@@ -60,7 +60,7 @@ const dataRows = rows.slice(1).map((row) => {
 
 await sheets.spreadsheets.values.update({
   spreadsheetId: targetSpreadsheetId,
-  range: '5k Averages!A1',
+  range: '4k Averages!A1',
   valueInputOption: 'USER_ENTERED',
   requestBody: {
     values: [headerValues[0], ...dataRows],

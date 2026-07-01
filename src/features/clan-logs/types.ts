@@ -19,7 +19,7 @@ export type ClanChange =
       playerName: string;
       role: string;
       clantag: string;
-      arena: { rawName: string };
+      arena: { name: string };
       trophies: number;
       newRole: string;
     }
@@ -33,7 +33,7 @@ export type ClanChange =
       playerName: string;
       role: string;
       clantag: string;
-      arena: { rawName: string };
+      arena: { name: string };
       trophies: number;
       oldRole: string;
     }
@@ -46,7 +46,7 @@ export type ClanChange =
       playertag: string;
       playerName: string;
       clantag: string;
-      arena: { rawName: string };
+      arena: { name: string };
       trophies: number;
       oldRole: string;
       newRole: string;

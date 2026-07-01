@@ -383,6 +383,7 @@ const RiverRaceLogSchema = z.object({
 
 type CurrentRiverRaceLogSchema = z.infer<typeof RiverRaceLogSchema>;
 export type CurrentRiverRaceLogResult = CurrentRiverRaceLogSchema | FetchError;
+export type RiverRaceLogSuccess = CurrentRiverRaceLogSchema;
 
 export async function getRiverRaceLog(clantag: string): Promise<CurrentRiverRaceLogResult> {
   clantag = normalizeTag(clantag);

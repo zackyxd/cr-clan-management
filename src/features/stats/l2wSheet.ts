@@ -38,9 +38,6 @@ const L2W_DATE_COL = 5;
 const L2W_RETURN_COL = 6; // ↩ Available checkbox
 const L2W_SWITCH_COL = 7; // → Inactive checkbox
 
-// Gap separator (col 8)
-const GAP_COL = 8;
-
 // Right section: Inactive (cols 9–16)
 const INACTIVE_TAG_COL = 9;
 const INACTIVE_PLAYER_COL = 10;

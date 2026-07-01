@@ -16,7 +16,7 @@ type ClanMember = {
   tag: string;
   name: string;
   role?: string;
-  arena?: { rawName: string; [key: string]: unknown };
+  arena?: { name: string; [key: string]: unknown };
   trophies?: number;
   [key: string]: unknown;
 };
@@ -91,7 +91,7 @@ function detectMemberChanges(
         playertag: oldMember.tag,
         playerName: oldMember.name,
         role: role,
-        arena: oldMember.arena || { rawName: 'Arena_L1' },
+        arena: oldMember.arena || { name: 'GoblinStadium' },
         trophies: oldMember.trophies || 0,
         oldRole: role,
       });
@@ -112,7 +112,7 @@ function detectMemberChanges(
         playertag: newMember.tag,
         playerName: newMember.name,
         role: role,
-        arena: newMember.arena || { rawName: 'Arena_L1' },
+        arena: newMember.arena || { name: 'GoblinStadium' },
         trophies: newMember.trophies || 0,
         newRole: role,
       });
@@ -132,7 +132,7 @@ function detectMemberChanges(
         clanScore,
         playertag: newMember.tag,
         playerName: newMember.name,
-        arena: newMember.arena || { rawName: 'Arena_L1' },
+        arena: newMember.arena || { name: 'GoblinStadium' },
         trophies: newMember.trophies || 0,
         oldRole: oldMember.role || 'member',
         newRole: newMember.role || 'member',

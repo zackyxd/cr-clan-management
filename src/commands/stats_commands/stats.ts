@@ -1,7 +1,7 @@
 import { ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from 'discord.js';
 import { Command } from '../../types/Command.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
-import { normalizeTag, getPlayer, isFetchError, CR_API } from '../../api/CR_API.js';
+import { normalizeTag, getPlayer, isFetchError, CR_API, type RiverRaceLogSuccess } from '../../api/CR_API.js';
 import { pool } from '../../db.js';
 import {
   getAuthenticatedSheetsClient,
@@ -1434,7 +1434,7 @@ const command: Command = {
         const clanLogs: {
           clantag: string;
           abbreviation: string;
-          items: Awaited<ReturnType<typeof CR_API.getRiverRaceLog>>['items'];
+          items: RiverRaceLogSuccess['items'];
         }[] = [];
 
         for (const familyClan of familyClans) {
@@ -1763,17 +1763,17 @@ const command: Command = {
           };
         };
 
-        const [fiveKResult, fourKResult] = await Promise.all([
+        await Promise.all([
           syncAveragesSheet('5k Averages', averages5kId, '5k'),
           syncAveragesSheet('4k Averages', averages4kId, '4k'),
         ]);
 
         await applyAveragesLastClanColorRules(sheets, spreadsheetId, [averages5kId, averages4kId], allClanThemeRows);
 
-        const skippedSuffix = noDataClans.length > 0 ? ` Skipped no-data clans: ${noDataClans.join(', ')}.` : '';
+        // const skippedSuffix = noDataClans.length > 0 ? ` Skipped no-data clans: ${noDataClans.join(', ')}.` : '';
 
         await interaction.editReply({
-          content: `✅ Updated both average sheets`,
+          content: `✅ Updated both average sheets.`,
         });
       }
 
@@ -2209,7 +2209,9 @@ const command: Command = {
                       format: {
                         backgroundColor: isL2W ? L2W_ACCENT_BG : (theme?.backgroundColor ?? LINEUP_HEADER_BG),
                         textFormat: {
-                          foregroundColor: isL2W ? L2W_ACCENT_TEXT : (theme?.textColor ?? { red: 0, green: 0, blue: 0 }),
+                          foregroundColor: isL2W
+                            ? L2W_ACCENT_TEXT
+                            : (theme?.textColor ?? { red: 0, green: 0, blue: 0 }),
                         },
                       },
                     },

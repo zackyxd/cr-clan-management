@@ -59,6 +59,7 @@ const EMOJI_SERVERS: string[] = [
   '1399745982261891092', // MISC emojis,
   '1507127446963748907', // EXP 1-99
   '1507127699871891529', // EXP 1-99
+  '1521697664348196865', // Arena emojis
 ];
 
 class EmojiManagerClass {

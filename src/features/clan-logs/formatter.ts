@@ -76,7 +76,7 @@ export function formatClanChange(change: ClanChange, discordUser?: User): EmbedB
       );
       let description = clanHeader;
       description += `**${getRoleDisplayName(change.role)} joined!**\n`;
-      description += `${getEmoji(change.arena.rawName)}\`${change.trophies}\` [${change.playerName}](<https://royaleapi.com/player/${change.playertag?.substring(1)}>)`;
+      description += `${getEmoji(change.arena.name.replace(/[^a-zA-Z0-9]/g, ''))}\`${change.trophies}\` [${change.playerName}](<https://royaleapi.com/player/${change.playertag?.substring(1)}>)`;
 
       const embed = new EmbedBuilder().setColor(COLORS.JOIN).setDescription(description).setTimestamp();
       if (discordUser) {
@@ -95,7 +95,7 @@ export function formatClanChange(change: ClanChange, discordUser?: User): EmbedB
       );
       let description = clanHeader;
       description += `**${getRoleDisplayName(change.role)} left!**\n`;
-      description += `${getEmoji(change.arena.rawName)}\`${change.trophies}\` [${change.playerName}](<https://royaleapi.com/player/${change.playertag?.substring(1)}>)`;
+      description += `${getEmoji(change.arena.name.replace(/[^a-zA-Z0-9]/g, ''))}\`${change.trophies}\` [${change.playerName}](<https://royaleapi.com/player/${change.playertag?.substring(1)}>)`;
 
       const embed = new EmbedBuilder().setColor(COLORS.LEAVE).setDescription(description).setTimestamp();
       if (discordUser) {
@@ -114,7 +114,7 @@ export function formatClanChange(change: ClanChange, discordUser?: User): EmbedB
       );
       let description = clanHeader;
       description += `**${isPromotion(change.oldRole, change.newRole) ? 'Promotion' : 'Demotion'}: ${getRoleDisplayName(change.oldRole)} → ${getRoleDisplayName(change.newRole)}**\n`;
-      description += `${getEmoji(change.arena.rawName)}\`${change.trophies}\` [${change.playerName}](<https://royaleapi.com/player/${change.playertag?.substring(1)}>)`;
+      description += `${getEmoji(change.arena.name.replace(/[^a-zA-Z0-9]/g, ''))}\`${change.trophies}\` [${change.playerName}](<https://royaleapi.com/player/${change.playertag?.substring(1)}>)`;
 
       const embed = new EmbedBuilder()
         .setColor(isPromotion(change.oldRole, change.newRole) ? COLORS.JOIN : COLORS.LEAVE)
