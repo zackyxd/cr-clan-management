@@ -21,6 +21,7 @@ import { getServerSettingsData, ServerSettingsData } from '../../cache/serverSet
 import { makeCustomId } from '../../utils/customId.js';
 import { serverSettingsService } from './service.js';
 import { pool } from '../../db.js';
+import { invalidateGuildMessageContext } from '../../cache/guildMessageContextCache.js';
 
 export class ServerSettingsInteractionRouter {
   static async handleButton(interaction: ButtonInteraction, parsed: ParsedCustomId): Promise<void> {
@@ -642,6 +643,7 @@ export class ServerSettingsInteractionRouter {
         `UPDATE server_settings SET higher_leader_role_id = $1, lower_leader_role_id = $2 WHERE guild_id = $3`,
         [higherRoleIds, lowerRoleIds, guildId],
       );
+      invalidateGuildMessageContext(guildId);
 
       logger.info(`[Staff Roles] Updated for guild:${guildId} by user:${interaction.user.id}`);
 

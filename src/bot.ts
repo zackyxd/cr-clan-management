@@ -33,7 +33,9 @@ process.on('uncaughtException', (error: Error) => {
   process.exit(1);
 });
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+});
 client.commands = new Collection();
 client.cooldowns = new Collection();
 

@@ -9,6 +9,7 @@ import {
 import { Command } from '../../types/Command.js';
 import { pool } from '../../db.js';
 import { BOTCOLOR } from '../../types/EmbedUtil.js';
+import { invalidateGuildMessageContext } from '../../cache/guildMessageContextCache.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -71,6 +72,7 @@ const command: Command = {
       `,
       [validLowerRoles, validHigherRoles, guild.id]
     );
+    invalidateGuildMessageContext(guild.id);
 
     const lowerMentions = validLowerRoles.map((id: string) => `<@&${id}>`).join(', ') || 'None';
     const higherMentions = validHigherRoles.map((id: string) => `<@&${id}>`).join(', ') || 'None';

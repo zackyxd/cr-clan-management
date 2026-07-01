@@ -66,7 +66,7 @@ export class RaceTrackingInteractionRouter {
 
       if (newStatus) {
         await interaction.editReply({
-          content: `✅ **You are now marked as "Replace Me"** and accounts have been posted to the appropriate channel for staff.\n\nYou will be excluded from nudges and will be listed as needing a replacement.\n\n**If possible**\n* Leave a message why you need replacement\n * Leave the clan to make room for a replacement.`,
+          content: `✅ **You are now marked as "Replace Me"** and accounts have been posted to staff channel.\n\nYou will be excluded from nudges and will be listed as needing a replacement.\n\n**If possible**\n* Leave a message why you need replacement\n * Leave the clan to make room for a replacement.`,
         });
         // Only send ping message if not already sent today
         if (!alreadySentToday) {

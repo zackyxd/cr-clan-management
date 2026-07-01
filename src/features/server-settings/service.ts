@@ -2,6 +2,7 @@ import { pool } from '../../db.js';
 import { TextChannel, NewsChannel, Client, EmbedBuilder } from 'discord.js';
 import { updateInviteMessage, repostInviteMessage } from '../clan-invites/messageManager.js';
 import { getServerSettingsData } from '../../cache/serverSettingsDataCache.js';
+import { invalidateGuildMessageContext } from '../../cache/guildMessageContextCache.js';
 import logger from '../../logger.js';
 import type {
   ServerSettingsResponse,
@@ -418,6 +419,10 @@ export class ServerSettingsService {
     try {
       await pool.query(`UPDATE ${tableName} SET ${settingKey} = $1 WHERE guild_id = $2`, [channelId, guildId]);
 
+      if (tableName === 'server_settings' || tableName === 'clan_invite_settings') {
+        invalidateGuildMessageContext(guildId);
+      }
+
       // Get feature display name and setting label from registry
       const featureDisplayName = FeatureRegistry[featureName]?.displayName || featureName;
       const settingLabel =
@@ -452,6 +457,10 @@ export class ServerSettingsService {
 
     try {
       await pool.query(`UPDATE ${tableName} SET ${settingKey} = $1 WHERE guild_id = $2`, [roleId, guildId]);
+
+      if (tableName === 'server_settings' || tableName === 'clan_invite_settings') {
+        invalidateGuildMessageContext(guildId);
+      }
 
       // Get feature display name and setting label from registry
       const featureDisplayName = FeatureRegistry[featureName]?.displayName || featureName;

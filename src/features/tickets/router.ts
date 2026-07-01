@@ -68,6 +68,10 @@ export class TicketInteractionRouter {
         break;
       }
       case 'ticket_welcome_info': {
+        if (!parsed.ownerId) {
+          await interaction.reply({ content: 'Unknown @user owner.', flags: MessageFlags.Ephemeral });
+          return;
+        }
         await this.showWelcomeInfo(interaction, guildId, parsed.ownerId);
         break;
       }

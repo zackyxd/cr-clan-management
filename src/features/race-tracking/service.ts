@@ -31,7 +31,7 @@ let discordClient: Client | null = null;
  * for the given guild.  Only fires if GOOGLE_SHEETS_SPREADSHEET_ID is configured.
  */
 // function scheduleAvailableSheetRefresh(guildId: string): void {
-  // TODO automate?
+// TODO automate?
 //   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 //   if (!spreadsheetId) return;
 
@@ -636,7 +636,11 @@ export async function createDaySnapshot(
  * @param day - Race day (1-4)
  * @returns Historical snapshot data or null if not found
  */
-export async function getRaceHistory(_guildId: string, _clantag: string, _day: number): Promise<RaceHistoryData | null> {
+export async function getRaceHistory(
+  _guildId: string,
+  _clantag: string,
+  _day: number,
+): Promise<RaceHistoryData | null> {
   // TODO: Implement
   // 1. Query river_races to get race_id for clan
   // 2. Query race_day_snapshots for specific day
@@ -1293,7 +1297,7 @@ async function postRolloverToStaffChannels(
           }
 
           await (channel as TextChannel).send({
-            content: `## 📊 Day ${getDayForDisplay(oldDay)} Summary`,
+            // content: `## 📊 Day ${getDayForDisplay(oldDay)} Summary`,
             embeds: embeds,
           });
         }
@@ -1322,6 +1326,7 @@ export async function postRacePingsToChannels(
   playertags: Array<string>,
   type: 'replace' | 'late',
   messages?: Map<string, string>, // Optional map of playertag -> message
+  sourceMessageUrl?: string, // Optional jump link to the message that triggered this ping
 ): Promise<void> {
   if (!playertags || playertags.length === 0) {
     logger.warn('[Race Pings] No playertags provided');
@@ -1444,6 +1449,9 @@ export async function postRacePingsToChannels(
         description += `_"${userMessage}"_\n\n`;
       }
       description += playerLines.join('\n');
+      if (sourceMessageUrl) {
+        description += `\n-# [Jump to original message](${sourceMessageUrl})`;
+      }
 
       const embed = new EmbedBuilder().setDescription(description).setColor(embedColor).setTimestamp();
 

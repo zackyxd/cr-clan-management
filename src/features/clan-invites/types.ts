@@ -38,4 +38,5 @@ export type InviteSourceType =
   | '/send-invite'
   | '/update-clan-invite'
   | 'Member Channel Ping'
-  | 'Auto Member Channel Ping';
+  | 'Auto Member Channel Ping'
+  | '!shortcut';

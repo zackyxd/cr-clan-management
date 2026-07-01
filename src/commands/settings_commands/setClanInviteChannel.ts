@@ -11,6 +11,7 @@ import { pool } from '../../db.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { Command } from '../../types/Command.js';
 import { updateInviteMessage } from '../../features/clan-invites/messageManager.js';
+import { invalidateGuildMessageContext } from '../../cache/guildMessageContextCache.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -73,6 +74,7 @@ const command: Command = {
       const { embeds, components } = await updateInviteMessage(client, guild.id);
       await editableMessage.edit({ content: null, embeds, components });
       await client.query('COMMIT');
+      invalidateGuildMessageContext(guild.id);
     } catch (err) {
       await client.query('ROLLBACK');
       const description = `Error making ${channel} the channel for clan invites. ${err}`;
