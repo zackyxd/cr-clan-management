@@ -70,7 +70,7 @@ const command: Command = {
     const displayName = user.globalName || user.username;
     const avatarURL = user.displayAvatarURL();
     const summaryEmbed = buildSummaryEmbed(displayName, avatarURL, entries);
-    const selectRow = buildAccountSelectRow(guild.id, entries);
+    const selectRow = buildAccountSelectRow(guild.id, interaction.user.id, entries);
 
     await interaction.editReply({
       embeds: [summaryEmbed],

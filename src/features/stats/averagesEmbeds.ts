@@ -55,12 +55,13 @@ export function buildSummaryEmbed(displayName: string, avatarURL: string, entrie
 
 export function buildAccountSelectRow(
   guildId: string,
+  ownerId: string,
   entries: AveragesEntry[],
 ): ActionRowBuilder<StringSelectMenuBuilder> | null {
   if (entries.length === 0) return null;
 
   const select = new StringSelectMenuBuilder()
-    .setCustomId(makeCustomId('s', 'average_select', guildId))
+    .setCustomId(makeCustomId('s', 'average_select', guildId, { ownerId }))
     .setPlaceholder('Select an account for recent weeks');
 
   for (const entry of sortEntries(entries)) {
@@ -103,6 +104,7 @@ export function buildWeeklyEmbed(entry: AveragesEntry, weeksShown: number, avata
 
 export function buildWeeksButtonRow(
   guildId: string,
+  ownerId: string,
   entry: AveragesEntry,
   activeWeeksCount: number,
 ): ActionRowBuilder<ButtonBuilder> {
@@ -112,7 +114,9 @@ export function buildWeeksButtonRow(
     const available = entry.weeks.length >= weeksCount;
     row.addComponents(
       new ButtonBuilder()
-        .setCustomId(makeCustomId('b', 'average_weeks', guildId, { extra: [entry.key, String(weeksCount)] }))
+        .setCustomId(
+          makeCustomId('b', 'average_weeks', guildId, { ownerId, extra: [entry.key, String(weeksCount)] }),
+        )
         .setLabel(`${weeksCount}w`)
         .setStyle(weeksCount === activeWeeksCount ? ButtonStyle.Primary : ButtonStyle.Secondary)
         .setDisabled(!available || weeksCount === activeWeeksCount),
@@ -121,7 +125,7 @@ export function buildWeeksButtonRow(
 
   row.addComponents(
     new ButtonBuilder()
-      .setCustomId(makeCustomId('b', 'average_summary', guildId))
+      .setCustomId(makeCustomId('b', 'average_summary', guildId, { ownerId }))
       .setLabel('◀ Summary')
       .setStyle(ButtonStyle.Secondary),
   );
