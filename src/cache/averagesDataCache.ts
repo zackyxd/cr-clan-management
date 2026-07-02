@@ -3,6 +3,7 @@ import type { AveragesEntry } from '../features/stats/averagesLookup.js';
 export interface AveragesCacheData {
   discordId: string;
   displayName: string;
+  avatarURL: string;
   entries: Map<string, AveragesEntry>;
 }
 
@@ -10,7 +11,7 @@ export interface AveragesCacheData {
 class AveragesDataCacheStore {
   private cache = new Map<string, { data: AveragesCacheData; expiry: number }>();
 
-  set(key: string, value: AveragesCacheData, ttlMs: number = 5 * 60 * 1000) {
+  set(key: string, value: AveragesCacheData, ttlMs: number = 3 * 60 * 1000) {
     this.cache.set(key, {
       data: value,
       expiry: Date.now() + ttlMs,

@@ -33,7 +33,7 @@ export class AveragesInteractionRouter {
     }
 
     const guildId = interaction.guildId!;
-    const weeklyEmbed = buildWeeklyEmbed(entry, DEFAULT_WEEKS_SHOWN);
+    const weeklyEmbed = buildWeeklyEmbed(entry, DEFAULT_WEEKS_SHOWN, cacheData.avatarURL);
     const selectRow = buildAccountSelectRow(guildId, [...cacheData.entries.values()]);
     const weeksRow = buildWeeksButtonRow(guildId, entry, DEFAULT_WEEKS_SHOWN);
 
@@ -63,13 +63,13 @@ export class AveragesInteractionRouter {
       }
 
       const weeksShown = Number(weeksCountStr) || DEFAULT_WEEKS_SHOWN;
-      const weeklyEmbed = buildWeeklyEmbed(entry, weeksShown);
+      const weeklyEmbed = buildWeeklyEmbed(entry, weeksShown, cacheData.avatarURL);
       const selectRow = buildAccountSelectRow(guildId, [...cacheData.entries.values()]);
       const weeksRow = buildWeeksButtonRow(guildId, entry, weeksShown);
 
       await interaction.update({ embeds: [weeklyEmbed], components: selectRow ? [selectRow, weeksRow] : [weeksRow] });
     } else if (action === 'average_summary') {
-      const summaryEmbed = buildSummaryEmbed(cacheData.displayName, [...cacheData.entries.values()]);
+      const summaryEmbed = buildSummaryEmbed(cacheData.displayName, cacheData.avatarURL, [...cacheData.entries.values()]);
       const selectRow = buildAccountSelectRow(guildId, [...cacheData.entries.values()]);
 
       await interaction.update({ embeds: [summaryEmbed], components: selectRow ? [selectRow] : [] });

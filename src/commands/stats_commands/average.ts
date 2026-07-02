@@ -68,7 +68,8 @@ const command: Command = {
     const entries = await getAveragesEntriesForTags(spreadsheetId, tags);
 
     const displayName = user.globalName || user.username;
-    const summaryEmbed = buildSummaryEmbed(displayName, entries);
+    const avatarURL = user.displayAvatarURL();
+    const summaryEmbed = buildSummaryEmbed(displayName, avatarURL, entries);
     const selectRow = buildAccountSelectRow(guild.id, entries);
 
     await interaction.editReply({
@@ -80,11 +81,13 @@ const command: Command = {
       averagesDataCache.set(interaction.id, {
         discordId: user.id,
         displayName,
+        avatarURL,
         entries: new Map(entries.map((entry) => [entry.key, entry])),
       });
     }
 
-    // Remove components after 5 minutes so select menu / buttons don't stay forever
+    // Remove components once the cache entry expires so select menu / buttons don't
+    // stay clickable after they'd just show "session expired".
     setTimeout(
       async () => {
         try {
@@ -94,7 +97,7 @@ const command: Command = {
           console.warn(`Could not remove components from /average command: ${error}`);
         }
       },
-      5 * 60 * 1000,
+      2 * 60 * 1000,
     );
   },
 };

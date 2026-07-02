@@ -30,7 +30,8 @@ export interface AveragesEntry {
   playerName: string;
   clanAbbr: string;
   average: number | null;
-  weeks: AveragesWeek[]; // newest first
+  /** Only weeks the player actually scored in, newest first — blank/missed weeks are skipped. */
+  weeks: AveragesWeek[];
 }
 
 /**
@@ -82,17 +83,23 @@ export async function getAveragesEntriesForTags(spreadsheetId: string, tags: str
       const avgRaw = row[COL_AVERAGE];
       const average = typeof avgRaw === 'number' ? avgRaw : avgRaw ? Number(avgRaw) : null;
 
-      const weeks: AveragesWeek[] = weekLabels.slice(0, MAX_WEEKS_LOOKUP).map((label, weekIndex) => {
-        const fameCol = WEEK_START_COL + weekIndex * 2;
-        const attacksCol = fameCol + 1;
-        const fameRaw = row[fameCol];
-        const attacksRaw = row[attacksCol];
-        return {
-          label,
-          fame: fameRaw === '' || fameRaw === undefined || fameRaw === null ? null : Number(fameRaw),
-          attacks: attacksRaw === '' || attacksRaw === undefined || attacksRaw === null ? null : Number(attacksRaw),
-        };
-      });
+      // Walk every tracked week (newest first), but only keep ones this player actually
+      // has a score for — a player can miss a war, so "3 most recent weeks" may span
+      // more than 3 calendar weeks once blanks are skipped.
+      const weeks: AveragesWeek[] = weekLabels
+        .map((label, weekIndex) => {
+          const fameCol = WEEK_START_COL + weekIndex * 2;
+          const attacksCol = fameCol + 1;
+          const fameRaw = row[fameCol];
+          const attacksRaw = row[attacksCol];
+          return {
+            label,
+            fame: fameRaw === '' || fameRaw === undefined || fameRaw === null ? null : Number(fameRaw),
+            attacks: attacksRaw === '' || attacksRaw === undefined || attacksRaw === null ? null : Number(attacksRaw),
+          };
+        })
+        .filter((week) => week.fame !== null)
+        .slice(0, MAX_WEEKS_LOOKUP);
 
       entries.push({
         key: `${league}|${tag}`,
