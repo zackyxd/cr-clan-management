@@ -577,12 +577,12 @@ export class NudgeTrackingScheduler {
 
       // Check if it's training day after getting fresh race data
       // TODO check to make sure commented
-      // if (periodTypeMap[raceData.periodType] === 'Training') {
-      //   throw {
-      //     name: 'training_day',
-      //     embed: new EmbedBuilder().setDescription('Today is a training day. No Nudges').setColor(EmbedColor.FAIL),
-      //   };
-      // }
+      if (periodTypeMap[raceData.periodType] === 'Training') {
+        throw {
+          name: 'training_day',
+          embed: new EmbedBuilder().setDescription('Today is a training day. No Nudges').setColor(EmbedColor.FAIL),
+        };
+      }
 
       // Check if boat is completed (10k+ fame in War Day only)
       // Note: In Colosseum, fame is cumulative and will always be >10k
