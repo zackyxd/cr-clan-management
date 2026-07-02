@@ -265,8 +265,9 @@ export class ClanSettingsInteractionRouter {
 
       const { settingKey: featureName, guildId: _guildId2 } = settingsData;
 
-      // Check permissions
-      const allowed = await checkPerms(interaction, 'button', 'either', { hideNoPerms: true });
+      // Check permissions — invites_enabled is higher-leader only, everything else allows either tier.
+      const requiredLevel = featureName === 'invites_enabled' ? 'higher' : 'either';
+      const allowed = await checkPerms(interaction, 'button', requiredLevel, { hideNoPerms: true });
       if (!allowed) return;
 
       // Handle different setting types
