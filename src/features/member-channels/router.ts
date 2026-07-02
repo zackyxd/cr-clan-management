@@ -56,11 +56,11 @@ export class MemberChannelInteractionRouter {
   /**
    * Display name to sort an "any X accounts" member by (no in-game name available for them)
    */
-  private static async getSortName(guild: Guild | null, discordId: string): Promise<string> {
-    if (!guild) return discordId;
-    const member = await guild.members.fetch(discordId).catch(() => null);
-    return member?.displayName ?? discordId;
-  }
+  // private static async getSortName(guild: Guild | null, discordId: string): Promise<string> {
+  //   if (!guild) return discordId;
+  //   const member = await guild.members.fetch(discordId).catch(() => null);
+  //   return member?.displayName ?? discordId;
+  // }
 
   // ============================================================================
   // STEP 1-2: Initial command and modal
@@ -1194,7 +1194,10 @@ export class MemberChannelInteractionRouter {
 
     const checkDesc = statusEntries.map((e) => e.line).join('\n') || 'No members to check';
 
-    const embed = new EmbedBuilder().setTitle(`Member Status - ${statusTitle}`).setDescription(checkDesc).setColor('Blue');
+    const embed = new EmbedBuilder()
+      .setTitle(`Member Status - ${statusTitle}`)
+      .setDescription(checkDesc)
+      .setColor('Blue');
 
     await interaction.editReply({ embeds: [embed] });
   }
@@ -1560,7 +1563,9 @@ export class MemberChannelInteractionRouter {
 
       if (sentClans.length > 0) {
         const confirmEmbed = new EmbedBuilder()
-          .setDescription(`✅ Sent invite link${sentClans.length !== 1 ? 's' : ''} for **${sentClans.join(', ')}** below.`)
+          .setDescription(
+            `✅ Sent invite link${sentClans.length !== 1 ? 's' : ''} for **${sentClans.join(', ')}** below.`,
+          )
           .setColor(EmbedColor.SUCCESS);
         await interaction.editReply({ embeds: [confirmEmbed] });
         await pool.query(
@@ -1936,7 +1941,10 @@ export class MemberChannelInteractionRouter {
     channelId: string,
     addedMembers: Array<{
       discordId: string;
-      players: import('../../utils/memberChannelHelpers.js').PlayerInfo[] | { type: 'any'; count: number } | { type: 'invalid' };
+      players:
+        | import('../../utils/memberChannelHelpers.js').PlayerInfo[]
+        | { type: 'any'; count: number }
+        | { type: 'invalid' };
     }>,
   ): Promise<void> {
     try {
