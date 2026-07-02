@@ -1,5 +1,6 @@
-import { PermissionFlagsBits, CategoryChannel, Guild } from 'discord.js';
+import { PermissionFlagsBits, CategoryChannel, Guild, PermissionOverwriteManager } from 'discord.js';
 import { pool } from '../db.js';
+import logger from '../logger.js';
 
 export interface PlayerInfo {
   tag: string;
@@ -139,6 +140,40 @@ export async function buildPermissionOverwrites(
   }
 
   return permissionOverwrites;
+}
+
+/**
+ * Re-applies the channel view/send overwrite for every tracked member who is
+ * missing one — e.g. a member who left the server (which clears their overwrite)
+ * and rejoined. The DB member list still has them, so the "add members" flow
+ * treats them as already-added and skips setting permissions; this catches that.
+ */
+export async function syncMemberChannelPermissions(
+  guild: Guild,
+  permissionOverwrites: PermissionOverwriteManager,
+  members: MemberData[],
+): Promise<number> {
+  let restored = 0;
+
+  for (const member of members) {
+    if (permissionOverwrites.cache.has(member.discordId)) continue;
+
+    const guildMember = await guild.members.fetch(member.discordId).catch(() => null);
+    if (!guildMember) continue; // no longer in the server — nothing to restore
+
+    try {
+      await permissionOverwrites.edit(member.discordId, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true,
+      });
+      restored++;
+    } catch (error) {
+      logger.warn(`[syncMemberChannelPermissions] Could not restore permissions for ${member.discordId}:`, error);
+    }
+  }
+
+  return restored;
 }
 
 /**

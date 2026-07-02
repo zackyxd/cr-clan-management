@@ -117,6 +117,24 @@ export async function buildAttacksEmbed(
 }
 
 /**
+ * Builds the "N. [badge] [name](url)" line for a clan, underlined when it's the
+ * viewing clan. The number and name get their own bold spans with the badge
+ * emoji unbolded between them: a line that is bold end-to-end renders as a
+ * block with extra spacing below it in Discord, which pushes the stats lines
+ * away from the header.
+ */
+function buildClanHeaderLine(
+  clan: { clantag: string; name: string; badgeId: string },
+  index: number,
+  currentClanTag: string,
+): string {
+  const escapedName = escapeMarkdown(clan.name);
+  const clantagForUrl = clan.clantag.substring(1); // Remove #
+  const lineText = `**${index + 1}.** ${clan.badgeId} **[${escapedName}](<https://www.cwstats.com/clan/${clantagForUrl}/log>)**`;
+  return clan.clantag === currentClanTag ? `__${lineText}__` : lineText;
+}
+
+/**
  * Build a race standings embed for display.
  *
  * @param stats - Race statistics data
@@ -145,54 +163,41 @@ export function buildRaceEmbed(
   let description = '';
   if (stats.type === 'training') {
     embed.setTitle('Training Day');
-    stats.clans.forEach((clan, index) => {
-      const escapedName = escapeMarkdown(clan.name);
-      const clantagForUrl = clan.clantag.substring(1); // Remove #
-
-      if (clan.clantag === clantag) {
-        description += `${index + 1}. ${clan.badgeId} __**[${escapedName}](<https://www.cwstats.com/clan/${clantagForUrl}/log>)**__\n`;
-      } else {
-        description += `${index + 1}. ${clan.badgeId} **[${escapedName}](<https://www.cwstats.com/clan/${clantagForUrl}/log>)**\n`;
-      }
-    });
+    const lines = stats.clans.map((clan, index) => buildClanHeaderLine(clan, index, clantag));
+    description += lines.join('\n') + '\n';
   } else if (stats.type === 'warDay') {
     embed.setTitle('War Day');
-    stats.clans.forEach((clan, index) => {
-      const escapedName = escapeMarkdown(clan.name);
-      const clantagForUrl = clan.clantag.substring(1); // Remove #
-      if (clan.clantag === clantag) {
-        description += `${index + 1}. ${clan.badgeId} __**[${escapedName}](<https://www.cwstats.com/clan/${clantagForUrl}/log>)**__\n`;
-      } else {
-        description += `${index + 1}. ${clan.badgeId} **[${escapedName}](<https://www.cwstats.com/clan/${clantagForUrl}/log>)**\n`;
-      }
+    const blocks = stats.clans.map((clan, index) => {
+      const header = buildClanHeaderLine(clan, index, clantag);
 
       // Show completion flag if boat is completed (10k+ fame)
       if (clan.isBoatCompleted) {
-        description += `🏁\n\n`;
-      } else {
-        // Normal stats
-        description += `${getEmoji('fame')} ${clan.fame.toLocaleString()}\n`;
-        description += `${getEmoji('projected')} ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
-        description += `${getEmoji('decksLeft')} ${200 - clan.attacksUsedToday}\n`;
-        description += `${getEmoji('average')} ${clan.average.toFixed(2)}\n\n`;
+        return `${header}\n🏁\n`;
       }
+
+      return (
+        `${header}\n` +
+        `${getEmoji('fame')} ${clan.fame.toLocaleString()}\n` +
+        `${getEmoji('projected')} ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n` +
+        `${getEmoji('decksLeft')} ${200 - clan.attacksUsedToday}\n` +
+        `${getEmoji('average')} **${clan.average.toFixed(2)}**\n`
+      );
     });
+    description += blocks.join('\n') + '\n';
   } else if (stats.type === 'colosseum') {
     embed.setTitle('Colosseum');
-    stats.clans.forEach((clan, index) => {
-      const escapedName = escapeMarkdown(clan.name);
-      const clantagForUrl = clan.clantag.substring(1); // Remove #
+    const blocks = stats.clans.map((clan, index) => {
+      const header = buildClanHeaderLine(clan, index, clantag);
 
-      if (clan.clantag === clantag) {
-        description += `${index + 1}. ${clan.badgeId} __**[${escapedName}](<https://www.cwstats.com/clan/${clantagForUrl}/log>)**__\n`;
-      } else {
-        description += `${index + 1}. ${clan.badgeId} **[${escapedName}](<https://www.cwstats.com/clan/${clantagForUrl}/log>)**\n`;
-      }
-      description += `${getEmoji('fame')} ${clan.fame.toLocaleString()}\n`;
-      description += `${getEmoji('projected')} ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n`;
-      description += `${getEmoji('decksLeft')} ${200 - clan.attacksUsedToday}\n`;
-      description += `${getEmoji('coloAverage')} ${clan.coloAverage.toFixed(2)}\n\n`;
+      return (
+        `${header}\n` +
+        `${getEmoji('fame')} ${clan.fame.toLocaleString()}\n` +
+        `${getEmoji('projected')} ${clan.projectedFame.toLocaleString()} (${clan.projectedRank})\n` +
+        `${getEmoji('decksLeft')} ${200 - clan.attacksUsedToday}\n` +
+        `${getEmoji('average')} **${clan.coloAverage.toFixed(2)}**\n`
+      );
     });
+    description += blocks.join('\n') + '\n';
   }
 
   if (endTime) {

@@ -4,6 +4,7 @@ import { checkPerms } from '../../utils/checkPermissions.js';
 import { pool } from '../../db.js';
 import { Command } from '../../types/Command.js';
 import { buildMemberChannelCheckUI } from '../../utils/memberChannelCheckHelpers.js';
+import { syncMemberChannelPermissions } from '../../utils/memberChannelHelpers.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -56,9 +57,17 @@ const command: Command = {
       return;
     }
 
+    // Restore channel access for any tracked member missing their permission overwrite
+    // (e.g. they left the server, which clears it, then rejoined).
+    let restoredCount = 0;
+    if ('permissionOverwrites' in interaction.channel) {
+      restoredCount = await syncMemberChannelPermissions(guild, interaction.channel.permissionOverwrites, res.members);
+    }
+
     const { embed, components } = await buildMemberChannelCheckUI(res, guild.id);
 
     await interaction.editReply({
+      ...(restoredCount > 0 ? { content: `🔧 Restored channel access for ${restoredCount} returning member(s).` } : {}),
       embeds: [embed],
       components,
     });

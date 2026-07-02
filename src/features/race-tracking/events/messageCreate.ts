@@ -4,6 +4,7 @@ import { pool } from '../../../db.js';
 import { postRacePingsToChannels } from '../service.js';
 import { getEmojiObject } from '../../../utils/emoji.js';
 import logger from '../../../logger.js';
+import { checkPermissions } from '../../../utils/checkPermissions.js';
 
 type RoleMentionType = 'late' | 'replace';
 
@@ -57,6 +58,12 @@ export async function handleRaceRoleMention(message: Message, ctx: GuildMessageC
   const mentionsReplace = !!ctx.replaceMeRoleId && message.mentions.roles.has(ctx.replaceMeRoleId);
 
   if (!mentionsLate && !mentionsReplace) return false;
+
+  if (message.member) {
+    const staffRoleIds = [...ctx.lowerLeaderRoleIds, ...ctx.higherLeaderRoleIds];
+    const isStaff = !checkPermissions('message', message.member, staffRoleIds);
+    if (isStaff) return false;
+  }
 
   const guildId = message.guild!.id;
 
