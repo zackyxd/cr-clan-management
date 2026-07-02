@@ -84,7 +84,7 @@ export function buildWeeklyEmbed(entry: AveragesEntry, weeksShown: number, avata
   const average = totalAttacks > 0 ? totalFame / totalAttacks : 0;
 
   const embed = new EmbedBuilder()
-    .setTitle(`📊 ${entry.league} Averages`)
+    .setTitle(`${entry.league} Averages`)
     .setColor(EmbedColor.LOGS)
     .setDescription(royaleApiLink(entry.playerName, entry.tag))
     .addFields(
