@@ -53,6 +53,15 @@ import { isL2WChannelName, getL2WMemberTags, getL2WClansWithActiveInvites, type 
  * [ROUTER] handleButton, handleModal, handleSelectMenu - Dispatcher methods
  */
 export class MemberChannelInteractionRouter {
+  /**
+   * Display name to sort an "any X accounts" member by (no in-game name available for them)
+   */
+  private static async getSortName(guild: Guild | null, discordId: string): Promise<string> {
+    if (!guild) return discordId;
+    const member = await guild.members.fetch(discordId).catch(() => null);
+    return member?.displayName ?? discordId;
+  }
+
   // ============================================================================
   // STEP 1-2: Initial command and modal
   // ============================================================================
@@ -1140,7 +1149,7 @@ export class MemberChannelInteractionRouter {
     }
 
     // Check each member's status
-    const statusLines: string[] = [];
+    const statusEntries: { name: string; isInClan: boolean; line: string }[] = [];
 
     for (const member of memberList) {
       const { discordId, players, joiningLate } = member;
@@ -1150,11 +1159,11 @@ export class MemberChannelInteractionRouter {
         // Specific accounts - show player names
         for (const player of players) {
           const isInClan = clanMemberTags.has(player.tag);
-          if (isInClan) {
-            statusLines.push(`✅ ${player.name} ${lateEmoji}`);
-          } else {
-            statusLines.push(`❌ ${player.name} ${lateEmoji}`);
-          }
+          statusEntries.push({
+            name: player.name,
+            isInClan,
+            line: `${isInClan ? '✅' : '❌'} ${player.name} ${lateEmoji}`,
+          });
         }
       } else if (players.type === 'any') {
         // 'Any X accounts' - show Discord mention with count
@@ -1167,16 +1176,23 @@ export class MemberChannelInteractionRouter {
         const accountsInClan = userTags.filter((tag) => clanMemberTags.has(tag));
 
         const meetsRequirement = accountsInClan.length >= players.count;
+        const guildMember = await interaction.guild.members.fetch(discordId).catch(() => null);
 
-        if (meetsRequirement) {
-          statusLines.push(`✅ <@${discordId}> - ${accountsInClan.length}/${players.count} accounts ${lateEmoji}`);
-        } else {
-          statusLines.push(`❌ <@${discordId}> - ${accountsInClan.length}/${players.count} accounts ${lateEmoji}`);
-        }
+        statusEntries.push({
+          name: guildMember?.displayName ?? discordId,
+          isInClan: meetsRequirement,
+          line: `${meetsRequirement ? '✅' : '❌'} <@${discordId}> - ${accountsInClan.length}/${players.count} accounts ${lateEmoji}`,
+        });
       }
     }
 
-    const checkDesc = statusLines.join('\n') || 'No members to check';
+    // In-clan members first, then alphabetical by name within each group
+    statusEntries.sort((a, b) => {
+      if (a.isInClan !== b.isInClan) return a.isInClan ? -1 : 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
+
+    const checkDesc = statusEntries.map((e) => e.line).join('\n') || 'No members to check';
 
     const embed = new EmbedBuilder().setTitle(`Member Status - ${statusTitle}`).setDescription(checkDesc).setColor('Blue');
 

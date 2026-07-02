@@ -9,6 +9,7 @@ export interface TicketResponse {
   validTags?: string[];
   embeds?: EmbedBuilder[];
   invalidEmbeds?: EmbedBuilder[];
+  firstPlayerName?: string;
 }
 
 /**

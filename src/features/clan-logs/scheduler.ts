@@ -47,6 +47,7 @@ export function startClanActivityScheduler(client: Client): void {
 async function checkClanActivityBatch(client: Client): Promise<void> {
   try {
     // Get clans that need checking (ordered by oldest check first)
+    // TODO if a lot more clans added
     const query = buildGetClansForActivityCheck(20); // Check 20 clans per minute
     const result = await pool.query<ClanActivityData>(query);
 

@@ -362,6 +362,35 @@ export class TicketInteractionRouter {
       return;
     }
 
+    // Rename the ticket owner's nickname to their first playertag's in-game name,
+    // but only on the initial submission that establishes ticket ownership.
+    if (!isUpdate && result.firstPlayerName) {
+      try {
+        const renameEnabled = await pool.query(
+          `
+          SELECT rename_players
+          FROM link_settings
+          WHERE guild_id = $1
+          `,
+          [guildId],
+        );
+
+        if (renameEnabled.rows[0]?.['rename_players'] && interaction.guild) {
+          const member: GuildMember | null = await interaction.guild.members
+            .fetch(interaction.user.id)
+            .catch(() => null);
+
+          if (member) {
+            await member.setNickname(result.firstPlayerName).catch((error) => {
+              logger.warn('Failed to rename ticket owner on submit:', error);
+            });
+          }
+        }
+      } catch (error) {
+        logger.warn('Error checking rename_players setting for ticket submit:', error);
+      }
+    }
+
     // Send response with embeds
     if (result.embeds && result.embeds.length > 0) {
       const allEmbeds = [...result.embeds, ...(result.invalidEmbeds || [])];

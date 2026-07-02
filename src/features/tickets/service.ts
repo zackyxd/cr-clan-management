@@ -144,6 +144,7 @@ export class TicketService {
       const validTags: string[] = [];
       const embeds: EmbedBuilder[] = [];
       const invalidEmbeds: EmbedBuilder[] = [];
+      let firstPlayerName: string | undefined;
 
       // Process each playertag
       for (let tag of playertags) {
@@ -166,6 +167,7 @@ export class TicketService {
         const embed = formatPlayerData(playerData);
         if (embed) embeds.push(embed);
         validTags.push(tag);
+        if (firstPlayerName === undefined) firstPlayerName = playerData.name;
       }
 
       const uniqueValidTags = [...new Set(validTags)];
@@ -198,6 +200,7 @@ export class TicketService {
         validTags: uniqueValidTags,
         embeds,
         invalidEmbeds,
+        firstPlayerName,
       };
     } catch (error) {
       logger.error('Error adding playertags to ticket:', error);

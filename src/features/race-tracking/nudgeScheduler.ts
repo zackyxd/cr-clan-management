@@ -521,15 +521,13 @@ export class NudgeTrackingScheduler {
           const previousNudge = await pool.query<{ message_id: string }>(
             `
             SELECT message_id FROM race_nudges
-            WHERE race_id = $1
-              AND clantag = $2
-              AND race_day = $3
+            WHERE clantag = $1
               AND nudge_type = 'automatic'
               AND message_id IS NOT NULL
             ORDER BY nudge_time DESC
             LIMIT 1
             `,
-            [clan.race_id, clan.clantag, clan.current_day],
+            [clan.clantag],
           );
 
           if (previousNudge.rows.length > 0) {
