@@ -20,6 +20,7 @@ import { PlayerLinksInteractionRouter } from '../../features/player-links/router
 import logger from '../../logger.js';
 import { ClanInvitesInteractionRouter } from '../../features/clan-invites/router.js';
 import { RaceTrackingInteractionRouter } from '../../features/race-tracking/router.js';
+import { AveragesInteractionRouter } from '../../features/stats/averagesRouter.js';
 
 // Define router interface
 interface FeatureRouter {
@@ -63,6 +64,9 @@ export class InteractionDispatcher {
     // Add other features here as they're migrated:
     // ['playerLink', PlayerLinkingInteractionRouter],
     ['nudge', RaceTrackingInteractionRouter],
+
+    // Averages actions - All start with 'average'
+    ['average', AveragesInteractionRouter],
   ]);
 
   /**

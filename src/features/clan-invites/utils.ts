@@ -7,25 +7,27 @@ import type { ParsedInviteLink } from './types.js';
  * Parse a Clash Royale invite link to extract the clantag and validate format
  */
 export function parseInviteLink(inviteLink: string): ParsedInviteLink | null {
-  const cleanLink = inviteLink.trim().toLowerCase();
+  const trimmedLink = inviteLink.trim();
 
-  // Regex to extract clantag
-  const tagRegex = /\/invite\/.*tag=([^&]*)/;
-  // Regex to validate full link format
+  // Case-insensitive regex to validate format and extract the language code, tag, token, and platform
   const linkRegex =
-    /https:\/\/link\.clashroyale\.com\/invite\/clan\/[a-z]{2}\?tag=[^&]*&token=[^&]*&platform=(android|ios)/;
+    /https:\/\/link\.clashroyale\.com\/invite\/clan\/([a-z]{2})\?tag=([^&]*)&token=([^&]*)&platform=(android|ios)/i;
 
-  const tagMatch = cleanLink.match(tagRegex);
-  const linkMatch = cleanLink.match(linkRegex);
+  const linkMatch = trimmedLink.match(linkRegex);
 
-  if (!tagMatch || !tagMatch[1] || !linkMatch || !linkMatch[1]) {
+  if (!linkMatch || !linkMatch[2]) {
     return null;
   }
 
+  const [, langCode, rawTag, token, platform] = linkMatch;
+  const clantag = normalizeTag(rawTag);
+  // Rebuild the link with the clan tag capitalized - the CR invite endpoint rejects lowercase tags
+  const fullLink = `https://link.clashroyale.com/invite/clan/${langCode.toLowerCase()}?tag=${clantag.substring(1)}&token=${token}&platform=${platform.toLowerCase()}`;
+
   return {
-    clantag: normalizeTag(tagMatch[1]),
-    fullLink: linkMatch[0],
-    platform: linkMatch[1] as 'android' | 'ios',
+    clantag,
+    fullLink,
+    platform: platform.toLowerCase() as 'android' | 'ios',
   };
 }
 

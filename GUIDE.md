@@ -56,11 +56,11 @@ Live River Race tracking for every linked clan. Race data refreshes **every minu
 
 ### Commands
 
-| Command                                         | What it shows                                                                                               |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `/race [clantag]`                               | Current race standings — fame, projections, and 🏁 for boats that have finished.                            |
-| `/attacks [clantag]`                            | Who still has attacks left, grouped by decks remaining, with linked Discord names.                          |
-| `/view-snapshot [abbrev] [day] [season] [week]` | Historical race data. A snapshot of each war day's final state is saved automatically at the 9 AM rollover. |
+| Command                                         | What it shows                                                                                                   |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `/race [clantag]`                               | Current race standings — fame, projections, and 🏁 for boats that have finished.                                |
+| `/attacks [clantag]`                            | Who still has attacks left, grouped by decks remaining, with linked Discord names.                              |
+| `/view-snapshot [abbrev] [day] [season] [week]` | Historical race data. A snapshot of each war day's final state is saved automatically at the 9 AM UTC rollover. |
 
 Status emojis in `/attacks` and nudges:
 
@@ -70,7 +70,7 @@ Status emojis in `/attacks` and nudges:
 
 Each clan configures its own nudge schedule in `/clan-settings`. Two modes:
 
-- **Interval** — starts at a set time and repeats every X hours until the war day ends at 9 AM.
+- **Interval** — starts at a set time and repeats every X hours until the war day ends at 9 AM UTC.
 - **Hours before end** — fires at specific hours before 9 AM (e.g. 12h, 6h, 3h before).
 
 Nudges post to the clan's nudge channel and ping members who still have attacks, with a per-clan custom message (resets to default each war day). Old automatic nudges are deleted when a new one posts. Nudges only run on war/colosseum days, never training days.
@@ -82,8 +82,8 @@ Nudges post to the clan's nudge channel and ping members who still have attacks,
 
 Members can flag themselves for the current war day:
 
-- `/attacking-late [message]` — "I'll attack, just later." Skips the first ~half of the day's nudges, then reminds as normal.
-- `/replace-me [message]` — "I can't attack, sub me out." Excluded from all nudges; staff are notified so they can arrange a replacement.
+- `/attacking-late [message]` — Skips the first ~half of the day's nudges, then reminds as normal.
+- `/replace-me [message]` — Excluded from all nudges; staff are notified so they can arrange a replacement.
 
 Both also work by simply **@-mentioning the configured role** in a message (e.g. `@Replace Me`) — the bot reacts to confirm and posts the member's linked accounts to the staff channel (once per day per member). Both flags clear automatically at the 9 AM daily reset, and both commands toggle off if used again.
 
@@ -107,7 +107,7 @@ Private channels for a group of members — typically a war lineup or a movement
 One command opens the management panel:
 
 - **Check members** — shows who is ✅ in / ❌ not in the focused clan, and pings those missing.
-- **Add / remove members**, **change clan focus**, **rename** (10-minute cooldown), **lock** (adds a 🔒 prefix).
+- **Add / remove members**, **change clan focus**, **rename** (10-minute cooldown), **lock** (adds a 🔒 prefix and prevents it from being deleted).
 - **Delete** — requires confirmation from multiple staff (configurable count). Before deletion, a backup of the channel (members, focus, recreation template) is posted to the logs channel.
 
 ---
@@ -129,7 +129,7 @@ Invite embeds show the clan's current member count, refreshed **every minute**.
 
 ### Expiry
 
-Expiry is checked **every 10 seconds**. When a link expires, the master list is updated, every posted copy of the invite is either marked ❌ expired or deleted (per clan setting), and the clan role can optionally be pinged so someone refreshes the link.
+Expiry is checked **every 10 seconds**. When a link expires, the master list is updated, every posted copy of the invite is either marked ❌ expired or deleted (per clan setting), and the clan role can optionally be pinged so someone can refresh the link.
 
 ---
 
@@ -142,6 +142,7 @@ Streamlines bringing a new member in: collect their accounts, review them, link 
 1. A new channel whose name matches the configured ticket pattern automatically becomes a **ticket**, and the bot posts an **Enter Playertags** button.
 2. The applicant clicks it and submits their tags. Tags are validated against the game API and a player card is shown for each. The first person to submit becomes the **ticket owner**.
 3. Staff review, then close the ticket — closing **auto-links every tag to the owner**, with clear results per tag (new link / conflict with another user / already linked / failed).
+4. You can do `/welcome [clantag]` to give them the configured roles and send a message to where war nudges would be sent. You do not need to include the `@user` if you are doing it in a claimed ticket.
 
 ### Commands
 
@@ -154,7 +155,7 @@ Streamlines bringing a new member in: collect their accounts, review them, link 
 
 ## Clan Logs
 
-Watches each clan's in-game roster and reports changes. Every clan is checked roughly **every 3 minutes**.
+Watches each clan's in-game roster and reports changes. Up to 20 clans are checked every minute.
 
 - **Logged to the clan's log channel:** members joining, leaving, and in-game role changes (promote/demote), with the linked Discord user shown when known.
 - **Role sync (optional):** automatically add the clan's Discord role when a linked player joins the clan and remove it when they leave. Can be gated behind a required base role.
@@ -177,12 +178,16 @@ Maintains a stats workbook per server (`/set-spreadsheet-id`). Tabs come in pair
 
 ### `/stats` subcommands
 
-| Command                                     | What it does                                                                                                                           |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `/stats refresh [league]`                   | Processes all sheet checkboxes (moves players between Available / L2W / Inactive) and rebuilds the Available and L2W \| Inactive tabs. |
-| `/stats update-scores`                      | Rebuilds the Averages tabs from race history.                                                                                          |
-| `/stats lineup-order [league] [clan-order]` | Reorders the clan blocks on the Lineups tab.                                                                                           |
-| `/stats mark [player] [status]`             | Marks a player L2W / Inactive / Available directly, with optional notes and a duration in days.                                        |
+| Command                                                     | What it does                                                                                                                           |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `/stats refresh [league]`                                   | Processes all sheet checkboxes (moves players between Available / L2W / Inactive) and rebuilds the Available and L2W \| Inactive tabs. |
+| `/stats update-scores`                                      | Rebuilds the Averages tabs from race history.                                                                                          |
+| `/stats lineup-order [league] [clan-order] [preserve-data]` | Reorders the clan blocks on the Lineups tab. Should almost never have to be used. Do `preserve-data: true` to not overwrite the cells. |
+| `/stats mark [player] [status]`                             | Marks a player L2W / Inactive / Available directly, with optional notes and a duration in days.                                        |
+
+### Checking averages: `/average [user]`
+
+Looks up a user's fame/attack averages straight from the Averages tabs — no need to open the sheet. Shows one line per linked account (player name, league, average fame per attack), with a dropdown to view any account's recent war weeks in detail (last 3 weeks average plus week-by-week fame/attacks). The dropdown expires after 5 minutes.
 
 ### L2W (League to Win)
 
@@ -200,10 +205,10 @@ Everything the bot does on its own, and when:
 
 | Automation           | Timing                                              | What it does                                                                                                                                                           |
 | -------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Race data polling    | Every 1 min (war/colosseum), every 5 min (training) | Fetches latest race state from the CR API for all clans.                                                                                                               |
+| Race data            | Every 1 min (war/colosseum), every 5 min (training) | Fetches latest race state from the CR API for all clans.                                                                                                               |
 | Automatic nudges     | Checked every 1 min                                 | Sends nudges per each clan's schedule (interval or hours-before-end). War days only.                                                                                   |
-| Daily reset          | 9:00 AM UTC                                         | War day rollover: saves the day's final snapshot, clears attacking-late / replace-me flags, resets custom nudge messages. Catches up on restart if a reset was missed. |
-| Clan activity check  | Each clan ~every 3 min                              | Detects joins/leaves/role changes → posts clan logs, syncs Discord roles.                                                                                              |
+| Daily reset          | @war reset                                          | War day rollover: saves the day's final snapshot, clears attacking-late / replace-me flags, resets custom nudge messages. Catches up on restart if a reset was missed. |
+| Clan activity check  | 20 clans per minute                                 | Detects joins/leaves/role changes → posts clan logs, syncs Discord roles.                                                                                              |
 | Invite expiry check  | Every 10 sec                                        | Marks expired invites, updates/deletes posted copies, optional role ping.                                                                                              |
 | Invite member counts | Every 60 sec                                        | Refreshes member counts on posted invite embeds.                                                                                                                       |
 | Kicks tag autofill   | Every 5 min                                         | Fills player tags on the Kicks sheet from live rosters.                                                                                                                |
