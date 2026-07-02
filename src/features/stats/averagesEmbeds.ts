@@ -39,11 +39,9 @@ export function buildSummaryEmbed(displayName: string, avatarURL: string, entrie
 
     const shown = leagueEntries.slice(0, MAX_ACCOUNTS_PER_LEAGUE);
     const lines = shown.map(
-      (e, i) => `${i + 1}. ${royaleApiLink(e.playerName, e.tag)} (${e.average !== null ? e.average.toFixed(2) : 'N/A'})`,
+      (e, i) =>
+        `${i + 1}. ${royaleApiLink(e.playerName, e.tag)} (${e.average !== null ? e.average.toFixed(2) : 'N/A'})`,
     );
-    if (leagueEntries.length > shown.length) {
-      lines.push(`*+${leagueEntries.length - shown.length} more*`);
-    }
 
     embed.addFields({ name: `${league} Averages`, value: lines.join('\n') });
   }
@@ -90,7 +88,11 @@ export function buildWeeklyEmbed(entry: AveragesEntry, weeksShown: number, avata
     .setColor(EmbedColor.LOGS)
     .setDescription(royaleApiLink(entry.playerName, entry.tag))
     .addFields(
-      { name: `Average (last ${shownWeeks.length})`, value: shownWeeks.length > 0 ? average.toFixed(2) : 'N/A', inline: false },
+      {
+        name: `Average (last ${shownWeeks.length})`,
+        value: shownWeeks.length > 0 ? average.toFixed(2) : 'N/A',
+        inline: false,
+      },
       ...shownWeeks.map((w) => ({
         name: w.label,
         value: `${w.fame ?? 0}/${w.attacks ?? 0}`,
@@ -114,9 +116,7 @@ export function buildWeeksButtonRow(
     const available = entry.weeks.length >= weeksCount;
     row.addComponents(
       new ButtonBuilder()
-        .setCustomId(
-          makeCustomId('b', 'average_weeks', guildId, { ownerId, extra: [entry.key, String(weeksCount)] }),
-        )
+        .setCustomId(makeCustomId('b', 'average_weeks', guildId, { ownerId, extra: [entry.key, String(weeksCount)] }))
         .setLabel(`${weeksCount}w`)
         .setStyle(weeksCount === activeWeeksCount ? ButtonStyle.Primary : ButtonStyle.Secondary)
         .setDisabled(!available || weeksCount === activeWeeksCount),
