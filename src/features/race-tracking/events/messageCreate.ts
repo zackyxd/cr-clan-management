@@ -2,6 +2,7 @@ import { Message } from 'discord.js';
 import type { GuildMessageContext } from '../../../cache/guildMessageContextCache.js';
 import { pool } from '../../../db.js';
 import { postRacePingsToChannels } from '../service.js';
+import { buildAttackingLateInfo } from '../attackingLateInfo.js';
 import { getEmojiObject } from '../../../utils/emoji.js';
 import logger from '../../../logger.js';
 import { checkPermissions } from '../../../utils/checkPermissions.js';
@@ -68,13 +69,17 @@ export async function handleRaceRoleMention(message: Message, ctx: GuildMessageC
   const guildId = message.guild!.id;
 
   if (mentionsLate) {
-    const { ok } = await markFromRoleMention(message, guildId, 'late');
+    const { ok, alreadySentToday } = await markFromRoleMention(message, guildId, 'late');
     if (ok) {
       const pepesalute = getEmojiObject('pepesalute');
       if (pepesalute) {
         await message
           .react(pepesalute)
           .catch((err) => logger.error('Failed to react to attacking-late message: %O', err));
+      }
+      if (!alreadySentToday) {
+        const lateInfo = await buildAttackingLateInfo(guildId, message.author.id);
+        await message.reply(`✅ **You are now marked as attacking late**.\n\n${lateInfo}`);
       }
     }
   }

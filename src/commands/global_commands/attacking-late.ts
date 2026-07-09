@@ -2,6 +2,7 @@ import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from '
 import { pool } from '../../db.js';
 import { Command } from '../../types/Command.js';
 import { postRacePingsToChannels } from '../../features/race-tracking/index.js';
+import { buildAttackingLateInfo } from '../../features/race-tracking/attackingLateInfo.js';
 
 const command: Command = {
   data: new SlashCommandBuilder()
@@ -58,9 +59,9 @@ const command: Command = {
       await postRacePingsToChannels(guild.id, playertags, 'late', messages);
     }
 
+    const lateInfo = await buildAttackingLateInfo(guild.id, interaction.user.id);
     await interaction.editReply({
-      content:
-        '✅ **You are now marked as attacking late**.\n\nYou will be excluded from the first half of attack reminders.',
+      content: `✅ **You are now marked as attacking late**.\n\n${lateInfo}`,
     });
   },
 };

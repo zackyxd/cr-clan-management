@@ -79,76 +79,40 @@ export class NudgeTrackingScheduler {
     const STOP_MINUTE = 0;
     const stopTotalMinutes = STOP_HOUR * 60 + STOP_MINUTE;
 
-    // Calculate all nudge times
-    const nudgeTimes: { hour: number; minute: number }[] = [];
     const startTotalMinutes = startHour * 60 + startMinute;
-    const crossesMidnight = startTotalMinutes >= stopTotalMinutes;
+    const intervalMinutes = intervalHours * 60;
 
-    let i = 0;
-    while (true) {
-      const totalMinutes = startTotalMinutes + i * intervalHours * 60;
+    // Nudges run from the start time until the war-day boundary (9:00 UTC).
+    // Compute the count directly instead of looping until a nudge lands in the
+    // 9:00→start gap — some start/interval combos never do (e.g. 10:00 every 3h),
+    // which made the old while(true) loop run forever and OOM the process.
+    const startOffsetFromBoundary = (startTotalMinutes - stopTotalMinutes + 1440) % 1440;
+    const nudgeCount =
+      intervalMinutes > 0 ? Math.floor((1440 - startOffsetFromBoundary) / intervalMinutes) + 1 : 0;
+
+    const nudgeTimes: { hour: number; minute: number }[] = [];
+    for (let i = 0; i < nudgeCount; i++) {
+      const totalMinutes = startTotalMinutes + i * intervalMinutes;
       const hour = Math.floor(totalMinutes / 60) % 24;
       const minute = totalMinutes % 60;
-      const currentMinutes = hour * 60 + minute;
-
-      if (crossesMidnight) {
-        if (currentMinutes > stopTotalMinutes && currentMinutes < startTotalMinutes) {
-          break;
-        }
-      } else {
-        if (currentMinutes > stopTotalMinutes) {
-          break;
-        }
-      }
-
       nudgeTimes.push({ hour, minute });
-      i++;
     }
 
-    // Find which nudge we're currently at (based on current UTC time)
+    // Find the most recent nudge that has passed, comparing minutes elapsed since the
+    // war-day boundary (9:00 UTC) so schedules that cross midnight are handled correctly.
+    // This ensures attacking-late logic only pings based on nudges that already happened.
     const now = new Date();
-    const currentHour = now.getUTCHours();
-    const currentMinute = now.getUTCMinutes();
+    const nowWarDayMinutes = (now.getUTCHours() * 60 + now.getUTCMinutes() - stopTotalMinutes + 1440) % 1440;
 
-    // Find the most recent nudge time that has passed (not the next upcoming one)
-    // This ensures attacking-late logic only pings based on nudges that already happened
     let currentNudgeNumber = 1; // Default to first nudge if none have passed yet
-    const nowMinutes = currentHour * 60 + currentMinute;
-
-    // Iterate backwards to find the most recent nudge that has passed
-    for (let idx = nudgeTimes.length - 1; idx >= 0; idx--) {
-      const nudgeTime = nudgeTimes[idx];
-      const nudgeMinutes = nudgeTime.hour * 60 + nudgeTime.minute;
-
-      // Handle midnight wraparound
-      if (crossesMidnight) {
-        // Check if this nudge time has passed
-        // For schedules that cross midnight, we need to handle wrap-around
-        if (nowMinutes < stopTotalMinutes) {
-          // Current time is after midnight (e.g., 1am)
-          // A nudge has passed if it's after midnight and before now, OR if it was before midnight yesterday
-          if ((nudgeMinutes < stopTotalMinutes && nudgeMinutes <= nowMinutes) || nudgeMinutes >= startTotalMinutes) {
-            currentNudgeNumber = idx + 1;
-            break;
-          }
-        } else {
-          // Current time is before midnight (e.g., 10pm)
-          // A nudge has passed if it's before midnight and before/at now
-          if (nudgeMinutes >= startTotalMinutes && nudgeMinutes <= nowMinutes) {
-            currentNudgeNumber = idx + 1;
-            break;
-          }
-        }
+    for (let idx = 0; idx < nudgeTimes.length; idx++) {
+      const nudgeWarDayMinutes = startOffsetFromBoundary + idx * intervalMinutes;
+      if (nudgeWarDayMinutes <= nowWarDayMinutes) {
+        currentNudgeNumber = idx + 1;
       } else {
-        // No midnight crossing - simple comparison
-        if (nudgeMinutes <= nowMinutes) {
-          currentNudgeNumber = idx + 1;
-          break;
-        }
+        break;
       }
     }
-
-    // If no nudge has passed yet (we're before the first nudge), currentNudgeNumber stays at 1
 
     return {
       currentNudgeNumber,
@@ -168,12 +132,18 @@ export class NudgeTrackingScheduler {
   } {
     const WAR_END_HOUR = 9;
     const WAR_END_MINUTE = 0;
+    const warEndTotalMinutes = WAR_END_HOUR * 60 + WAR_END_MINUTE;
+
+    // Sort largest-first so nudgeTimes is chronological within the war day
+    // (18h before end fires before 2h before end), regardless of how the
+    // hours were entered in settings. Nudge numbering depends on this order.
+    const sortedHoursBefore = [...hoursBeforeArray].sort((a, b) => b - a);
 
     // Calculate all nudge times (war end - X hours)
     const nudgeTimes: { hour: number; minute: number; hoursBefore: number }[] = [];
 
-    for (const hoursBefore of hoursBeforeArray) {
-      const targetTotalMinutes = WAR_END_HOUR * 60 + WAR_END_MINUTE - hoursBefore * 60;
+    for (const hoursBefore of sortedHoursBefore) {
+      const targetTotalMinutes = warEndTotalMinutes - hoursBefore * 60;
       let targetHour = Math.floor(targetTotalMinutes / 60);
       let targetMinute = targetTotalMinutes % 60;
 
@@ -193,23 +163,19 @@ export class NudgeTrackingScheduler {
       nudgeTimes.push({ hour: targetHour, minute: targetMinute, hoursBefore });
     }
 
-    // Find which nudge we're currently at based on current UTC time
+    // Find the most recent nudge that has passed, comparing minutes elapsed since the
+    // war-day boundary (9:00 UTC) so nudges before/after midnight are handled correctly.
+    // A nudge X hours before end happens (1440 - X*60) minutes into the war day.
     const now = new Date();
-    const currentHour = now.getUTCHours();
-    const currentMinute = now.getUTCMinutes();
-    const currentTotalMinutes = currentHour * 60 + currentMinute;
+    const nowWarDayMinutes = (now.getUTCHours() * 60 + now.getUTCMinutes() - warEndTotalMinutes + 1440) % 1440;
 
     let currentNudgeNumber = 1; // Default to first nudge
 
-    // Find the most recent nudge time that has passed
-    for (let i = nudgeTimes.length - 1; i >= 0; i--) {
-      const nudgeTime = nudgeTimes[i];
-      const nudgeTotalMinutes = nudgeTime.hour * 60 + nudgeTime.minute;
-
-      // Check if this nudge time has passed
-      // Handle wrap-around for nudges after midnight
-      if (nudgeTotalMinutes <= currentTotalMinutes) {
+    for (let i = 0; i < nudgeTimes.length; i++) {
+      const nudgeWarDayMinutes = 1440 - nudgeTimes[i].hoursBefore * 60;
+      if (nudgeWarDayMinutes <= nowWarDayMinutes) {
         currentNudgeNumber = i + 1;
+      } else {
         break;
       }
     }

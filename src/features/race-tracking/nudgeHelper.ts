@@ -222,11 +222,18 @@ export async function buildNudgeComponents(
     container.addSeparatorComponents(separator2).addTextDisplayComponents(footer);
   }
 
-  // Add end time at the bottom if available
+  // Add nudge count and end time at the bottom if available
+  const bottomLines: string[] = [];
+  if (currentNudgeNumber && totalNudges) {
+    bottomLines.push(`-# Nudge ${currentNudgeNumber}/${totalNudges}`);
+  }
   if (end_time) {
+    bottomLines.push(`-# War ends ~${getNextDayRelativeTimestamp(end_time)}`);
+  }
+  if (bottomLines.length > 0) {
     const separator3 = new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small);
-    const endTimeText = new TextDisplayBuilder().setContent(`-# War ends ~${getNextDayRelativeTimestamp(end_time)}`);
-    container.addSeparatorComponents(separator3).addTextDisplayComponents(endTimeText);
+    const bottomText = new TextDisplayBuilder().setContent(bottomLines.join('\n'));
+    container.addSeparatorComponents(separator3).addTextDisplayComponents(bottomText);
   }
 
   const attackingLateButton = new ButtonBuilder()
