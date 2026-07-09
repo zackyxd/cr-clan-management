@@ -23,6 +23,8 @@ interface ExpiredInvite {
 export class InviteScheduler {
   private intervalId: NodeJS.Timeout | null = null;
   private memberCountIntervalId: NodeJS.Timeout | null = null;
+  private isCheckingInvites = false;
+  private isUpdatingCounts = false;
   // TODO check if interval should be higher/lower?
   private readonly CHECK_INTERVAL_INVITES = 10 * 1000; // Check every 10 seconds
   private readonly UPDATE_MEMBER_COUNTS = 60 * 1000;
@@ -50,6 +52,8 @@ export class InviteScheduler {
   }
 
   private async updateAllMemberCounts() {
+    if (this.isUpdatingCounts) return;
+    this.isUpdatingCounts = true;
     try {
       const result = await pool.query<{ guild_id: string; clantag: string }>(
         `SELECT DISTINCT guild_id, clantag FROM clan_invite_links
@@ -61,10 +65,14 @@ export class InviteScheduler {
       }
     } catch (error) {
       logger.error('Error updating invite member counts:', error);
+    } finally {
+      this.isUpdatingCounts = false;
     }
   }
 
   private async checkExpiredInvites() {
+    if (this.isCheckingInvites) return;
+    this.isCheckingInvites = true;
     try {
       const result = await pool.query<ExpiredInvite>(`
         SELECT 
@@ -98,6 +106,8 @@ export class InviteScheduler {
       }
     } catch (error) {
       logger.error('Error checking expired invites:', error);
+    } finally {
+      this.isCheckingInvites = false;
     }
   }
 
