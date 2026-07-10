@@ -193,6 +193,7 @@ export async function getRaceAttacks(
       u.ping_user,
       u.is_replace_me,
       u.is_attacking_late,
+      u.is_permanent_attacking_late,
       up.discord_id,
       -- Compute total across all guild clans FOR CURRENT DAY ONLY
       (SELECT COALESCE(SUM(rpt2.decks_used_today), 0)
@@ -223,6 +224,7 @@ export async function getRaceAttacks(
       pingUser: string;
       isReplacementPlayer: boolean;
       isAttackingLate: boolean;
+      isPermanentAttackingLate: boolean;
       discordId: string | null;
     }
   >();
@@ -234,6 +236,7 @@ export async function getRaceAttacks(
       pingUser: row.ping_user ?? 'regular',
       isReplacementPlayer: row.is_replace_me || false,
       isAttackingLate: row.is_attacking_late || false,
+      isPermanentAttackingLate: row.is_permanent_attacking_late || false,
       discordId: row.discord_id || null,
     });
   }
@@ -268,6 +271,7 @@ export async function getRaceAttacks(
         clanRole: memberRoles.get(member.tag),
         isReplacementPlayer: attackData?.isReplacementPlayer || false,
         isAttackingLate: attackData?.isAttackingLate || false,
+        isPermanentAttackingLate: attackData?.isPermanentAttackingLate || false,
         discordUserId: attackData?.discordId || undefined,
       };
     })
@@ -553,7 +557,7 @@ export async function createDaySnapshot(
               if (player.isSplitAttacker) emojis.push('☠️');
               if (player.hasAttackedElsewhere) emojis.push('🚫');
               if (player.isReplacementPlayer) emojis.push('⚠️');
-              if (player.isAttackingLate) emojis.push('⏰');
+              if (player.isAttackingLate || player.isPermanentAttackingLate) emojis.push('⏰');
               if (!player.isInClan) emojis.push('❌');
 
               return {
@@ -570,7 +574,8 @@ export async function createDaySnapshot(
       if (attacksData.participants.some((p) => p.isSplitAttacker)) legend.push('☠️ Split Attacker');
       if (attacksData.participants.some((p) => p.hasAttackedElsewhere)) legend.push('🚫 Do Not Attack');
       if (attacksData.participants.some((p) => p.isReplacementPlayer)) legend.push('⚠️ Replace Me');
-      if (attacksData.participants.some((p) => p.isAttackingLate)) legend.push('⏰ Attacking Late');
+      if (attacksData.participants.some((p) => p.isAttackingLate || p.isPermanentAttackingLate))
+        legend.push('⏰ Attacking Late');
       if (attacksData.participants.some((p) => !p.isInClan)) legend.push('❌ Left Clan');
 
       // Build complete snapshot data (raw + computed)

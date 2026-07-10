@@ -139,7 +139,7 @@ export function formatParticipantLine(participant: FormattedParticipant, options
   // Skip attacking-late players for first half of nudges (only if there are multiple nudges)
   // Don't apply this logic to replacement players
   if (
-    participant.isAttackingLate &&
+    (participant.isAttackingLate || participant.isPermanentAttackingLate) &&
     !participant.isReplacementPlayer &&
     options.currentNudgeNumber &&
     options.totalNudges &&
@@ -182,7 +182,7 @@ export function formatParticipantLine(participant: FormattedParticipant, options
   // Only show clock if they're being skipped due to attacking-late logic (only when there are multiple nudges)
   // Don't show for replacement players
   if (
-    participant.isAttackingLate &&
+    (participant.isAttackingLate || participant.isPermanentAttackingLate) &&
     !participant.isReplacementPlayer &&
     !shouldMention &&
     options.totalNudges &&
@@ -190,6 +190,7 @@ export function formatParticipantLine(participant: FormattedParticipant, options
   ) {
     line += ' ⏰';
   }
+
   if (!participant.isInClan) {
     line += ' ❌';
   }
@@ -300,7 +301,7 @@ export function buildFooterLegend(participants: FormattedParticipant[], options:
   // (and only if there are multiple nudges)
   // Exclude replacement players from this check
   const hasAttackingLateWithoutPing = filteredParticipants.some((p) => {
-    if (!p.isAttackingLate || p.isReplacementPlayer) return false;
+    if ((!p.isAttackingLate && !p.isPermanentAttackingLate) || p.isReplacementPlayer) return false;
 
     // Only show if there are multiple nudges
     if (!options.totalNudges || options.totalNudges <= 1) return false;

@@ -132,6 +132,7 @@ export async function trackNudge(
     attacked_elsewhere: p.hasAttackedElsewhere,
     is_replacement: p.isReplacementPlayer,
     is_attacking_late: p.isAttackingLate,
+    is_permanent_attacking_late: p.isPermanentAttackingLate,
     is_in_clan: p.isInClan,
   }));
 

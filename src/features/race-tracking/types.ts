@@ -162,6 +162,7 @@ export interface ParticipantWithAttacks {
   clanRole?: string; // In-game role (leader, coLeader, elder, member)
   isReplacementPlayer?: boolean; // Marked as "replace me"
   isAttackingLate?: boolean; // Marked as "attacking late"
+  isPermanentAttackingLate?: boolean; // Marked as 'permanent attacking late'
   discordUserId?: string; // If player is linked
 }
 
