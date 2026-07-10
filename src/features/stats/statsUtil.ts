@@ -55,6 +55,16 @@ export async function getSpreadsheetId(guildId: string): Promise<string> {
   return res.rows[0]?.stats_spreadsheetid ?? '';
 }
 
+/**
+ * A river race week is a colosseum week when at least two clans in the standings
+ * gained 20+ trophies — normal weeks only pay +20 to first place, while colosseum
+ * pays +100/+50 to the top two.
+ */
+export function isColosseumWeekFromStandings(standings: Array<{ trophyChange: number }>): boolean {
+  const clansWithHighestTrophies = standings.filter((standing) => standing.trophyChange >= 20);
+  return clansWithHighestTrophies.length >= 2;
+}
+
 /** Converts a 0-based column index to a letter (A, B, …, Z, AA, …). */
 export function colToLetter(index: number): string {
   let letter = '';

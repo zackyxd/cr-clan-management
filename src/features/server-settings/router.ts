@@ -22,6 +22,7 @@ import { makeCustomId } from '../../utils/customId.js';
 import { serverSettingsService } from './service.js';
 import { pool } from '../../db.js';
 import { invalidateGuildMessageContext } from '../../cache/guildMessageContextCache.js';
+import { deleteRoleTier, parseThresholdsSettingKey, upsertRoleTier, type ThresholdKind } from '../stats/roleThresholds.js';
 
 export class ServerSettingsInteractionRouter {
   static async handleButton(interaction: ButtonInteraction, parsed: ParsedCustomId): Promise<void> {
@@ -260,9 +261,21 @@ export class ServerSettingsInteractionRouter {
     });
 
     try {
+      const ladder = settingKey ? parseThresholdsSettingKey(settingKey) : null;
+      if (ladder) {
+        const label = FeatureRegistry[featureName || '']?.settings.find((s) => s.key === settingKey)?.label || 'Role Tier';
+        return interaction.showModal(this.buildThresholdTierModal(label, customId, ladder.kind));
+      }
+
       switch (settingKey) {
         case 'logs_channel_id':
           return interaction.showModal(this.buildChannelSelectModal('Set Logs Channel', customId));
+
+        case 'colosseum_5k_channel_id':
+          return interaction.showModal(this.buildChannelSelectModal('Set 5k Colosseum Channel', customId));
+
+        case 'colosseum_4k_channel_id':
+          return interaction.showModal(this.buildChannelSelectModal('Set 4k Colosseum Channel', customId));
 
         case 'category_id':
           return interaction.showModal(this.buildChannelSelectModal('Set Category', customId));
@@ -402,6 +415,38 @@ export class ServerSettingsInteractionRouter {
       logger.error(`Error opening modal for ${settingKey}:`, error);
       await interaction.editReply({ content: 'Error opening settings modal. Please try again.' });
     }
+  }
+
+  private static buildThresholdTierModal(title: string, customId: string, kind: ThresholdKind): ModalBuilder {
+    const isColosseum = kind === 'colosseum';
+    const thresholdDescription = isColosseum
+      ? 'Minimum colosseum week score to earn the role, e.g. 3300'
+      : 'Minimum fame/attack average to earn the role, e.g. 210';
+    const thresholdPlaceholder = isColosseum ? 'e.g. 3300' : 'e.g. 210';
+
+    return new ModalBuilder()
+      .setTitle(title.slice(0, 45))
+      .setCustomId(customId)
+      .addLabelComponents(
+        new LabelBuilder()
+          .setLabel('Threshold')
+          .setDescription(thresholdDescription)
+          .setTextInputComponent(
+            new TextInputBuilder()
+              .setCustomId('threshold')
+              .setStyle(TextInputStyle.Short)
+              .setPlaceholder(thresholdPlaceholder)
+              .setMinLength(1)
+              .setMaxLength(6)
+              .setRequired(true),
+          ),
+        new LabelBuilder()
+          .setLabel('Role')
+          .setDescription('Role given at this threshold. Leave empty to remove the tier at this threshold.')
+          .setRoleSelectMenuComponent(
+            new RoleSelectMenuBuilder().setCustomId('role').setMinValues(0).setMaxValues(1).setRequired(false),
+          ),
+      );
   }
 
   private static buildChannelSelectModal(title: string, customId: string): ModalBuilder {
@@ -584,23 +629,52 @@ export class ServerSettingsInteractionRouter {
       return;
     }
 
-    if (settingKey === 'logs_channel_id' || settingKey === 'category_id') {
+    const thresholdsLadder = parseThresholdsSettingKey(settingKey);
+    if (thresholdsLadder) {
+      const thresholdRaw = interaction.fields.getTextInputValue('threshold');
+      const threshold = parseInt(thresholdRaw, 10);
+      if (isNaN(threshold) || threshold <= 0) {
+        await interaction.editReply({ content: '❌ Please enter a valid threshold number (minimum: 1).' });
+        return;
+      }
+
+      const roleField = interaction.fields.getSelectedRoles('role');
+      const selectedRole = roleField?.first();
+
+      if (selectedRole) {
+        await upsertRoleTier(guildId, thresholdsLadder.league, thresholdsLadder.kind, threshold, selectedRole.id);
+        await interaction.editReply({ content: `✅ Tier set: **${threshold}+** → <@&${selectedRole.id}>` });
+      } else {
+        const removed = await deleteRoleTier(guildId, thresholdsLadder.league, thresholdsLadder.kind, threshold);
+        await interaction.editReply({
+          content: removed
+            ? `✅ Removed the tier at **${threshold}+**.`
+            : `❌ There is no tier at **${threshold}+** to remove. To add one, select a role.`,
+        });
+      }
+
+      const { embed, components } = await buildFeatureEmbedAndComponents(guildId, ownerId, featureName);
+      await message.edit({ embeds: [embed], components });
+      return;
+    }
+
+    const isTextChannelSetting =
+      settingKey === 'logs_channel_id' ||
+      settingKey === 'colosseum_5k_channel_id' ||
+      settingKey === 'colosseum_4k_channel_id';
+
+    if (isTextChannelSetting || settingKey === 'category_id') {
       const channelField = interaction.fields.getSelectedChannels('input');
       if (!channelField || channelField.size === 0) {
         await interaction.editReply({
-          content: `No ${settingKey === 'logs_channel_id' ? 'channel' : 'category'} selected.`,
+          content: `No ${isTextChannelSetting ? 'channel' : 'category'} selected.`,
         });
         return;
       }
 
       const selectedChannel = channelField.first();
 
-      if (
-        settingKey === 'logs_channel_id' &&
-        selectedChannel &&
-        selectedChannel.type !== 0 &&
-        selectedChannel.type !== 5
-      ) {
+      if (isTextChannelSetting && selectedChannel && selectedChannel.type !== 0 && selectedChannel.type !== 5) {
         await interaction.editReply({ content: 'Please select a text channel.' });
         return;
       }
@@ -627,7 +701,7 @@ export class ServerSettingsInteractionRouter {
       const { embed, components } = await buildFeatureEmbedAndComponents(guildId, ownerId, featureName);
       await message.edit({ embeds: [embed], components });
       await interaction.editReply({
-        content: `✅ ${settingKey === 'logs_channel_id' ? 'Logs channel' : 'Category'} updated successfully`,
+        content: `✅ ${isTextChannelSetting ? 'Channel' : 'Category'} updated successfully`,
       });
       return;
     }

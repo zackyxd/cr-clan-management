@@ -1,5 +1,14 @@
-import { ChatInputCommandInteraction, MessageFlags, SlashCommandBuilder } from 'discord.js';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChatInputCommandInteraction,
+  MessageFlags,
+  SlashCommandBuilder,
+} from 'discord.js';
 import { Command } from '../../types/Command.js';
+import { makeCustomId } from '../../utils/customId.js';
+import { buildPreviewEmbeds, computeAverageRoleChanges } from '../../features/stats/averageRoles.js';
 import { checkPerms } from '../../utils/checkPermissions.js';
 import { normalizeTag, getPlayer, isFetchError, CR_API, type RiverRaceLogSuccess } from '../../api/CR_API.js';
 import { pool } from '../../db.js';
@@ -11,6 +20,7 @@ import {
   buildProtectedRangeRequest,
   buildClearProtectedRangeRequests,
   getServiceAccountEmail,
+  isColosseumWeekFromStandings,
 } from '../../features/stats/statsUtil.js';
 import { PROTECTED_RANGE_ADMIN_EMAILS } from '../../config/constants.js';
 import { type ClanHeaderTheme, resolveClanHeaderThemes } from '../../features/stats/clanHeaderColors.js';
@@ -131,12 +141,6 @@ function buildAveragesFameFormula(rowNumber: number, lastWeekColLetter: string):
     `IF(COUNTA(r)=0,0,SUM(f)/MAX(1,SUM(a)))` +
     `),0)`
   );
-}
-
-function isColosseumWeekFromStandings(standings: Array<{ trophyChange: number }>): boolean {
-  // Colosseum detection rule requested by user.
-  const clansWithHighestTrophies = standings.filter((standing) => standing.trophyChange >= 20);
-  return clansWithHighestTrophies.length >= 2;
 }
 
 async function ensureSheetGridCapacity(
@@ -1293,6 +1297,11 @@ const command: Command = {
     )
     .addSubcommand((subcommand) =>
       subcommand
+        .setName('roles')
+        .setDescription('Preview and give roles for sheet averages (and colosseum scores). Run after /stats update-scores.'),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
         .setName('lineup-order')
         .setDescription('Clan order for lineups. Must be linked.')
         .addStringOption((option) =>
@@ -1378,9 +1387,11 @@ const command: Command = {
     }
 
     const subcommand = interaction.options.getSubcommand();
+    const isRolesSubcommand = subcommand === 'roles';
+    // 'roles' reply is public so the rest of staff can see it ran (and click Apply).
     const allowed = await checkPerms(interaction, 'command', 'either', {
       hideNoPerms: true,
-      deferEphemeral: true,
+      deferEphemeral: !isRolesSubcommand,
     });
     if (!allowed) return;
 
@@ -2347,6 +2358,38 @@ const command: Command = {
         await interaction.editReply({
           content: `✅ Marked **${resolved.name}** (\`${resolved.tag}\`) as **${statusLabel}**${durationLabel} on the ${league} sheet.`,
         });
+      }
+
+      if (subcommand === 'roles') {
+        const spreadsheetId = await getSpreadsheetId(guild.id);
+        if (!spreadsheetId) {
+          await interaction.editReply({
+            content: '❌ Spreadsheet ID not configured. Please ask an admin to set it up.',
+          });
+          return;
+        }
+
+        const { error, computation } = await computeAverageRoleChanges(guild, spreadsheetId);
+        if (error || !computation) {
+          await interaction.editReply({ content: `❌ ${error ?? 'Could not compute average roles.'}` });
+          return;
+        }
+
+        const embeds = buildPreviewEmbeds(computation);
+
+        if (computation.totalChanges === 0) {
+          await interaction.editReply({ embeds });
+          return;
+        }
+
+        const confirmRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(makeCustomId('b', 'averageRoles_send', guild.id, { ownerId: interaction.user.id }))
+            .setLabel('Apply Roles & Send')
+            .setStyle(ButtonStyle.Success),
+        );
+
+        await interaction.editReply({ embeds, components: [confirmRow] });
       }
     } finally {
       runningGuilds.delete(guild.id);

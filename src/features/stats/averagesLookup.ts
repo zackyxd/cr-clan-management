@@ -34,17 +34,20 @@ export interface AveragesEntry {
   weeks: AveragesWeek[];
 }
 
-/**
- * Reads the 5k/4k Averages sheets and returns one entry per (league, tag) match.
- * A player active in clans of both leagues during the lookback window can
- * legitimately appear on both sheets, so the same tag may produce two entries.
- */
-export async function getAveragesEntriesForTags(spreadsheetId: string, tags: string[]): Promise<AveragesEntry[]> {
-  const wantedTags = new Set(tags.map((t) => normalizeTag(t)));
-  if (wantedTags.size === 0) return [];
+export interface AveragesSheetData {
+  league: '5k' | '4k';
+  /** Week header labels (e.g. "133-2"), newest first. */
+  weekLabels: string[];
+  entries: AveragesEntry[];
+}
 
+/**
+ * Reads every row of the 5k/4k Averages sheets. A sheet missing from the
+ * guild's spreadsheet is simply omitted from the result.
+ */
+export async function readAveragesSheets(spreadsheetId: string): Promise<AveragesSheetData[]> {
   const sheets = await getAuthenticatedSheetsClient();
-  const entries: AveragesEntry[] = [];
+  const result: AveragesSheetData[] = [];
 
   for (const { league, sheetName } of AVERAGES_SHEETS) {
     let headerRow: unknown[];
@@ -74,11 +77,11 @@ export async function getAveragesEntriesForTags(spreadsheetId: string, tags: str
       if (headerRow[i]) weekLabels.push(String(headerRow[i]));
     }
 
+    const entries: AveragesEntry[] = [];
     for (const row of dataRows) {
       const rawTag = row[COL_TAG];
       if (!rawTag) continue;
       const tag = normalizeTag(String(rawTag));
-      if (!wantedTags.has(tag)) continue;
 
       const avgRaw = row[COL_AVERAGE];
       const average = typeof avgRaw === 'number' ? avgRaw : avgRaw ? Number(avgRaw) : null;
@@ -111,7 +114,22 @@ export async function getAveragesEntriesForTags(spreadsheetId: string, tags: str
         weeks,
       });
     }
+
+    result.push({ league, weekLabels, entries });
   }
 
-  return entries;
+  return result;
+}
+
+/**
+ * Reads the 5k/4k Averages sheets and returns one entry per (league, tag) match.
+ * A player active in clans of both leagues during the lookback window can
+ * legitimately appear on both sheets, so the same tag may produce two entries.
+ */
+export async function getAveragesEntriesForTags(spreadsheetId: string, tags: string[]): Promise<AveragesEntry[]> {
+  const wantedTags = new Set(tags.map((t) => normalizeTag(t)));
+  if (wantedTags.size === 0) return [];
+
+  const sheetData = await readAveragesSheets(spreadsheetId);
+  return sheetData.flatMap((sheet) => sheet.entries.filter((entry) => wantedTags.has(entry.tag)));
 }

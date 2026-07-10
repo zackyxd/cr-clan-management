@@ -21,7 +21,8 @@ export type SettingType =
   | 'multi_role'
   | 'text'
   | 'action'
-  | 'info';
+  | 'info'
+  | 'thresholds';
 
 // Define the structure of a feature setting
 export interface FeatureSetting {
@@ -223,6 +224,54 @@ export const FeatureRegistry: Record<string, Feature> = {
         description: 'Allow the bot to send log information about clan invites.',
         type: 'toggle',
         defaultValue: false,
+      },
+    ],
+  },
+  stats: {
+    name: 'stats',
+    displayName: 'Stats',
+    description:
+      'Stats feature handles role rewards from the 4k/5k Averages sheets, given out with `/stats roles`.',
+    tableName: 'stats_settings',
+    defaultEnabled: true,
+    settings: [
+      {
+        key: 'thresholds_average_5k',
+        label: '5k Average Roles',
+        description: 'Roles given when a player’s fame/attack average reaches a threshold in 5k clans.',
+        type: 'thresholds',
+      },
+      {
+        key: 'thresholds_average_4k',
+        label: '4k Average Roles',
+        description: 'Roles given when a player’s fame/attack average reaches a threshold in 4k clans.',
+        type: 'thresholds',
+      },
+      {
+        key: 'thresholds_colosseum_5k',
+        label: '5k Colosseum Roles',
+        description: 'Roles given when a player’s colosseum week score reaches a threshold in 5k clans.',
+        type: 'thresholds',
+      },
+      {
+        key: 'thresholds_colosseum_4k',
+        label: '4k Colosseum Roles',
+        description: 'Roles given when a player’s colosseum week score reaches a threshold in 4k clans.',
+        type: 'thresholds',
+      },
+      {
+        key: 'colosseum_5k_channel_id',
+        label: '5k Colosseum Channel',
+        description: 'The channel where new 5k colosseum role announcements are sent.',
+        type: 'channel',
+        defaultValue: '',
+      },
+      {
+        key: 'colosseum_4k_channel_id',
+        label: '4k Colosseum Channel',
+        description: 'The channel where new 4k colosseum role announcements are sent.',
+        type: 'channel',
+        defaultValue: '',
       },
     ],
   },

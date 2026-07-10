@@ -27,7 +27,7 @@ const command: Command = {
     );
 
     await interaction.editReply(
-      `You now have permanent attacking late set to \`${setFlag}\`.${setFlag === true ? '\nPlease still get your battles in everyday.' : '\nUse the `/attacking-late` command or the buttons on nudges to set attacking late as normal.'}`,
+      `You now have permanent attacking late set to \`${setFlag}\`.${setFlag === true ? '\nYou will not receive the first half of nudges Please still get your battles in everyday.' : '\nUse the `/attacking-late` command or the button on nudges to function as normal..'}`,
     );
   },
 };

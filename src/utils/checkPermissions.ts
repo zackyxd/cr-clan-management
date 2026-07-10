@@ -40,7 +40,7 @@ export function checkPermissions(item: string, member: GuildMember, requiredRole
   if (hasRole || hasElevatedPerms) return;
   let rolesNeeded: string;
   if (flatRoles.length === 0) {
-    rolesNeeded = `One of the server admins need to set up the following \`/set-staff-roles\` roles for you to use this command.`;
+    rolesNeeded = `One of the server admins need to set up the following Staff roles for you to use this command.`;
   } else {
     rolesNeeded = `You need one of the following roles: ` + flatRoles.map((id) => `<@&${id}>`).join(', ');
   }

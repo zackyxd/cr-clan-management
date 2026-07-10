@@ -4,6 +4,7 @@ import { BOTCOLOR } from '../types/EmbedUtil.js';
 import { makeCustomId } from '../utils/customId.js';
 import { FeatureRegistry, isFeatureEnabled, fetchInfoValue } from './featureRegistry.js';
 import { storeServerSettingsData } from '../cache/serverSettingsDataCache.js';
+import { getRoleTiers, parseThresholdsSettingKey } from '../features/stats/roleThresholds.js';
 
 /**
  * Builds the server settings embed and components for a feature
@@ -102,6 +103,15 @@ export async function buildFeatureEmbedAndComponents(
       }
     } else if (setting.type === 'role') {
       displayValue = value ? `<@&${value}>` : '*None*';
+    } else if (setting.type === 'thresholds') {
+      const ladder = parseThresholdsSettingKey(setting.key);
+      if (ladder) {
+        const tiers = await getRoleTiers(guildId, ladder.league, ladder.kind);
+        displayValue =
+          tiers.length > 0 ? tiers.map((tier) => `${tier.threshold}+ <@&${tier.roleId}>`).join(', ') : '*None*';
+      } else {
+        displayValue = '*None*';
+      }
     } else if (setting.type === 'info') {
       // Fetch dynamic info value
       const infoValue = await fetchInfoValue(guildId, setting.key);
@@ -162,7 +172,8 @@ export async function buildFeatureEmbedAndComponents(
       setting.type === 'modal' ||
       setting.type === 'channel' ||
       setting.type === 'number' ||
-      setting.type === 'role'
+      setting.type === 'role' ||
+      setting.type === 'thresholds'
     ) {
       const cacheKey = storeServerSettingsData({
         settingKey: setting.key,
