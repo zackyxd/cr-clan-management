@@ -6,6 +6,7 @@ import {
   ButtonStyle,
   ActionRowBuilder,
   ModalBuilder,
+  LabelBuilder,
   TextInputBuilder,
   TextInputStyle,
 } from 'discord.js';
@@ -171,15 +172,15 @@ export function createAnyAccountModal(
 
   const textInput = new TextInputBuilder()
     .setCustomId('input')
-    .setLabel(`How many accounts? (1-${maxAccounts})`)
     .setStyle(TextInputStyle.Short)
     .setMinLength(1)
     .setMaxLength(2)
     .setRequired(true)
     .setPlaceholder('e.g., 1, 2, or 3');
 
-  const firstActionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(textInput);
-  modal.addComponents(firstActionRow);
+  modal.addLabelComponents(
+    new LabelBuilder().setLabel(`How many accounts? (1-${maxAccounts})`).setTextInputComponent(textInput),
+  );
 
   return modal;
 }

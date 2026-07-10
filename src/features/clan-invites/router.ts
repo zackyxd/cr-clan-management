@@ -1,9 +1,9 @@
 import {
   ButtonInteraction,
   ModalBuilder,
+  LabelBuilder,
   TextInputBuilder,
   TextInputStyle,
-  ActionRowBuilder,
   ModalSubmitInteraction,
   EmbedBuilder,
   MessageFlags,
@@ -28,11 +28,10 @@ export class ClanInvitesInteractionRouter {
     const modal = new ModalBuilder()
       .setCustomId(makeCustomId('m', 'clanInviteUpdate', guildId, { cooldown: 5 }))
       .setTitle('Update Clan Invite Link')
-      .addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
+      .addLabelComponents(
+        new LabelBuilder().setLabel('Paste your clan invite link here').setTextInputComponent(
           new TextInputBuilder()
             .setCustomId('input')
-            .setLabel('Paste your clan invite link here')
             .setStyle(TextInputStyle.Short)
             .setPlaceholder('https://link.clashroyale.com/invite/clan/...')
             .setRequired(true),

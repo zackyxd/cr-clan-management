@@ -8,7 +8,6 @@ import {
   LabelBuilder,
   TextInputBuilder,
   TextInputStyle,
-  ActionRowBuilder,
   MessageFlags,
 } from 'discord.js';
 import { ParsedCustomId } from '../../types/ParsedCustomId.js';
@@ -391,7 +390,6 @@ export class ServerSettingsInteractionRouter {
           );
           const textInput = new TextInputBuilder()
             .setCustomId('input')
-            .setLabel('Welcome message (use {user} to mention them)')
             .setStyle(TextInputStyle.Paragraph)
             .setPlaceholder('Enter the welcome message shown when a user clicks the info button... use {user} to mention them')
             .setMinLength(1)
@@ -407,7 +405,9 @@ export class ServerSettingsInteractionRouter {
             new ModalBuilder()
               .setTitle('Set Welcome Message')
               .setCustomId(customId)
-              .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(textInput)),
+              .addLabelComponents(
+                new LabelBuilder().setLabel('Welcome message (use {user} to mention them)').setTextInputComponent(textInput),
+              ),
           );
         }
       }
@@ -483,11 +483,10 @@ export class ServerSettingsInteractionRouter {
     return new ModalBuilder()
       .setTitle(title)
       .setCustomId(customId)
-      .addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
+      .addLabelComponents(
+        new LabelBuilder().setLabel(label).setTextInputComponent(
           new TextInputBuilder()
             .setCustomId('input')
-            .setLabel(label)
             .setStyle(TextInputStyle.Short)
             .setPlaceholder(placeholder)
             .setMinLength(minLength)

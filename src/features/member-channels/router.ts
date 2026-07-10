@@ -288,17 +288,18 @@ export class MemberChannelInteractionRouter {
     const modal = new ModalBuilder()
       .setCustomId(makeCustomId('m', `memberChannel_anyCount_${shortSessionId}_${userIndexStr}`, interaction.guildId!))
       .setTitle('How many accounts?')
-      .addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
-          new TextInputBuilder()
-            .setCustomId('account_count')
-            .setLabel(`Number of accounts (max: ${maxAccounts})`)
-            .setStyle(TextInputStyle.Short)
-            .setMinLength(1)
-            .setMaxLength(2)
-            .setPlaceholder(`Enter 1-${maxAccounts}`)
-            .setRequired(true),
-        ),
+      .addLabelComponents(
+        new LabelBuilder()
+          .setLabel(`Number of accounts (max: ${maxAccounts})`)
+          .setTextInputComponent(
+            new TextInputBuilder()
+              .setCustomId('account_count')
+              .setStyle(TextInputStyle.Short)
+              .setMinLength(1)
+              .setMaxLength(2)
+              .setPlaceholder(`Enter 1-${maxAccounts}`)
+              .setRequired(true),
+          ),
       );
 
     await interaction.showModal(modal);
@@ -697,20 +698,16 @@ export class MemberChannelInteractionRouter {
               .setMaxValues(25)
               .setRequired(false),
           ),
-      )
-      .addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new LabelBuilder().setLabel('Player Tags (comma or space separated)').setTextInputComponent(
           new TextInputBuilder()
             .setCustomId('addMemberPlayertagsInput')
-            .setLabel('Player Tags (comma or space separated)')
             .setStyle(TextInputStyle.Paragraph)
             .setPlaceholder('#ABC123, #DEF456 or #ABC123 #DEF456')
             .setRequired(false),
         ),
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new LabelBuilder().setLabel('Additional Discord IDs (space separated)').setTextInputComponent(
           new TextInputBuilder()
             .setCustomId('addMemberDiscordIdsInput')
-            .setLabel('Additional Discord IDs (space separated)')
             .setStyle(TextInputStyle.Paragraph)
             .setPlaceholder('123456789012345678 @user1 @user2')
             .setRequired(false),
@@ -742,20 +739,16 @@ export class MemberChannelInteractionRouter {
               .setMaxValues(25)
               .setRequired(false),
           ),
-      )
-      .addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new LabelBuilder().setLabel('Player Tags (comma or space separated)').setTextInputComponent(
           new TextInputBuilder()
             .setCustomId('removeMemberPlayertagsInput')
-            .setLabel('Player Tags (comma or space separated)')
             .setStyle(TextInputStyle.Paragraph)
             .setPlaceholder('#ABC123, #DEF456 or #ABC123 #DEF456')
             .setRequired(false),
         ),
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new LabelBuilder().setLabel('Additional Discord IDs (space separated)').setTextInputComponent(
           new TextInputBuilder()
             .setCustomId('removeMemberDiscordIdsInput')
-            .setLabel('Additional Discord IDs (space separated)')
             .setStyle(TextInputStyle.Paragraph)
             .setPlaceholder('123456789012345678 @user1 @user2')
             .setRequired(false),

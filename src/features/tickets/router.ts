@@ -1,8 +1,8 @@
 import {
-  ActionRowBuilder,
   ButtonInteraction,
   EmbedBuilder,
   GuildMember,
+  LabelBuilder,
   MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
@@ -156,15 +156,16 @@ export class TicketInteractionRouter {
     const modal = new ModalBuilder()
       .setCustomId(makeCustomId('m', 'ticketPlayertagsOpenModal', guildId))
       .setTitle('Enter your Clash Royale playertag(s) here.')
-      .addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
-          new TextInputBuilder()
-            .setCustomId('input')
-            .setLabel('Separate multiple tags by spaces')
-            .setPlaceholder('#ABC123 #DEF456 #GHI789')
-            .setStyle(TextInputStyle.Paragraph)
-            .setRequired(true),
-        ),
+      .addLabelComponents(
+        new LabelBuilder()
+          .setLabel('Separate multiple tags by spaces')
+          .setTextInputComponent(
+            new TextInputBuilder()
+              .setCustomId('input')
+              .setPlaceholder('#ABC123 #DEF456 #GHI789')
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(true),
+          ),
       );
 
     await interaction.showModal(modal);
@@ -181,15 +182,16 @@ export class TicketInteractionRouter {
     const modal = new ModalBuilder()
       .setCustomId(makeCustomId('m', 'ticketAppendModal', guildId, { extra: [channelId] }))
       .setTitle('Append to Ticket Name')
-      .addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
-          new TextInputBuilder()
-            .setCustomId('input')
-            .setLabel('Text to add to channel name')
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true)
-            .setMaxLength(50),
-        ),
+      .addLabelComponents(
+        new LabelBuilder()
+          .setLabel('Text to add to channel name')
+          .setTextInputComponent(
+            new TextInputBuilder()
+              .setCustomId('input')
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+              .setMaxLength(50),
+          ),
       );
 
     await interaction.showModal(modal);
