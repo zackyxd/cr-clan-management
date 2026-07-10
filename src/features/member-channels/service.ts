@@ -888,4 +888,4 @@ export class MemberChannelService {
 export const memberChannelService = new MemberChannelService();
 
 // Cleanup expired sessions periodically
-setInterval(() => memberChannelService.cleanupExpiredSessions(), SESSION_CLEANUP_INTERVAL_MINUTES * 60 * 1000);
+setInterval(() => memberChannelService.cleanupExpiredSessions(), SESSION_CLEANUP_INTERVAL_MINUTES * 60 * 1000).unref();

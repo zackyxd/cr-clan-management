@@ -42,4 +42,4 @@ class EmbedCache {
 export const playerEmbedCache = new EmbedCache();
 
 // Run cleanup every 2 minutes
-setInterval(() => playerEmbedCache.cleanup(), 2 * 60 * 1000);
+setInterval(() => playerEmbedCache.cleanup(), 2 * 60 * 1000).unref();

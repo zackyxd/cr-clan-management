@@ -47,4 +47,4 @@ class AveragesDataCacheStore {
 export const averagesDataCache = new AveragesDataCacheStore();
 
 // Run cleanup every 2 minutes
-setInterval(() => averagesDataCache.cleanup(), 2 * 60 * 1000);
+setInterval(() => averagesDataCache.cleanup(), 2 * 60 * 1000).unref();
