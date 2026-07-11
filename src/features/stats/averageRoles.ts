@@ -126,6 +126,12 @@ export async function computeAverageRoleChanges(
     '4k': filterLadder(tiers['4k'].colosseum),
   };
 
+  // Ladders are sorted highest first, so the last tier is the entry cutoff.
+  // Players below it can never earn a role, so they're excluded before the
+  // member fetch — that's what keeps the fetch count small.
+  const minTier = (ladder: RoleTier[]): number =>
+    ladder.length > 0 ? ladder[ladder.length - 1].threshold : Infinity;
+
   for (const sheet of sheetData) {
     const league = sheet.league;
     const newestLabel = sheet.weekLabels[0];
@@ -139,7 +145,7 @@ export async function computeAverageRoleChanges(
       const discordId = linkedDiscordIds.get(entry.tag);
       if (!discordId) continue; // unlinked rows are skipped silently
 
-      if (averageLadders[league].length > 0 && entry.average !== null && entry.average > 0) {
+      if (entry.average !== null && entry.average >= minTier(averageLadders[league])) {
         const key = `${league}|${discordId}`;
         const existing = averageCandidates.get(key);
         if (!existing || entry.average > existing.score) {
@@ -147,9 +153,9 @@ export async function computeAverageRoleChanges(
         }
       }
 
-      if (newestIsColosseum && colosseumLadders[league].length > 0) {
+      if (newestIsColosseum) {
         const colosseumWeek = entry.weeks.find((week) => week.label === newestLabel);
-        if (colosseumWeek?.fame != null && colosseumWeek.fame > 0) {
+        if (colosseumWeek?.fame != null && colosseumWeek.fame >= minTier(colosseumLadders[league])) {
           const key = `${league}|${discordId}`;
           const existing = colosseumCandidates.get(key);
           if (!existing || colosseumWeek.fame > existing.score) {
@@ -160,7 +166,7 @@ export async function computeAverageRoleChanges(
     }
   }
 
-  // Fetch every involved member fresh over REST.
+  // Fetch every involved member (bulk gateway requests with REST fallback).
   const allDiscordIds = [
     ...new Set([...averageCandidates.values(), ...colosseumCandidates.values()].map((c) => c.discordId)),
   ];
@@ -278,16 +284,35 @@ async function detectColosseumWeeks(guildId: string, wantedLabels: Set<string>):
 }
 
 /**
- * Fetches each member individually over REST with `force: true` — the bot runs
- * without the GuildMembers intent, so cached members can hold stale role lists
- * and gateway chunk requests can silently return partial results. A member that
- * can't be fetched (left the server) is simply absent from the result.
+ * Fetches members in bulk gateway requests (100 ids each — fast, and the chunk
+ * payloads carry current role data straight from Discord, not the local cache).
+ * Anyone the gateway didn't return is retried individually over REST with
+ * `force: true`, which distinguishes "left the server" from a dropped/partial
+ * chunk — the bot runs without the GuildMembers intent, so chunk responses
+ * can't be fully trusted on their own. A member missing from the result has
+ * genuinely left the server.
  */
 async function fetchMembersByIds(guild: Guild, discordIds: string[]): Promise<Map<string, GuildMember>> {
   const members = new Map<string, GuildMember>();
+  const missing = new Set(discordIds);
+
+  for (let i = 0; i < discordIds.length; i += 100) {
+    const chunk = discordIds.slice(i, i + 100);
+    try {
+      const fetched = await guild.members.fetch({ user: chunk, time: 30_000 });
+      for (const member of fetched.values()) {
+        members.set(member.id, member);
+        missing.delete(member.id);
+      }
+    } catch (error) {
+      logger.warn(`[Average Roles] Gateway member chunk failed for guild:${guild.id}, falling back to REST:`, error);
+    }
+  }
+
+  const missingIds = [...missing];
   const concurrency = 10;
-  for (let i = 0; i < discordIds.length; i += concurrency) {
-    const chunk = discordIds.slice(i, i + concurrency);
+  for (let i = 0; i < missingIds.length; i += concurrency) {
+    const chunk = missingIds.slice(i, i + concurrency);
     await Promise.all(
       chunk.map(async (discordId) => {
         try {
@@ -299,6 +324,7 @@ async function fetchMembersByIds(guild: Guild, discordIds: string[]): Promise<Ma
       }),
     );
   }
+
   return members;
 }
 

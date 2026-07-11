@@ -2369,6 +2369,8 @@ const command: Command = {
           return;
         }
 
+        await interaction.editReply({ content: '⏳ Reading the averages sheets and checking member roles…' });
+
         const { error, computation } = await computeAverageRoleChanges(guild, spreadsheetId);
         if (error || !computation) {
           await interaction.editReply({ content: `❌ ${error ?? 'Could not compute average roles.'}` });
@@ -2378,7 +2380,7 @@ const command: Command = {
         const embeds = buildPreviewEmbeds(computation);
 
         if (computation.totalChanges === 0) {
-          await interaction.editReply({ embeds });
+          await interaction.editReply({ content: '', embeds });
           return;
         }
 
@@ -2389,7 +2391,7 @@ const command: Command = {
             .setStyle(ButtonStyle.Success),
         );
 
-        await interaction.editReply({ embeds, components: [confirmRow] });
+        await interaction.editReply({ content: '', embeds, components: [confirmRow] });
       }
     } finally {
       runningGuilds.delete(guild.id);
