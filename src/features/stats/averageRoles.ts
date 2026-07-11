@@ -132,6 +132,15 @@ export async function computeAverageRoleChanges(
   const minTier = (ladder: RoleTier[]): number =>
     ladder.length > 0 ? ladder[ladder.length - 1].threshold : Infinity;
 
+  // Participation filter: must have at least 36 attacks in the last 3 war weeks
+  // they actually participated in (blanks don't count, like the average formula).
+  const MIN_ATTACKS_3_WEEKS = 36;
+  const hasEnoughParticipation = (entry: AveragesEntry): boolean => {
+    const recentWeeks = entry.weeks.slice(0, 3);
+    const totalAttacks = recentWeeks.reduce((sum, week) => sum + (week.attacks ?? 0), 0);
+    return totalAttacks >= MIN_ATTACKS_3_WEEKS;
+  };
+
   for (const sheet of sheetData) {
     const league = sheet.league;
     const newestLabel = sheet.weekLabels[0];
@@ -144,6 +153,8 @@ export async function computeAverageRoleChanges(
     for (const entry of sheet.entries) {
       const discordId = linkedDiscordIds.get(entry.tag);
       if (!discordId) continue; // unlinked rows are skipped silently
+
+      if (!hasEnoughParticipation(entry)) continue; // needs 36+ attacks in last 3 weeks
 
       if (entry.average !== null && entry.average >= minTier(averageLadders[league])) {
         const key = `${league}|${discordId}`;
