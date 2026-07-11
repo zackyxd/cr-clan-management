@@ -49,6 +49,36 @@ export function checkPermissions(item: string, member: GuildMember, requiredRole
     .setColor(EmbedColor.WARNING);
 }
 
+/**
+ * Silently check whether the interacting member has a staff role, without
+ * replying/deferring or blocking the interaction. Use this when the action
+ * itself needs no permission gate but you still want to know if the user is
+ * staff (e.g. to show an extra option), such as before calling showModal().
+ */
+export async function isStaffMember(interaction: InteractionTypes, level: RoleLevel): Promise<boolean> {
+  if (!interaction.guild) return false;
+
+  const guildId = interaction.guild.id;
+  const member = await interaction.guild.members.fetch(interaction.user.id);
+
+  const isOwner = interaction.guild.ownerId === interaction.user.id;
+  const hasAdmin = member?.permissions.has([
+    PermissionsBitField.Flags.Administrator,
+    PermissionsBitField.Flags.ManageGuild,
+  ]);
+  if (isOwner || hasAdmin) return true;
+
+  const getRoles = await pool.query(buildCheckHasRoleQuery(guildId));
+  const { lower_leader_role_id, higher_leader_role_id } = getRoles.rows[0] ?? {};
+
+  let requiredRoleIds: string[] = [];
+  if (level === 'lower') requiredRoleIds = lower_leader_role_id || [];
+  else if (level === 'higher') requiredRoleIds = higher_leader_role_id || [];
+  else if (level === 'either') requiredRoleIds = [...(lower_leader_role_id || []), ...(higher_leader_role_id || [])];
+
+  return requiredRoleIds.filter(Boolean).some((roleId: string) => member?.roles.cache.has(roleId));
+}
+
 function deferInteraction(interaction: InteractionTypes, ephemeral = false) {
   if (interaction.isButton() || interaction.isStringSelectMenu() || interaction.isModalSubmit()) {
     if (ephemeral) {

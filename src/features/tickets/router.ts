@@ -10,9 +10,10 @@ import {
   TextChannel,
   TextInputBuilder,
   TextInputStyle,
+  UserSelectMenuBuilder,
 } from 'discord.js';
 import { ParsedCustomId } from '../../types/ParsedCustomId.js';
-import { checkPerms } from '../../utils/checkPermissions.js';
+import { checkPerms, isStaffMember } from '../../utils/checkPermissions.js';
 import { CR_API } from '../../api/CR_API.js';
 import { formatPlayerData } from '../../api/FORMAT_DATA.js';
 import logger from '../../logger.js';
@@ -31,10 +32,12 @@ export class TicketInteractionRouter {
     const { action, guildId } = parsed;
 
     switch (action) {
-      case 'ticketPlayertagsOpenModal':
-        // Anyone can enter playertags - no permission check needed
-        await this.showPlayertagsModal(interaction, guildId);
+      case 'ticketPlayertagsOpenModal': {
+        // Anyone can enter playertags - no permission check needed, but staff get an extra option
+        const isStaff = await isStaffMember(interaction, 'either');
+        await this.showPlayertagsModal(interaction, guildId, isStaff);
         break;
+      }
       case 'ticketsRelinkUser': {
         // Staff only - check permissions
         const allowed = await checkPerms(interaction, 'button', 'higher', {
@@ -105,6 +108,11 @@ export class TicketInteractionRouter {
 
     switch (action) {
       case 'ticketPlayertagsOpenModal': {
+        const targetMember = interaction.fields.fields.has('memberInput')
+          ? interaction.fields.getSelectedUsers('memberInput', true).first()
+          : undefined;
+        const ownerId = targetMember?.id ?? interaction.user.id;
+
         const res = await pool.query(
           `SELECT is_closed, created_by FROM tickets WHERE guild_id = $1 AND channel_id = $2`,
           [guildId, interaction.channelId],
@@ -113,7 +121,7 @@ export class TicketInteractionRouter {
         const isClosed = ticketData?.is_closed === true;
         const existingOwner = ticketData?.created_by;
 
-        if (existingOwner && existingOwner !== interaction.user.id) {
+        if (existingOwner && existingOwner !== ownerId) {
           await interaction.deferReply({ flags: MessageFlags.Ephemeral });
           await interaction.editReply({
             content: 'Someone has already uploaded their playertags to this ticket. Please make your own ticket.',
@@ -122,7 +130,7 @@ export class TicketInteractionRouter {
         }
 
         await interaction.deferReply({ flags: isClosed ? MessageFlags.Ephemeral : undefined });
-        await this.handlePlayertagsSubmit(interaction, guildId, Boolean(existingOwner));
+        await this.handlePlayertagsSubmit(interaction, guildId, Boolean(existingOwner), ownerId);
         break;
       }
 
@@ -152,21 +160,49 @@ export class TicketInteractionRouter {
   /**
    * Show modal for entering playertags
    */
-  private static async showPlayertagsModal(interaction: ButtonInteraction, guildId: string): Promise<void> {
-    const modal = new ModalBuilder()
-      .setCustomId(makeCustomId('m', 'ticketPlayertagsOpenModal', guildId))
-      .setTitle('Enter your Clash Royale playertag(s) here.')
-      .addLabelComponents(
-        new LabelBuilder()
-          .setLabel('Separate multiple tags by spaces')
-          .setTextInputComponent(
-            new TextInputBuilder()
-              .setCustomId('input')
-              .setPlaceholder('#ABC123 #DEF456 #GHI789')
-              .setStyle(TextInputStyle.Paragraph)
-              .setRequired(true),
-          ),
-      );
+  private static async showPlayertagsModal(
+    interaction: ButtonInteraction,
+    guildId: string,
+    isStaff: boolean,
+  ): Promise<void> {
+    let modal: ModalBuilder;
+    if (isStaff) {
+      modal = new ModalBuilder()
+        .setCustomId(makeCustomId('m', 'ticketPlayertagsOpenModal', guildId))
+        .setTitle('Enter their Clash Royale playertag(s) here.')
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel('Select the member who made the ticket')
+            .setDescription('Choose Discord member from list')
+            .setUserSelectMenuComponent(
+              new UserSelectMenuBuilder().setCustomId('memberInput').setMaxValues(1).setRequired(true),
+            ),
+          new LabelBuilder()
+            .setLabel('Separate multiple tags by spaces')
+            .setTextInputComponent(
+              new TextInputBuilder()
+                .setCustomId('input')
+                .setPlaceholder('#ABC123 #DEF456 #GHI789')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true),
+            ),
+        );
+    } else {
+      modal = new ModalBuilder()
+        .setCustomId(makeCustomId('m', 'ticketPlayertagsOpenModal', guildId))
+        .setTitle('Enter your Clash Royale playertag(s) here.')
+        .addLabelComponents(
+          new LabelBuilder()
+            .setLabel('Separate multiple tags by spaces')
+            .setTextInputComponent(
+              new TextInputBuilder()
+                .setCustomId('input')
+                .setPlaceholder('#ABC123 #DEF456 #GHI789')
+                .setStyle(TextInputStyle.Paragraph)
+                .setRequired(true),
+            ),
+        );
+    }
 
     await interaction.showModal(modal);
   }
@@ -315,6 +351,7 @@ export class TicketInteractionRouter {
     interaction: ModalSubmitInteraction,
     guildId: string,
     isUpdate: boolean,
+    ownerId: string,
   ): Promise<void> {
     const rawInput = interaction.fields.getTextInputValue('input');
 
@@ -354,7 +391,7 @@ export class TicketInteractionRouter {
       guildId,
       channelId: interaction.channelId,
       playertags: normalizedTags,
-      userId: interaction.user.id,
+      userId: ownerId,
     });
 
     if (!result.success) {
@@ -378,9 +415,7 @@ export class TicketInteractionRouter {
         );
 
         if (renameEnabled.rows[0]?.['rename_players'] && interaction.guild) {
-          const member: GuildMember | null = await interaction.guild.members
-            .fetch(interaction.user.id)
-            .catch(() => null);
+          const member: GuildMember | null = await interaction.guild.members.fetch(ownerId).catch(() => null);
 
           if (member) {
             await member.setNickname(result.firstPlayerName).catch((error) => {
@@ -454,7 +489,7 @@ export class TicketInteractionRouter {
       } else {
         // Send first batch as edit reply
         await interaction.editReply({
-          content: `**These are the entered playertags by <@${interaction.user.id}>**`,
+          content: `**These are the entered playertags for <@${ownerId}>**`,
           embeds: batches[0],
         });
 

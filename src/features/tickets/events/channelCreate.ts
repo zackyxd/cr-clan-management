@@ -8,7 +8,7 @@ import logger from '../../../logger.js';
  */
 export async function sendTicketButton(channel: TextChannel, guildId: string): Promise<void> {
   const button = new ButtonBuilder()
-    .setLabel('Click Here to enter your Clash Royale Playertags!')
+    .setLabel('Click here to enter your Clash Royale playertags!')
     .setCustomId(makeCustomId('b', 'ticketPlayertagsOpenModal', guildId, { cooldown: 5 }))
     .setStyle(ButtonStyle.Primary);
 
