@@ -88,6 +88,9 @@ export class LineupsAutofillScheduler {
 
     if (headerRow.length === 0) return;
 
+    // Pass headerRow length to sortByFame so it can clamp ranges correctly
+    const headerRowLength = headerRow.length;
+
     // Build tag → current clan map from DB snapshots (all linked clans in this guild).
     const clansRes = await pool.query<{
       abbreviation: string | null;
@@ -172,7 +175,7 @@ export class LineupsAutofillScheduler {
     });
 
     // Sort each clan block by fame column (descending), rows 3-54
-    await this.sortByFame(sheets, spreadsheetId, sheetName, fameColIndexes);
+    await this.sortByFame(sheets, spreadsheetId, sheetName, fameColIndexes, headerRowLength);
   }
 
   private async sortByFame(
@@ -180,6 +183,7 @@ export class LineupsAutofillScheduler {
     spreadsheetId: string,
     sheetName: string,
     fameColIndexes: number[],
+    headerRowLength: number,
   ) {
     if (fameColIndexes.length === 0) return;
 
@@ -196,6 +200,8 @@ export class LineupsAutofillScheduler {
     for (const fameColIndex of fameColIndexes) {
       const blockStartCol = Math.floor(fameColIndex / LINEUP_BLOCK_WIDTH) * LINEUP_BLOCK_WIDTH;
       const fameColOffset = fameColIndex % LINEUP_BLOCK_WIDTH;
+      // Clamp endColumnIndex to not exceed the actual sheet width
+      const blockEndCol = Math.min(blockStartCol + LINEUP_BLOCK_WIDTH, headerRowLength);
 
       try {
         await sheets.spreadsheets.batchUpdate({
@@ -209,7 +215,7 @@ export class LineupsAutofillScheduler {
                     startRowIndex: firstDataRow,
                     endRowIndex: lastDataRow,
                     startColumnIndex: blockStartCol,
-                    endColumnIndex: blockStartCol + LINEUP_BLOCK_WIDTH,
+                    endColumnIndex: blockEndCol,
                   },
                   sortSpecs: [{ dimensionIndex: fameColOffset, sortOrder: 'DESCENDING' }],
                 },
