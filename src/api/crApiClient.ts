@@ -2,8 +2,6 @@ import axios from 'axios';
 import Bottleneck from 'bottleneck';
 import axiosRetry from 'axios-retry';
 import 'dotenv-flow/config';
-import { Agent as HttpAgent } from 'http';
-import { Agent as HttpsAgent } from 'https';
 import { logApiResponse } from './dev-logger.js';
 import { loadMockData, isMockingEnabled } from './mock-loader.js';
 
@@ -24,8 +22,6 @@ const crAxios = axios.create({
     Authorization: `Bearer ${process.env.CR_KEY}`,
   },
   timeout: 20000,
-  httpAgent: { keepAlive: false },
-  httpsAgent: { keepAlive: false },
 });
 
 // --- Attach axios-retry ---
