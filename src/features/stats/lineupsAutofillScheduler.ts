@@ -192,35 +192,34 @@ export class LineupsAutofillScheduler {
     const firstDataRow = 2; // 0-indexed row 3 is index 2
     const lastDataRow = 1 + LINEUP_DATA_ROWS; // 0-indexed row 54 is index 53
 
-    const sortRequests: object[] = [];
-
+    // Sort each clan block sequentially to avoid API issues with batched sorts on adjacent ranges
     for (const fameColIndex of fameColIndexes) {
       const blockStartCol = Math.floor(fameColIndex / LINEUP_BLOCK_WIDTH) * LINEUP_BLOCK_WIDTH;
       const fameColOffset = fameColIndex % LINEUP_BLOCK_WIDTH;
 
-      sortRequests.push({
-        sortRange: {
-          range: {
-            sheetId,
-            startRowIndex: firstDataRow,
-            endRowIndex: lastDataRow,
-            startColumnIndex: blockStartCol,
-            endColumnIndex: blockStartCol + LINEUP_BLOCK_WIDTH,
+      try {
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: {
+            requests: [
+              {
+                sortRange: {
+                  range: {
+                    sheetId,
+                    startRowIndex: firstDataRow,
+                    endRowIndex: lastDataRow,
+                    startColumnIndex: blockStartCol,
+                    endColumnIndex: blockStartCol + LINEUP_BLOCK_WIDTH,
+                  },
+                  sortSpecs: [{ dimensionIndex: fameColOffset, sortOrder: 'DESCENDING' }],
+                },
+              },
+            ],
           },
-          sortSpecs: [{ dimensionIndex: fameColOffset, sortOrder: 'DESCENDING' }],
-        },
-      });
-    }
-
-    if (sortRequests.length === 0) return;
-
-    try {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: { requests: sortRequests },
-      });
-    } catch (error) {
-      logger.error(`[sortByFame] Failed to sort ${sheetName}: ${error}`);
+        });
+      } catch (error) {
+        logger.error(`[sortByFame] Failed to sort ${sheetName} column ${fameColIndex}: ${error}`);
+      }
     }
   }
 }

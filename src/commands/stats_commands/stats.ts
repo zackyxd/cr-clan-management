@@ -2018,8 +2018,7 @@ const command: Command = {
         }
 
         // Cur. Clan column color rules on Lineups:
-        // use ALL clan abbreviations from DB (not only lineup-order blocks),
-        // so any current clan label can be colored correctly.
+        // add rules for all possible clans, but with distinct index per block to ensure correct priority
         const curClanColorRules: object[] = [];
         for (let block = 0; block < resolvedOrder.length; block++) {
           const startCol = block * LINEUP_BLOCK_WIDTH;
@@ -2049,7 +2048,7 @@ const command: Command = {
                     },
                   },
                 },
-                index: 0,
+                index: block,
               },
             });
           }
