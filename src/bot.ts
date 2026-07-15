@@ -15,7 +15,7 @@ import { setDiscordClient } from './features/race-tracking/service.js';
 import { EmojiManager } from './services/EmojiManager.js';
 import { startClanActivityScheduler } from './features/clan-logs/index.js';
 import { KicksTagAutofillScheduler } from './features/stats/kicksTagAutofillScheduler.js';
-import { CurClanAutofillScheduler } from './features/stats/curClanAutofillScheduler.js';
+import { LineupsAutofillScheduler } from './features/stats/lineupsAutofillScheduler.js';
 
 // import { isDev, isProd } from './utils/env.js';
 
@@ -127,8 +127,8 @@ client.once(Events.ClientReady, async (c) => {
   const kicksTagAutofillScheduler = new KicksTagAutofillScheduler();
   kicksTagAutofillScheduler.start();
   // Start cur-clan autofill scheduler (fills Cur. Clan column on lineups sheets from DB snapshots)
-  const curClanAutofillScheduler = new CurClanAutofillScheduler();
-  curClanAutofillScheduler.start();
+  const lineupsAutofillScheduler = new LineupsAutofillScheduler();
+  lineupsAutofillScheduler.start();
 });
 
 // NOTE: Old interaction handling moved to events/interactionCreate.ts with new feature-based dispatcher

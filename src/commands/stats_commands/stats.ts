@@ -584,7 +584,7 @@ export function averagesFameFormula(colLetter: string, row: number, league: '5k'
   const sheet = `'${league} Averages'`;
 
   return (
-    `=XLOOKUP(` + `IF(LEFT(${tagRef},1)="#",${tagRef},"#"&${tagRef}),` + `${sheet}!B:B,` + `${sheet}!E:E,` + `0` + `)`
+    `=XLOOKUP(` + `IF(LEFT(${tagRef},1)="#",${tagRef},"#"&${tagRef}),` + `${sheet}!B:B,` + `${sheet}!E:E,` + `""` + `)`
   );
 }
 
@@ -621,7 +621,7 @@ function buildClanBlock(
 
     const nameFormula = averagesNameFormula(tagCol, i + 2);
 
-    // Cur. Clan is filled by CurClanAutofillScheduler — written as plain values, not a formula.
+    // Cur. Clan is filled by lineupsAutofillScheduler — written as plain values, not a formula.
     const fameAtkFormula = averagesFameFormula(tagCol, i + 2, league);
     values.push([String(i), '', nameFormula, '', '', fameAtkFormula, '']);
   }
@@ -1298,7 +1298,9 @@ const command: Command = {
     .addSubcommand((subcommand) =>
       subcommand
         .setName('roles')
-        .setDescription('Preview and give roles for sheet averages (and colosseum scores). Run after /stats update-scores.'),
+        .setDescription(
+          'Preview and give roles for sheet averages (and colosseum scores). Run after /stats update-scores.',
+        ),
     )
     .addSubcommand((subcommand) =>
       subcommand

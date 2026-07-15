@@ -2,7 +2,7 @@ import { sheets_v4 } from 'googleapis';
 import { pool } from '../../db.js';
 import logger from '../../logger.js';
 import { normalizeTag } from '../../api/CR_API.js';
-import { colToLetter, getAuthenticatedSheetsClient } from './statsUtil.js';
+import { colToLetter, getAuthenticatedSheetsClient, getSheetIdByName } from './statsUtil.js';
 
 const LINEUP_BLOCK_WIDTH = 7;
 const LINEUP_DATA_ROWS = 52;
@@ -10,7 +10,7 @@ const LINEUP_DATA_ROWS = 52;
 const CUR_CLAN_COL_OFFSET = 4;
 const DEFAULT_INTERVAL_MINUTES = 5;
 
-export class CurClanAutofillScheduler {
+export class LineupsAutofillScheduler {
   private intervalId: NodeJS.Timeout | null = null;
   private isRunning = false;
 
@@ -37,7 +37,7 @@ export class CurClanAutofillScheduler {
     if (!this.intervalId) return;
     clearInterval(this.intervalId);
     this.intervalId = null;
-    logger.info('Stopped cur-clan autofill scheduler');
+    logger.info('Stopped lineups autofill scheduler');
   }
 
   private async runCycle() {
@@ -118,6 +118,7 @@ export class CurClanAutofillScheduler {
     }
 
     const updates: sheets_v4.Schema$ValueRange[] = [];
+    const fameColIndexes: number[] = [];
 
     for (let startCol = 0; startCol < headerRow.length; startCol += LINEUP_BLOCK_WIDTH) {
       const clanName = (headerRow[startCol] ?? '').trim();
@@ -153,6 +154,9 @@ export class CurClanAutofillScheduler {
         range: `${sheetName}!${curClanColLetter}${firstDataRow}:${curClanColLetter}${lastDataRow}`,
         values: curClanValues,
       });
+
+      // Track fame column index (startCol + 5 for each clan block)
+      fameColIndexes.push(startCol + 5);
     }
 
     if (updates.length === 0) return;
@@ -164,5 +168,50 @@ export class CurClanAutofillScheduler {
         data: updates,
       },
     });
+
+    // Sort each clan block by fame column (descending), rows 3-54
+    await this.sortByFame(sheets, spreadsheetId, sheetName, fameColIndexes);
+  }
+
+  private async sortByFame(
+    sheets: sheets_v4.Sheets,
+    spreadsheetId: string,
+    sheetName: string,
+    fameColIndexes: number[],
+  ) {
+    if (fameColIndexes.length === 0) return;
+
+    const sheetId = await getSheetIdByName(spreadsheetId, sheetName);
+    if (sheetId === null) return;
+
+    const firstDataRow = 2; // 0-indexed row 3 is index 2
+    const lastDataRow = 1 + LINEUP_DATA_ROWS; // 0-indexed row 54 is index 53
+
+    const sortRequests: object[] = [];
+
+    for (const fameColIndex of fameColIndexes) {
+      const blockStartCol = Math.floor(fameColIndex / LINEUP_BLOCK_WIDTH) * LINEUP_BLOCK_WIDTH;
+      const fameColOffset = fameColIndex % LINEUP_BLOCK_WIDTH;
+
+      sortRequests.push({
+        sortRange: {
+          range: {
+            sheetId,
+            startRowIndex: firstDataRow,
+            endRowIndex: lastDataRow,
+            startColumnIndex: blockStartCol,
+            endColumnIndex: blockStartCol + LINEUP_BLOCK_WIDTH,
+          },
+          sortSpecs: [{ dimensionIndex: fameColOffset, sortOrder: 'DESCENDING' }],
+        },
+      });
+    }
+
+    if (sortRequests.length > 0) {
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: { requests: sortRequests },
+      });
+    }
   }
 }
