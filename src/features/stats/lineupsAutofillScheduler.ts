@@ -60,7 +60,7 @@ export class LineupsAutofillScheduler {
         await this.fillLeagueLineupsSheet(sheets, row.guild_id, row.stats_spreadsheetid, '4k');
       }
     } catch (error) {
-      logger.error('Cur-clan autofill cycle failed:', error);
+      logger.error('Lineup autofill cycle failed:', error);
     } finally {
       this.isRunning = false;
     }
@@ -155,8 +155,10 @@ export class LineupsAutofillScheduler {
         values: curClanValues,
       });
 
-      // Track fame column index (startCol + 5 for each clan block)
-      fameColIndexes.push(startCol + 5);
+      // Track fame column index (startCol + 5 for each clan block) — only if it exists
+      if (startCol + 5 < headerRow.length) {
+        fameColIndexes.push(startCol + 5);
+      }
     }
 
     if (updates.length === 0) return;
@@ -182,7 +184,10 @@ export class LineupsAutofillScheduler {
     if (fameColIndexes.length === 0) return;
 
     const sheetId = await getSheetIdByName(spreadsheetId, sheetName);
-    if (sheetId === null) return;
+    if (sheetId === null) {
+      logger.warn(`[sortByFame] Sheet "${sheetName}" not found, skipping sort`);
+      return;
+    }
 
     const firstDataRow = 2; // 0-indexed row 3 is index 2
     const lastDataRow = 1 + LINEUP_DATA_ROWS; // 0-indexed row 54 is index 53
@@ -207,11 +212,15 @@ export class LineupsAutofillScheduler {
       });
     }
 
-    if (sortRequests.length > 0) {
+    if (sortRequests.length === 0) return;
+
+    try {
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId,
         requestBody: { requests: sortRequests },
       });
+    } catch (error) {
+      logger.error(`[sortByFame] Failed to sort ${sheetName}: ${error}`);
     }
   }
 }
