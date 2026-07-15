@@ -584,7 +584,7 @@ export function averagesFameFormula(colLetter: string, row: number, league: '5k'
   const sheet = `'${league} Averages'`;
 
   return (
-    `=XLOOKUP(` + `IF(LEFT(${tagRef},1)="#",${tagRef},"#"&${tagRef}),` + `${sheet}!B:B,` + `${sheet}!E:E,` + `0` + `)`
+    `=XLOOKUP(` + `IF(LEFT(${tagRef},1)="#",${tagRef},"#"&${tagRef}),` + `${sheet}!B:B,` + `${sheet}!E:E,` + `""` + `)`
   );
 }
 
