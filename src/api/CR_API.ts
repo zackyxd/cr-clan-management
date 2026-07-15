@@ -54,7 +54,8 @@ export async function fetchData<T>(
   } catch (error: unknown) {
     if (isAxiosError(error)) {
       const status = error.response?.status ?? 500;
-      // logger.warn(`[CR API] ${kind} ${tag} failed: HTTP ${status} (${endpoint || url})`);
+      const code = error.code ?? 'UNKNOWN';
+      logger.warn(`[CR API] ${kind} ${tag} failed: HTTP ${status} | Code: ${code} (${endpoint || url})`);
       if (status === 503) {
         return {
           error: true,

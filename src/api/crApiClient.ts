@@ -8,10 +8,11 @@ import { loadMockData, isMockingEnabled } from './mock-loader.js';
 // --- Bottleneck rate limiter ---
 // Example: 10 requests per second (Clash Royale API is 10/s per token)
 const limiter = new Bottleneck({
-  reservoir: 50,
-  reservoirRefreshAmount: 50,
+  reservoir: 30,
+  reservoirRefreshAmount: 30,
   reservoirRefreshInterval: 1000,
-  maxConcurrent: 3,
+  maxConcurrent: 1,
+  minTime: 50,
 });
 
 // --- Create axios instance ---
@@ -20,7 +21,9 @@ const crAxios = axios.create({
   headers: {
     Authorization: `Bearer ${process.env.CR_KEY}`,
   },
-  timeout: 15000,
+  timeout: 20000,
+  httpAgent: { keepAlive: false },
+  httpsAgent: { keepAlive: false },
 });
 
 // --- Attach axios-retry ---
@@ -31,7 +34,7 @@ axiosRetry(crAxios, {
     const base = 500;
     const delay = base * Math.pow(2, retryCount);
     const status = error?.response?.status ?? error?.code ?? 'unknown';
-    console.warn(`Retrying [${retryCount}] after ${delay}ms (status: ${status})`);
+    console.warn(`[CR API] Retrying [${retryCount}] after ${delay}ms (error: ${status})`);
     return delay;
   },
   retryCondition: (error) => {
@@ -39,7 +42,11 @@ axiosRetry(crAxios, {
     const status = error.response?.status ?? 0;
     const isTimeout = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
     const isNetworkError = !error.response && error.code !== 'ERR_BAD_REQUEST';
-    return status === 429 || status >= 500 || isTimeout || isNetworkError;
+    const shouldRetry = status === 429 || status >= 500 || isTimeout || isNetworkError;
+    if (!shouldRetry && error.code) {
+      console.warn(`[CR API] Not retrying - error code: ${error.code}, status: ${status}`);
+    }
+    return shouldRetry;
   },
 });
 
