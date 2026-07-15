@@ -43,4 +43,7 @@ export const AVAILABLE_SHEET_WEEKS_LOOKBACK = 8;
 // the protected ranges the bot adds to stats sheets (Lineups, Kicks, Available,
 // L2W/Inactive). Add an email here if someone needs to be able to unprotect a
 // cell from the Sheets UI in case the bot ever gets stuck.
-export const PROTECTED_RANGE_ADMIN_EMAILS: string[] = ['shitrandom67@gmail.com'];
+export const PROTECTED_RANGE_ADMIN_EMAILS: string[] = [
+  'shitrandom67@gmail.com',
+  'royalemanagerstats@royalemanagerstats.iam.gserviceaccount.com',
+];
