@@ -8,10 +8,10 @@ import { loadMockData, isMockingEnabled } from './mock-loader.js';
 // --- Bottleneck rate limiter ---
 // Example: 10 requests per second (Clash Royale API is 10/s per token)
 const limiter = new Bottleneck({
-  reservoir: 70,
-  reservoirRefreshAmount: 70,
+  reservoir: 50,
+  reservoirRefreshAmount: 50,
   reservoirRefreshInterval: 1000,
-  maxConcurrent: 5,
+  maxConcurrent: 3,
 });
 
 // --- Create axios instance ---
@@ -20,7 +20,7 @@ const crAxios = axios.create({
   headers: {
     Authorization: `Bearer ${process.env.CR_KEY}`,
   },
-  timeout: 8000,
+  timeout: 15000,
 });
 
 // --- Attach axios-retry ---
