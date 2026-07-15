@@ -20,7 +20,7 @@ const crAxios = axios.create({
   headers: {
     Authorization: `Bearer ${process.env.CR_KEY}`,
   },
-  timeout: 20000,
+  timeout: 35000,
 });
 
 // --- Attach axios-retry ---
