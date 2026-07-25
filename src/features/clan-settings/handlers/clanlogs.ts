@@ -15,6 +15,7 @@ import logger from '../../../logger.js';
 import { makeCustomId, parseCustomId } from '../../../utils/customId.js';
 import { checkPerms } from '../../../utils/checkPermissions.js';
 import { clanSettingsService } from '../service.js';
+import { CR_API, isFetchError, normalizeTag } from '../../../api/CR_API.js';
 
 export class ClanLogsHandler {
   /**
@@ -272,6 +273,160 @@ export class ClanLogsHandler {
           .reply(response)
           .catch((err) => logger.warn('[ClanLogs] Failed to send reply after error:', err));
       }
+    }
+  }
+
+  /**
+   * Remove the clan's role from any current holder who has no linked account
+   * still in the clan. Requires "Remove Role" behavior to be enabled and a clan
+   * role to be configured. Aborts entirely (no removals) if the clan API fetch fails.
+   *
+   * @param interaction - Button interaction from Discord (already deferred + permission-checked by the router)
+   * @param settingsData - Cached settings data (from cache key)
+   */
+  static async removeStaleRoles(interaction: ButtonInteraction, settingsData: ClanSettingsData): Promise<void> {
+    const { guildId, clantag, clanName } = settingsData;
+
+    try {
+      const clanRow = await pool.query(
+        `SELECT clan_role_id, clan_logs_remove_role FROM clans WHERE guild_id = $1 AND clantag = $2`,
+        [guildId, clantag],
+      );
+      const row = clanRow.rows[0];
+      const clanRoleId: string | null = row?.clan_role_id || null;
+      const removeRoleEnabled: boolean = row?.clan_logs_remove_role ?? false;
+
+      if (!removeRoleEnabled) {
+        await interaction.followUp({
+          content: '❌ "Remove Role" behavior must be enabled in Clan Logs settings before running this.',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      if (!clanRoleId) {
+        await interaction.followUp({
+          content: '❌ No clan role is configured for this clan (set it under Clan Info).',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      // Fetch the current roster from the API first — if this fails, abort entirely so no roles are touched.
+      const clanData = await CR_API.getClan(clantag);
+      if (isFetchError(clanData)) {
+        await interaction.followUp({
+          content: `❌ Failed to fetch clan data from the API (${clanData.reason}). Please try again.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+      const currentTags = new Set(clanData.memberList.map((m) => normalizeTag(m.tag)));
+
+      const guild = interaction.guild;
+      if (!guild) {
+        await interaction.followUp({
+          content: '❌ This action must be used in a server.',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const role = await guild.roles.fetch(clanRoleId).catch(() => null);
+      if (!role) {
+        await interaction.followUp({
+          content: '❌ Could not find the configured clan role in this server.',
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      // Full member fetch so role.members reflects everyone, not just the local cache.
+      // Skip if the cache already covers the whole guild — avoids tripping the
+      // per-guild opcode 8 rate limit on repeated runs.
+      if (guild.members.cache.size < guild.memberCount) {
+        try {
+          await guild.members.fetch();
+        } catch (error) {
+          // Rate limited means a fetch already completed very recently — the cache
+          // is already close to current, so just proceed with what's cached instead
+          // of waiting to retry.
+          logger.warn(`[ClanLogs] Guild member fetch rate limited for guild ${guild.id}, using existing cache:`, error);
+        }
+      }
+      const roleHolders = [...role.members.values()];
+
+      if (roleHolders.length === 0) {
+        await interaction.followUp({
+          content: `No members currently have the ${role} role.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      const holderIds = roleHolders.map((member) => member.id);
+      const linkedRes = await pool.query<{ discord_id: string; playertag: string }>(
+        `SELECT discord_id, playertag FROM user_playertags WHERE guild_id = $1 AND discord_id = ANY($2)`,
+        [guildId, holderIds],
+      );
+      const linkedTagsByDiscordId = new Map<string, string[]>();
+      for (const linked of linkedRes.rows) {
+        const tags = linkedTagsByDiscordId.get(linked.discord_id) ?? [];
+        tags.push(normalizeTag(linked.playertag));
+        linkedTagsByDiscordId.set(linked.discord_id, tags);
+      }
+
+      const toRemove = roleHolders.filter((member) => {
+        const linkedTags = linkedTagsByDiscordId.get(member.id) ?? [];
+        return !linkedTags.some((tag) => currentTags.has(tag));
+      });
+
+      if (toRemove.length === 0) {
+        await interaction.followUp({
+          content: `Checked ${roleHolders.length} member(s) with ${role}. Everyone has a linked account in the clan.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+
+      let removedCount = 0;
+      const failures: string[] = [];
+      for (const member of toRemove) {
+        try {
+          await member.roles.remove(role.id, `Clan role sync — no linked account in ${clanName}`);
+          removedCount++;
+        } catch (error) {
+          logger.error(`[ClanLogs] Failed to remove role from ${member.id}:`, error);
+          failures.push(`<@${member.id}>`);
+        }
+      }
+
+      let replyContent = `✅ Removed ${role} from ${removedCount}/${toRemove.length} member(s) without a linked account currently in **${clanName}**.`;
+      if (failures.length > 0) {
+        replyContent += `\n\n⚠️ Failed to remove from: ${failures.join(', ')}`;
+      }
+      await interaction.followUp({ content: replyContent, flags: MessageFlags.Ephemeral });
+
+      if (removedCount > 0) {
+        clanSettingsService
+          .sendLog(
+            interaction.client,
+            guildId,
+            `🧹 Clan Role Sync`,
+            `**Clan:** ${clanName}\n**Role:** ${role}\n**Removed from:** ${removedCount} member(s)\n**Run by:** <@${interaction.user.id}>`,
+          )
+          .catch((err) => logger.error('Error sending clan role sync log:', err));
+      }
+
+      logger.info(
+        `[ClanLogs] ${interaction.user.tag} ran role sync for ${clantag} in guild ${guildId}: removed from ${removedCount}/${toRemove.length}`,
+      );
+    } catch (error) {
+      logger.error('[ClanLogs] Error removing stale clan roles:', error);
+      await interaction.followUp({
+        content: '❌ An unexpected error occurred while syncing clan roles. Please try again.',
+        flags: MessageFlags.Ephemeral,
+      });
     }
   }
 }

@@ -63,6 +63,7 @@ export const CLAN_FEATURE_SETTINGS = [
       'clan_logs_remove_role',
     ],
   },
+
   {
     key: 'ping_settings',
     label: 'Attack Late/Replace Pings',
@@ -86,6 +87,12 @@ export const CLAN_FEATURE_SETTINGS = [
     key: 'purge_invites',
     label: 'Purge Active Clan Invites',
     buttonLabel: 'Purge Invites',
+    type: 'action',
+  },
+  {
+    key: 'remove_stale_clan_roles',
+    label: 'Remove Stale Clan Roles',
+    buttonLabel: 'Remove Stale Roles',
     type: 'action',
   },
   // ...add more as needed

@@ -9,6 +9,7 @@ import {
 import { royaleApiLink } from '../../api/CR_API.js';
 import { EmbedColor } from '../../types/EmbedUtil.js';
 import { makeCustomId } from '../../utils/customId.js';
+import logger from '../../logger.js';
 import type { AveragesEntry } from './averagesLookup.js';
 
 export const DEFAULT_WEEKS_SHOWN = 3;
@@ -62,7 +63,18 @@ export function buildAccountSelectRow(
     .setCustomId(makeCustomId('s', 'average_select', guildId, { ownerId }))
     .setPlaceholder('Select an account for recent weeks');
 
+  const seenKeys = new Map<string, AveragesEntry>();
   for (const entry of sortEntries(entries)) {
+    const dupe = seenKeys.get(entry.key);
+    if (dupe) {
+      logger.warn(
+        `[averages] Duplicate select option key "${entry.key}" — ` +
+          `"${dupe.playerName}" (${dupe.tag}) vs "${entry.playerName}" (${entry.tag})`,
+      );
+      continue;
+    }
+    seenKeys.set(entry.key, entry);
+
     select.addOptions(
       new StringSelectMenuOptionBuilder()
         .setLabel(entry.playerName)

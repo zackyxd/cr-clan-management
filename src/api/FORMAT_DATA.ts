@@ -191,7 +191,7 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
   }
 
   let cardLevelDescription = `__**Card Levels**__ ${getEmoji('cards')}\n`;
-  cardLevelDescription += `${getEmoji('heroes')}: ${heroes}\n${getEmoji('evolutions')}: ${evolutions}\n${getEmoji('experience_16')}: ${level16}\n${getEmoji('experience_15')}: ${level15}\n${getEmoji('experience_14')}: ${level14}`;
+  cardLevelDescription += `${getEmoji('heroes')}: ${heroes}/${MAX_HEROES}\n${getEmoji('evolutions')}: ${evolutions}/${MAX_EVOLUTIONS}\n${getEmoji('experience_16')}: ${level16}\n${getEmoji('experience_15')}: ${level15}\n${getEmoji('experience_14')}: ${level14}`;
 
   const combinedDescription = [description, pathOfLegendsDescription, trophyRoadDescription, cardLevelDescription].join(
     '\n',

@@ -221,6 +221,10 @@ export class ClanSettingsInteractionRouter {
           await InvitesHandler.purge(interaction, settingsData);
           break;
 
+        case 'remove_stale_clan_roles':
+          await ClanLogsHandler.removeStaleRoles(interaction, settingsData);
+          break;
+
         default:
           await interaction.reply({
             content: `Unknown setting: ${featureName}`,
