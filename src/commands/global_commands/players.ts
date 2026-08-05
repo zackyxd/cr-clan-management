@@ -31,6 +31,7 @@ const command: Command = {
       await interaction.reply({ content: '❌ This command must be used in a server.', flags: MessageFlags.Ephemeral });
       return;
     }
+    await interaction.deferReply();
 
     // Grab user, even if not in guild
     const user: User | null = interaction.options.getUser('user');
@@ -46,7 +47,6 @@ const command: Command = {
       return;
     }
 
-    await interaction.deferReply();
     const discordId = user.id;
     const userPlayertagsQuery = await pool.query(
       `
