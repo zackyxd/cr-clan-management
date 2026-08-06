@@ -40,7 +40,7 @@ export class TicketInteractionRouter {
       }
       case 'ticketsRelinkUser': {
         // Staff only - check permissions
-        const allowed = await checkPerms(interaction, 'button', 'higher', {
+        const allowed = await checkPerms(interaction, 'button', 'either', {
           hideNoPerms: true,
           skipDefer: true,
         });

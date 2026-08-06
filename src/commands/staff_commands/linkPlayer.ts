@@ -36,17 +36,17 @@ const command: Command = {
       return;
     }
 
-    const featureCheck = await checkFeature(interaction, guild.id, 'links');
-    if (!featureCheck) {
-      return;
-    }
-
     // TODO figure out if possible to not ephemeral if successful link, but still show
     const allowed = await checkPerms(interaction, 'command', 'either', {
       hideNoPerms: true,
       deferEphemeral: true,
     });
     if (!allowed) return;
+
+    const featureCheck = await checkFeature(interaction, guild.id, 'links');
+    if (!featureCheck) {
+      return;
+    }
 
     const user: User | null = interaction.options.getUser('user');
     if (!user) {
