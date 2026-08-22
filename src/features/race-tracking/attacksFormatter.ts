@@ -262,7 +262,8 @@ export function formatParticipantsList(
       }
 
       if (lines.length > 0) lines.push(''); // Blank line between groups
-      lines.push(`__**${currentAttacksGroup} Attack${currentAttacksGroup !== 1 ? 's' : ''} (${countDisplay})**__`);
+      // TODO: Remove this when discord fixes their formatting...eta?
+      lines.push(`__**${currentAttacksGroup} Attack${currentAttacksGroup !== 1 ? 's' : ''} (${countDisplay})**__\n`);
     }
 
     // Format participant line

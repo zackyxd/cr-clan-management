@@ -52,8 +52,8 @@ const ROLE_DISPLAY: Record<string, string> = {
   member: '(Member)',
 };
 
-let MAX_HEROES = 13;
-let MAX_EVOLUTIONS = 40;
+let MAX_HEROES = 15;
+let MAX_EVOLUTIONS = 41;
 
 // const formattedRole = ROLE_DISPLAY[rawRole] ?? '(Unknown)';
 
