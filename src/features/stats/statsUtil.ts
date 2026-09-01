@@ -1,10 +1,24 @@
 import { GoogleAuth } from 'google-auth-library';
-import { google } from 'googleapis';
+import { google, sheets_v4 } from 'googleapis';
 import logger from '../../logger.js';
 import 'dotenv-flow/config';
 import { pool } from '../../db.js';
 
 const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
+
+// googleapis only auto-retries GET/PUT/HEAD/OPTIONS/DELETE by default, so a transient
+// 503 ("The service is currently unavailable") on a POST call like batchUpdate/values.batchUpdate
+// fails immediately with no retry. Extend retries to POST since Sheets rejects these calls
+// outright on a 5xx rather than partially applying them, so retrying is safe.
+const SHEETS_RETRY_CONFIG: sheets_v4.Options['retryConfig'] = {
+  retry: 5,
+  httpMethodsToRetry: ['GET', 'HEAD', 'PUT', 'OPTIONS', 'DELETE', 'POST', 'PATCH'],
+  retryDelay: 500,
+  onRetryAttempt: (err) => {
+    const status = err.response?.status ?? err.code ?? 'unknown';
+    logger.warn(`[Google Sheets] Retrying after error (status/code: ${status}): ${err.config?.url ?? ''}`);
+  },
+};
 
 // Create authenticated Google Sheets client
 export async function getAuthenticatedSheetsClient() {
@@ -14,7 +28,7 @@ export async function getAuthenticatedSheetsClient() {
       scopes: SCOPES,
     });
 
-    const sheets = google.sheets({ version: 'v4', auth });
+    const sheets = google.sheets({ version: 'v4', auth, retryConfig: SHEETS_RETRY_CONFIG });
     return sheets;
   } catch (error) {
     logger.error('Failed to authenticate with Google Sheets API:', error);

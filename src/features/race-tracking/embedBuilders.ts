@@ -64,7 +64,7 @@ export async function buildAttacksEmbed(
       groupLines.push(''); // Blank line between groups
     }
 
-    description += groupLines.join('\n\n');
+    description += groupLines.join('\n');
 
     // Calculate total attacks used by participants who attacked today
     const totalAttacksUsed = enrichedParticipants.reduce((sum, p) => sum + p.attacksUsedToday, 0);

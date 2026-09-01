@@ -741,7 +741,7 @@ export class TicketInteractionRouter {
 
     const formatted = welcomeMessage.replace(/{user}/g, `<@${interaction.user.id}>`);
 
-    if (interaction.user.id === ownerId) {
+    if (interaction.user.id === ownerId && !interaction.message.content.includes('Thank you')) {
       await interaction.update({
         content: interaction.message.content + '\nThank you!',
       });
