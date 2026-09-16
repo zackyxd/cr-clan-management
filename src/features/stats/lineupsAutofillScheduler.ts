@@ -3,6 +3,7 @@ import { pool } from '../../db.js';
 import logger from '../../logger.js';
 import { normalizeTag } from '../../api/CR_API.js';
 import { colToLetter, getAuthenticatedSheetsClient } from './statsUtil.js';
+import { isGuildStatsCommandRunning } from '../../commands/stats_commands/stats.js';
 
 const LINEUP_BLOCK_WIDTH = 7;
 const LINEUP_DATA_ROWS = 52;
@@ -56,6 +57,10 @@ export class LineupsAutofillScheduler {
       `);
 
       for (const row of guildsRes.rows) {
+        if (isGuildStatsCommandRunning(row.guild_id)) {
+          logger.info(`Skipping cur-clan autofill for guild ${row.guild_id}; a /stats command is running`);
+          continue;
+        }
         await this.fillLeagueLineupsSheet(sheets, row.guild_id, row.stats_spreadsheetid, '5k');
         await this.fillLeagueLineupsSheet(sheets, row.guild_id, row.stats_spreadsheetid, '4k');
       }

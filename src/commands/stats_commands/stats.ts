@@ -1286,6 +1286,13 @@ async function resolvePlayerInput(
 
 const runningGuilds = new Set<string>();
 
+// Lets the sheet-writing schedulers (cur-clan/kicks autofill) back off while a /stats
+// command is actively writing to the same spreadsheet, since concurrent writes make
+// transient Google Sheets 503s more likely.
+export function isGuildStatsCommandRunning(guildId: string): boolean {
+  return runningGuilds.has(guildId);
+}
+
 const command: Command = {
   data: new SlashCommandBuilder()
     .setName('stats')

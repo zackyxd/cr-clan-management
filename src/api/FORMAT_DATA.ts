@@ -52,8 +52,8 @@ const ROLE_DISPLAY: Record<string, string> = {
   member: '(Member)',
 };
 
-let MAX_HEROES = 15;
-let MAX_EVOLUTIONS = 41;
+let MAX_HEROES = 17;
+let MAX_EVOLUTIONS = 42;
 
 // const formattedRole = ROLE_DISPLAY[rawRole] ?? '(Unknown)';
 
@@ -69,17 +69,17 @@ type FullPlayer = Partial<{
     leagueNumber: number;
     trophies: number;
     rank: number | null;
-  };
+  } | null;
   lastPathOfLegendSeasonResult: {
     leagueNumber: number;
     trophies: number;
     rank: number | null;
-  };
+  } | null;
   bestPathOfLegendSeasonResult: {
     leagueNumber: number;
     trophies: number;
     rank: number | null;
-  };
+  } | null;
   cards: {
     name: string;
     level: number;
@@ -105,11 +105,23 @@ export function formatPlayerData(data: FullPlayer): EmbedBuilder | null {
 
   const collectionLevel = (data.badges.find((b) => b.name === 'CollectionLevel')?.progress as number | undefined) ?? 0;
 
+  // Default destructuring (`= {}`) only kicks in for `undefined`, but the API returns
+  // these fields as `null` when a player has no Path of Legend result, so we normalize
+  // with `?? {}` first.
+  const { leagueNumber: currentPOLLeague, trophies: currentPOLTrophies } = data.currentPathOfLegendSeasonResult ?? {
+    leagueNumber: 1,
+    trophies: 0,
+  };
   const {
-    currentPathOfLegendSeasonResult: { leagueNumber: currentPOLLeague, trophies: currentPOLTrophies } = {},
-    lastPathOfLegendSeasonResult: { leagueNumber: lastPOLLeague, trophies: lastPOLTrophies, rank: lastPOLRank } = {},
-    bestPathOfLegendSeasonResult: { leagueNumber: bestPOLLeague, trophies: bestPOLTrophies, rank: bestPOLRank } = {},
-  } = data;
+    leagueNumber: lastPOLLeague,
+    trophies: lastPOLTrophies,
+    rank: lastPOLRank,
+  } = data.lastPathOfLegendSeasonResult ?? {};
+  const {
+    leagueNumber: bestPOLLeague,
+    trophies: bestPOLTrophies,
+    rank: bestPOLRank,
+  } = data.bestPathOfLegendSeasonResult ?? {};
   type LeagueKey = keyof typeof LEAGUES;
   const key = `league${currentPOLLeague}` as LeagueKey;
   const LEAGUEIMAGE = LEAGUES[key];

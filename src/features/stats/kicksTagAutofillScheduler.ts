@@ -3,6 +3,7 @@ import { pool } from '../../db.js';
 import logger from '../../logger.js';
 import { getClan, isFetchError, normalizeTag } from '../../api/CR_API.js';
 import { colToLetter, getAuthenticatedSheetsClient } from './statsUtil.js';
+import { isGuildStatsCommandRunning } from '../../commands/stats_commands/stats.js';
 
 const KICKS_BLOCK_WIDTH = 5;
 const KICKS_DATA_ROWS = 50;
@@ -55,6 +56,10 @@ export class KicksTagAutofillScheduler {
       `);
 
       for (const row of guildsRes.rows) {
+        if (isGuildStatsCommandRunning(row.guild_id)) {
+          logger.info(`Skipping kicks tag autofill for guild ${row.guild_id}; a /stats command is running`);
+          continue;
+        }
         await this.fillLeagueKicksSheet(sheets, row.guild_id, row.stats_spreadsheetid, '5k');
         await this.fillLeagueKicksSheet(sheets, row.guild_id, row.stats_spreadsheetid, '4k');
       }
