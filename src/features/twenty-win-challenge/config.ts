@@ -15,6 +15,8 @@ const DEFAULT_GAME_MODE_ID = 72000474;
 // Only wins that reach these values get posted
 export const POST_MIN_WINS = 17;
 export const MAX_WINS = 20;
+// A run ends after this many losses; the next battle starts a new run (counted as a reset)
+export const MAX_LOSSES = 3;
 
 // Rough length of one challenge match, used to back off API calls
 export const ROUND_MINUTES = 3;

@@ -24,6 +24,18 @@ export interface ChallengeBattle {
 
 export interface TrackedPlayerRow {
   playertag: string;
-  discord_id: string;
+  // Discord user to ping when posting; null when this tag shouldn't be posted
+  post_discord_id: string | null;
+  // Null when the player has never been checked
   last_battle_time: Date | null;
+  current_wins: number | null;
+  current_losses: number | null;
+  resets: number | null;
+}
+
+export interface PlayerRunState {
+  wins: number;
+  losses: number;
+  resets: number;
+  lastBattleTime: Date | null;
 }
