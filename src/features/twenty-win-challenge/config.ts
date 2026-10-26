@@ -9,8 +9,9 @@ const REPO_ROOT = path.resolve(__dirname, '../../..');
 export const ASSETS_DIR = path.join(REPO_ROOT, 'assets', '20wins');
 export const FONT_PATH = path.join(REPO_ROOT, 'Supercell-Magic.ttf');
 
-// Battle log gameMode.id for the challenge. Changes between challenges, so override via env if needed.
-const DEFAULT_GAME_MODE_ID = 72000474;
+// Battle log eventTag of the 20 Win Challenge. gameMode.id can't be used because other challenges
+// (e.g. Classic) share it. Changes between challenges, so override via env if needed.
+const DEFAULT_EVENT_TAG = '#2CJUG2VL';
 
 // Only wins that reach these values get posted
 export const POST_MIN_WINS = 17;
@@ -34,7 +35,7 @@ export interface TwentyWinConfig {
   guildId: string;
   roleIds: string[];
   channelId: string;
-  gameModeId: number;
+  eventTag: string;
 }
 
 /** Reads config from env. Returns null (feature disabled) if anything required is missing. */
@@ -45,8 +46,8 @@ export function loadTwentyWinConfig(): TwentyWinConfig | null {
     .split(',')
     .map((id) => id.trim())
     .filter(Boolean);
-  const gameModeId = Number(process.env.TWENTY_WINS_GAME_MODE_ID ?? DEFAULT_GAME_MODE_ID);
+  const eventTag = (process.env.TWENTY_WINS_EVENT_TAG?.trim() || DEFAULT_EVENT_TAG).toUpperCase();
 
-  if (!guildId || !channelId || roleIds.length === 0 || !Number.isFinite(gameModeId)) return null;
-  return { guildId, roleIds, channelId, gameModeId };
+  if (!guildId || !channelId || roleIds.length === 0) return null;
+  return { guildId, roleIds, channelId, eventTag };
 }

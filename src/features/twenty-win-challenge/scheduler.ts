@@ -159,7 +159,7 @@ export class TwentyWinChallengeScheduler {
 
       // Battle log is newest first
       const challengeBattles = (log as unknown as ChallengeBattle[]).filter(
-        (b) => b.gameMode?.id === config.gameModeId && b.team?.[0] && b.opponent?.[0],
+        (b) => b.eventTag?.toUpperCase() === config.eventTag && b.team?.[0] && b.opponent?.[0],
       );
 
       const newBattles = challengeBattles

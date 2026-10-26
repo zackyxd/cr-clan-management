@@ -17,6 +17,7 @@ export interface ChallengeBattlePlayer {
 
 export interface ChallengeBattle {
   battleTime: string;
+  eventTag?: string; // Identifies the specific challenge/event
   gameMode: { id?: number; name: string };
   team: ChallengeBattlePlayer[];
   opponent: ChallengeBattlePlayer[];
