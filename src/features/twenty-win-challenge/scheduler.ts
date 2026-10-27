@@ -129,12 +129,12 @@ export class TwentyWinChallengeScheduler {
       SELECT
         up.playertag,
         MAX(up.discord_id) FILTER (WHERE up.guild_id = $1 AND up.discord_id = ANY($2)) AS post_discord_id,
-        s.last_battle_time, s.current_wins, s.current_losses, s.resets
+        s.last_battle_time, s.current_wins, s.current_losses, s.resets, s.max_wins
       FROM user_playertags up
       LEFT JOIN twenty_win_challenge_players s ON s.playertag = up.playertag
       WHERE (s.next_check_at IS NULL OR s.next_check_at <= NOW())
         AND COALESCE(s.current_wins, 0) < $3 -- accounts that hit 20 are done for good
-      GROUP BY up.playertag, s.last_battle_time, s.current_wins, s.current_losses, s.resets
+      GROUP BY up.playertag, s.last_battle_time, s.current_wins, s.current_losses, s.resets, s.max_wins
       `,
       [config.guildId, [...discordIds], MAX_WINS],
     );
@@ -147,6 +147,7 @@ export class TwentyWinChallengeScheduler {
         wins: player.current_wins ?? 0,
         losses: player.current_losses ?? 0,
         resets: player.resets ?? 0,
+        maxWins: player.max_wins ?? 0,
         lastBattleTime: player.last_battle_time,
       };
 
@@ -178,6 +179,7 @@ export class TwentyWinChallengeScheduler {
 
         const wins = winsAfter(battle);
         state.wins = wins;
+        state.maxWins = Math.max(state.maxWins, Math.min(wins, MAX_WINS));
         state.lastBattleTime = parseBattleTime(battle.battleTime);
         if (!isWin(battle)) state.losses++;
 
@@ -221,17 +223,18 @@ export class TwentyWinChallengeScheduler {
     await pool.query(
       `
       INSERT INTO twenty_win_challenge_players
-        (playertag, current_wins, current_losses, resets, last_battle_time, next_check_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, NOW() + make_interval(mins => $6), NOW())
+        (playertag, current_wins, current_losses, resets, max_wins, last_battle_time, next_check_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW() + make_interval(mins => $7), NOW())
       ON CONFLICT (playertag) DO UPDATE SET
         current_wins = EXCLUDED.current_wins,
         current_losses = EXCLUDED.current_losses,
         resets = EXCLUDED.resets,
+        max_wins = GREATEST(twenty_win_challenge_players.max_wins, EXCLUDED.max_wins),
         last_battle_time = EXCLUDED.last_battle_time,
         next_check_at = EXCLUDED.next_check_at,
         updated_at = NOW()
       `,
-      [playertag, state.wins, state.losses, state.resets, state.lastBattleTime, delayMinutes],
+      [playertag, state.wins, state.losses, state.resets, state.maxWins, state.lastBattleTime, delayMinutes],
     );
   }
 }

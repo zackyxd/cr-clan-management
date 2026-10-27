@@ -32,11 +32,13 @@ export interface TrackedPlayerRow {
   current_wins: number | null;
   current_losses: number | null;
   resets: number | null;
+  max_wins: number | null;
 }
 
 export interface PlayerRunState {
   wins: number;
   losses: number;
   resets: number;
+  maxWins: number;
   lastBattleTime: Date | null;
 }
