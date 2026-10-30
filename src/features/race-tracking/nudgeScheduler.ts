@@ -364,8 +364,7 @@ export class NudgeTrackingScheduler {
       }
 
       // Send the nudge!
-      await NudgeTrackingScheduler.sendNudge(this.client, clan, false, matchingNudgeIndex + 1, totalNudges);
-      logger.info(`✅ Nudge sent for ${clan.clan_name} at ${timeString}`);
+      await this.sendNudgeWithRetry(clan, matchingNudgeIndex + 1, totalNudges, timeString);
     } catch (error: any) {
       // Expected errors - silently skip
       if (error?.name === 'training_day' || error?.name === 'past_finish_line') {
@@ -379,6 +378,68 @@ export class NudgeTrackingScheduler {
         stack: error?.stack,
         fullError: error,
       });
+    }
+  }
+
+  /**
+   * Send an automatic nudge, retrying in the background if the CR API is down.
+   * Scheduled nudges only match on their exact minute, so without this a brief
+   * API outage (500/525 from the proxy) drops the nudge entirely.
+   */
+  private async sendNudgeWithRetry(
+    clan: ScheduledNudge,
+    currentNudgeNumber: number,
+    totalNudges: number,
+    timeString: string,
+    attempt: number = 0,
+  ): Promise<void> {
+    const RETRY_DELAYS_MS = [30_000, 60_000, 120_000, 240_000];
+
+    try {
+      await NudgeTrackingScheduler.sendNudge(this.client, clan, false, currentNudgeNumber, totalNudges);
+      logger.info(`✅ Nudge sent for ${clan.clan_name} at ${timeString}${attempt > 0 ? ` (retry ${attempt})` : ''}`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      if (error?.name !== 'api_error') {
+        throw error;
+      }
+
+      if (attempt >= RETRY_DELAYS_MS.length) {
+        logger.error(`❌ Nudge for ${clan.clan_name} at ${timeString} failed after ${attempt} retries (CR API unavailable)`);
+        await this.notifyFailedNudge(clan, timeString);
+        return;
+      }
+
+      const delay = RETRY_DELAYS_MS[attempt];
+      logger.warn(
+        `⚠️ CR API unavailable for ${clan.clan_name} nudge at ${timeString}, retrying in ${delay / 1000}s (attempt ${attempt + 1}/${RETRY_DELAYS_MS.length})`,
+      );
+
+      // Don't await - other clans in this tick shouldn't wait on this retry
+      setTimeout(() => {
+        this.sendNudgeWithRetry(clan, currentNudgeNumber, totalNudges, timeString, attempt + 1).catch((retryError) => {
+          if (retryError?.name === 'training_day' || retryError?.name === 'past_finish_line') return;
+          logger.error(`Error retrying nudge for clan ${clan.clantag}:`, retryError);
+        });
+      }, delay);
+    }
+  }
+
+  /**
+   * Notify staff channel that an automatic nudge couldn't be sent because the CR API was down
+   */
+  private async notifyFailedNudge(clan: ScheduledNudge, scheduledTime: string) {
+    try {
+      const channel = await this.client.channels.fetch(clan.staff_channel_id).catch(() => null);
+      if (!channel?.isTextBased() || !(channel instanceof TextChannel)) {
+        return;
+      }
+
+      await channel.send({
+        content: `⚠️ **Scheduled nudge failed** for ${clan.clan_name} (${scheduledTime} UTC)\n-# The Clash Royale API was unavailable. Use \`/nudge\` to send one manually.`,
+      });
+    } catch (error) {
+      logger.error(`Error sending failed nudge notification for clan ${clan.clantag}:`, error);
     }
   }
 
@@ -481,6 +542,25 @@ export class NudgeTrackingScheduler {
         return;
       }
 
+      // Fetch guild
+      const guild = await client.guilds.fetch(clan.guild_id);
+      if (!guild) {
+        logger.warn(`Guild ${clan.guild_id} not found`);
+        return;
+      }
+
+      // Update race data from API before sending nudge.
+      // Done before deleting the previous nudge so an API outage doesn't leave the channel with no nudge at all.
+      const updateResult = await initializeOrUpdateRace(clan.clantag);
+      if (!updateResult) {
+        throw {
+          name: 'api_error',
+          embed: new EmbedBuilder()
+            .setDescription('🚧 *The Clash Royale API is having issues right now. Please try again in a few minutes.*')
+            .setColor('Orange'),
+        };
+      }
+
       // Delete previous automatic nudge message if this is an automatic nudge
       if (!isManual) {
         try {
@@ -519,20 +599,6 @@ export class NudgeTrackingScheduler {
         } catch (error) {
           logger.error('Error checking/deleting previous nudge:', error);
         }
-      }
-
-      // Fetch guild
-      const guild = await client.guilds.fetch(clan.guild_id);
-      if (!guild) {
-        logger.warn(`Guild ${clan.guild_id} not found`);
-        return;
-      }
-
-      // Update race data from API before sending nudge
-      const updateResult = await initializeOrUpdateRace(clan.clantag);
-      if (!updateResult) {
-        logger.warn(`Failed to update race data for ${clan.clantag}`);
-        return;
       }
 
       const raceData = updateResult.raceData;
@@ -660,6 +726,10 @@ export class NudgeTrackingScheduler {
         throw error;
       }
       if (error?.name === 'past_finish_line') {
+        throw error;
+      }
+      // Re-throw API errors so the scheduler can retry and manual commands can report it
+      if (error?.name === 'api_error') {
         throw error;
       }
 

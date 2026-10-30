@@ -132,6 +132,10 @@ const command: Command = {
         await interaction.editReply({ embeds: [error.embed] });
         return;
       }
+      if (error?.name === 'api_error' && error?.embed) {
+        await interaction.editReply({ embeds: [error.embed] });
+        return;
+      }
 
       // Handle all other errors
       console.error('Error sending nudge:', error);
