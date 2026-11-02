@@ -135,9 +135,11 @@ client.once(Events.ClientReady, async (c) => {
   // Start cur-clan autofill scheduler (fills Cur. Clan column on lineups sheets from DB snapshots)
   const lineupsAutofillScheduler = new LineupsAutofillScheduler();
   lineupsAutofillScheduler.start();
+
+  
   // Start 20 win challenge scheduler (posts 17-20 win images for members with the challenge roles)
-  const twentyWinChallengeScheduler = new TwentyWinChallengeScheduler(c);
-  twentyWinChallengeScheduler.start();
+  // const twentyWinChallengeScheduler = new TwentyWinChallengeScheduler(c);
+  // twentyWinChallengeScheduler.start();
 });
 
 // NOTE: Old interaction handling moved to events/interactionCreate.ts with new feature-based dispatcher
