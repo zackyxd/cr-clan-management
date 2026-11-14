@@ -16,7 +16,6 @@ import { EmojiManager } from './services/EmojiManager.js';
 import { startClanActivityScheduler } from './features/clan-logs/index.js';
 import { KicksTagAutofillScheduler } from './features/stats/kicksTagAutofillScheduler.js';
 import { LineupsAutofillScheduler } from './features/stats/lineupsAutofillScheduler.js';
-import { TwentyWinChallengeScheduler } from './features/twenty-win-challenge/scheduler.js';
 
 // import { isDev, isProd } from './utils/env.js';
 
@@ -136,7 +135,6 @@ client.once(Events.ClientReady, async (c) => {
   const lineupsAutofillScheduler = new LineupsAutofillScheduler();
   lineupsAutofillScheduler.start();
 
-  
   // Start 20 win challenge scheduler (posts 17-20 win images for members with the challenge roles)
   // const twentyWinChallengeScheduler = new TwentyWinChallengeScheduler(c);
   // twentyWinChallengeScheduler.start();
